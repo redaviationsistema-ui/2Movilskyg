@@ -1,0 +1,46 @@
+name: red_sky
+description: "Red Sky mobile marketplace for private flights."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.2
+  intl: ^0.19.0
+  uuid: ^4.3.3
+  dropdown_search: ^5.0.6
+  pdf: ^3.10.8
+  printing: ^5.12.0
+  http: ^1.2.0
+  sqflite: ^2.3.3+1
+  path: ^1.9.0
+  supabase_flutter: ^2.3.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/logo.png
+  remove_alpha_ios: true
+  background_color: "#FFFFFF"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/logo.png
+  min_sdk_android: 21
