@@ -47,7 +47,7 @@ class ApiClient {
   );
   static const String _configuredFallbackBaseUrl = String.fromEnvironment(
     'FALLBACK_API_BASE_URL',
-    defaultValue: 'https://uber-aviones.onrender.com/api/v1',
+    defaultValue: '',
   );
 
   String? _token;
@@ -174,6 +174,7 @@ class ApiClient {
     required DateTime departure,
     required int passengers,
     required String tripType,
+    String? tripLabel,
     String? aircraftType,
     List<Map<String, dynamic>> requirements = const [],
     String? notes,
@@ -187,7 +188,7 @@ class ApiClient {
         'departure_datetime': departure.toIso8601String(),
         'passengers': passengers,
         'trip_type': tripType,
-        'trip_label': tripType == 'multi_leg' ? 'Multi-destino' : 'Ida',
+        'trip_label': tripLabel ?? _tripLabelForType(tripType),
         if (aircraftType != null && aircraftType.trim().isNotEmpty)
           'aircraft_type': aircraftType.trim(),
         if (requirements.isNotEmpty) 'requirements': requirements,
@@ -202,6 +203,7 @@ class ApiClient {
     required DateTime departure,
     required int passengers,
     required String tripType,
+    String? tripLabel,
     String? notes,
     String? aircraftType,
     String? providerId,
@@ -220,7 +222,7 @@ class ApiClient {
         'departure_datetime': departure.toIso8601String(),
         'passengers': passengers,
         'trip_type': tripType,
-        'trip_label': tripType == 'multi_leg' ? 'Multi-destino' : 'Ida',
+        'trip_label': tripLabel ?? _tripLabelForType(tripType),
         if (aircraftType != null && aircraftType.trim().isNotEmpty)
           'aircraft_type': aircraftType.trim(),
         if (providerId != null && providerId.isNotEmpty)
@@ -234,6 +236,17 @@ class ApiClient {
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
     );
+  }
+
+  String _tripLabelForType(String tripType) {
+    switch (tripType) {
+      case 'round_trip':
+        return 'Redondo';
+      case 'multi_leg':
+        return 'Multi-destino';
+      default:
+        return 'Ida';
+    }
   }
 
   Future<Map<String, dynamic>> getFirstAvailable(

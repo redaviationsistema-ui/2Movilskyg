@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/api_client.dart';
 import '../../providers/reservation_provider.dart';
 import 'success_screen.dart';
 
@@ -57,48 +56,7 @@ class QuotePreviewScreen extends StatelessWidget {
     );
 
     try {
-      final tripType = reservation.routes.length > 1 ? 'multi_leg' : 'one_way';
-      final requirements =
-          reservation.routes
-              .skip(1)
-              .map((route) {
-                return {
-                  'origin':
-                      route.fromAirport?.iata ?? route.fromAirport?.name ?? '',
-                  'destination':
-                      route.toAirport?.iata ?? route.toAirport?.name ?? '',
-                  'date':
-                      (route.startDate ?? reservation.startDate)
-                          ?.toIso8601String()
-                          .split('T')
-                          .first,
-                  'time': '09:00',
-                  'passengers': route.passengers,
-                };
-              })
-              .where((route) {
-                return (route['origin'] as String).isNotEmpty &&
-                    (route['destination'] as String).isNotEmpty;
-              })
-              .toList();
-
-      await ApiClient.instance.createFlightRequest(
-        origin: origin,
-        destination: destination,
-        departure: departure,
-        passengers: reservation.passengers,
-        tripType: tripType,
-        aircraftType: reservation.flightType ?? reservation.aircraftType,
-        providerId: quote['provider_id']?.toString(),
-        aircraftId: quote['aircraft_id']?.toString(),
-        matchId: quote['match_id']?.toString() ?? quote['id']?.toString(),
-        matchedOptionId:
-            quote['matched_option_id']?.toString() ??
-            quote['match_id']?.toString(),
-        requirements: requirements,
-        notes:
-            'Solicitud creada desde app movil Red Sky para ${reservation.fullName.isEmpty ? 'cliente' : reservation.fullName}.',
-      );
+      await reservation.createFlightRequestForMatch(quote);
 
       if (!context.mounted) return;
 
@@ -148,6 +106,22 @@ class QuotePreviewScreen extends StatelessWidget {
         quote['pricing_breakdown'] is Map
             ? Map<String, dynamic>.from(quote['pricing_breakdown'] as Map)
             : <String, dynamic>{};
+    final billableHours =
+        breakdown['billable_hours'] ?? breakdown['billableHours'] ?? '-';
+    final subtotal =
+        breakdown['subtotal'] ??
+        breakdown['subtotal_before_multipliers'] ??
+        '-';
+    final fuel =
+        breakdown['fuel'] ??
+        breakdown['fuel_cost'] ??
+        breakdown['fuel_surcharge'] ??
+        '-';
+    final repositioning =
+        breakdown['repositioning'] ?? breakdown['repositioning_fee'] ?? '-';
+    final overnight =
+        breakdown['overnight'] ?? breakdown['overnight_fee'] ?? '-';
+    final breakdownTotal = breakdown['total'] ?? quote['total'] ?? '-';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Vista previa de cotizacion')),
@@ -212,28 +186,16 @@ class QuotePreviewScreen extends StatelessWidget {
                   children: [
                     _LineItem(
                       label: 'Horas billables',
-                      value: '${breakdown['billable_hours'] ?? '-'}',
+                      value: '$billableHours',
                     ),
-                    _LineItem(
-                      label: 'Subtotal',
-                      value: '\$${breakdown['subtotal'] ?? '-'}',
-                    ),
-                    _LineItem(
-                      label: 'Combustible',
-                      value: '\$${breakdown['fuel'] ?? '-'}',
-                    ),
+                    _LineItem(label: 'Subtotal', value: '\$$subtotal'),
+                    _LineItem(label: 'Combustible', value: '\$$fuel'),
                     _LineItem(
                       label: 'Repositioning',
-                      value: '\$${breakdown['repositioning'] ?? '-'}',
+                      value: '\$$repositioning',
                     ),
-                    _LineItem(
-                      label: 'Overnight',
-                      value: '\$${breakdown['overnight'] ?? '-'}',
-                    ),
-                    _LineItem(
-                      label: 'Total',
-                      value: '\$${breakdown['total'] ?? '-'}',
-                    ),
+                    _LineItem(label: 'Overnight', value: '\$$overnight'),
+                    _LineItem(label: 'Total', value: '\$$breakdownTotal'),
                   ],
                 ),
               ),

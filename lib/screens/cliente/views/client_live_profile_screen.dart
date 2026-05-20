@@ -14,94 +14,109 @@ class ClientLiveProfileScreen extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
     final access = auth.accessData ?? const <String, dynamic>{};
     final user = auth.user;
+    final statusLabel = _accessLabel(access);
+    final phone =
+        user?.phone.isNotEmpty == true
+            ? user!.phone
+            : 'Pendiente por registrar';
+    final company =
+        user?.companyName.isNotEmpty == true
+            ? user!.companyName
+            : 'Cuenta privada';
 
     return ClientExperienceShell(
-      title: 'Perfil',
-      subtitle: 'Informacion real de cuenta y acceso cargada desde auth/me.',
+      title: 'Cuenta',
+      subtitle:
+          'Consulta tu informacion de contacto, acceso y preferencias de vuelo.',
       showBackButton: showBackButton,
       trailing: StatusBadge(
-        label: auth.role.name,
-        color: const Color(0xFF143955),
+        label: statusLabel == 'Activo' ? 'Cliente activo' : 'Cliente',
+        color:
+            statusLabel == 'Activo'
+                ? const Color(0xFF2D6A4F)
+                : const Color(0xFF9A6F28),
       ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
-          ClientHeroCard(
-            badge: auth.displayName,
-            title: 'Tu cuenta opera sobre datos reales del backend',
-            subtitle:
-                'Este perfil usa la informacion autenticada de la sesion para mostrar cuenta, acceso y datos de contacto sin contenido demo.',
-            metrics: [
-              ClientHeroMetric(
-                label: 'Correo',
-                value: user?.email ?? 'Sin correo',
-              ),
-              ClientHeroMetric(
-                label: 'Telefono',
-                value:
-                    user?.phone.isNotEmpty == true ? user!.phone : 'Pendiente',
-              ),
-              ClientHeroMetric(label: 'Acceso', value: _accessLabel(access)),
-            ],
-            primaryLabel: 'Cerrar sesion',
-            primaryAction: () => context.read<AuthProvider>().signOut(),
-            secondaryLabel: 'Recargar perfil',
-            secondaryAction: () => context.read<AuthProvider>().loadUserRole(),
+          const Text(
+            'Perfil de cliente',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF10253A),
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Consulta tu informacion de contacto, acceso y preferencias de vuelo.',
+            style: TextStyle(
+              color: Color(0xFF607080),
+              fontSize: 16,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _ProfileHeroCard(
+            badge: statusLabel == 'Activo' ? 'Cuenta activa' : 'Cliente',
+            title: auth.displayName,
+            email: user?.email ?? 'Sin correo',
+            phone: phone,
+            primaryLabel: 'Actualizar datos',
+            primaryAction: () => context.read<AuthProvider>().loadUserRole(),
+            secondaryLabel: 'Cerrar sesion',
+            secondaryAction: () => context.read<AuthProvider>().signOut(),
           ),
           const SizedBox(height: 24),
           const ClientSectionTitle(
             title: 'Datos de cuenta',
-            subtitle: 'Informacion entregada por tu backend autenticado.',
+            subtitle: 'Informacion registrada en tu perfil.',
           ),
           const SizedBox(height: 14),
           GlassInfoCard(
             child: Column(
               children: [
-                _ProfileRow(label: 'Nombre', value: user?.name ?? 'Pendiente'),
+                _ProfileItem(label: 'Nombre', value: user?.name ?? 'Pendiente'),
                 const SizedBox(height: 12),
-                _ProfileRow(
-                  label: 'Empresa',
-                  value:
-                      user?.companyName.isNotEmpty == true
-                          ? user!.companyName
-                          : 'Sin empresa',
+                _ProfileItem(label: 'Empresa', value: company),
+                const SizedBox(height: 12),
+                _ProfileItem(
+                  label: 'Correo',
+                  value: user?.email ?? 'Pendiente',
                 ),
                 const SizedBox(height: 12),
-                _ProfileRow(label: 'Correo', value: user?.email ?? 'Pendiente'),
+                _ProfileItem(label: 'Telefono', value: phone),
                 const SizedBox(height: 12),
-                _ProfileRow(
-                  label: 'Telefono',
-                  value:
-                      user?.phone.isNotEmpty == true
-                          ? user!.phone
-                          : 'Pendiente',
-                ),
-                const SizedBox(height: 12),
-                _ProfileRow(label: 'Rol', value: auth.role.name),
+                _ProfileItem(label: 'Estado', value: statusLabel),
               ],
             ),
           ),
           const SizedBox(height: 24),
           const ClientSectionTitle(
             title: 'Acceso comercial',
-            subtitle: 'Resumen real del estado de demo o suscripcion.',
+            subtitle: 'Datos asociados a tu cuenta privada.',
           ),
           const SizedBox(height: 14),
           GlassInfoCard(
             child: Column(
               children: [
-                _ProfileRow(label: 'Estado', value: _accessLabel(access)),
+                _ProfileItem(label: 'Estado', value: statusLabel),
                 const SizedBox(height: 12),
-                _ProfileRow(label: 'Plan', value: _planLabel(access)),
+                _ProfileItem(label: 'Plan', value: _planLabel(access)),
                 const SizedBox(height: 12),
-                _ProfileRow(
+                _ProfileItem(
                   label: 'Reservar',
-                  value: access['can_book']?.toString() ?? 'N/D',
+                  value:
+                      access['can_book'] == true ? 'Disponible' : 'Pendiente',
                 ),
                 const SizedBox(height: 12),
-                _ProfileRow(
+                _ProfileItem(
                   label: 'Solicitudes',
-                  value: access['can_request_flights']?.toString() ?? 'N/D',
+                  value:
+                      access['can_request_flights'] == true
+                          ? 'Disponibles'
+                          : 'Pendientes',
                 ),
               ],
             ),
@@ -114,10 +129,12 @@ class ClientLiveProfileScreen extends StatelessWidget {
   String _accessLabel(Map<String, dynamic> access) {
     final subscription = access['subscription'];
     if (subscription is Map && subscription['status'] != null) {
-      return subscription['status'].toString();
+      final value = subscription['status'].toString().trim();
+      return value.isEmpty ? 'Pendiente' : value;
     }
     if (access['subscription_status'] != null) {
-      return access['subscription_status'].toString();
+      final value = access['subscription_status'].toString().trim();
+      return value.isEmpty ? 'Pendiente' : value;
     }
     if (access['has_access'] == true) {
       return 'Activo';
@@ -140,37 +157,209 @@ class ClientLiveProfileScreen extends StatelessWidget {
   }
 }
 
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({required this.label, required this.value});
+class _ProfileHeroCard extends StatelessWidget {
+  const _ProfileHeroCard({
+    required this.badge,
+    required this.title,
+    required this.email,
+    required this.phone,
+    required this.primaryLabel,
+    required this.primaryAction,
+    required this.secondaryLabel,
+    required this.secondaryAction,
+  });
+
+  final String badge;
+  final String title;
+  final String email;
+  final String phone;
+  final String primaryLabel;
+  final VoidCallback primaryAction;
+  final String secondaryLabel;
+  final VoidCallback secondaryAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF071827), Color(0xFF103650)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2E071827),
+            blurRadius: 60,
+            offset: Offset(0, 24),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: Text(
+              badge,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.02,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _HeroDataPill(label: 'Correo', value: email),
+          const SizedBox(height: 10),
+          _HeroDataPill(label: 'Telefono', value: phone),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: primaryAction,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8C36A),
+                    foregroundColor: const Color(0xFF111111),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(primaryLabel),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: secondaryAction,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.20),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(secondaryLabel),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroDataPill extends StatelessWidget {
+  const _HeroDataPill({required this.label, required this.value});
 
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 96,
-          child: Text(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF607080),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileItem extends StatelessWidget {
+  const _ProfileItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFEFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFEADFCE)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D141414),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF607080),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
             value,
             style: const TextStyle(
               color: Color(0xFF10253A),
+              fontSize: 18,
               fontWeight: FontWeight.w800,
+              height: 1.25,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

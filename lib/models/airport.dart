@@ -23,7 +23,7 @@ class Airport {
     final state = json['ESTADO'] ?? json['state'];
     final country = json['PAIS'] ?? json['country'];
     final iata =
-        json['icao'] ?? json['IATA'] ?? json['iata'] ?? json['iata_code'];
+        json['IATA'] ?? json['iata'] ?? json['iata_code'] ?? json['icao'];
     final latValue = json['LATITUDE'] ?? json['lat'] ?? json['latitude'];
     final lngValue = json['LONGITUDE'] ?? json['lng'] ?? json['longitude'];
 

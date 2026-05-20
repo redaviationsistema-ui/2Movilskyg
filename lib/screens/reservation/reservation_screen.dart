@@ -24,17 +24,33 @@ class ReservationScreen extends StatefulWidget {
 
 class _ReservationScreenState extends State<ReservationScreen> {
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
-  String _tripType = 'Ida';
+  String _tripType = 'Solo ida';
   TimeOfDay? _departureTime;
   DateTime? _returnDate;
   TimeOfDay? _returnTime;
 
+  static const List<String> _priorityAirportCodes = [
+    'MEX',
+    'CUN',
+    'MTY',
+    'GDL',
+    'SJD',
+    'TIJ',
+  ];
+
   @override
   void initState() {
     super.initState();
-    final provider = context.read<ReservationProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      final provider = context.read<ReservationProvider>();
+      provider.resetForm();
+      setState(() {
+        _tripType = 'Solo ida';
+        _departureTime = null;
+        _returnDate = null;
+        _returnTime = null;
+      });
       await provider.loadInitialData();
       if (!mounted) return;
       await provider.loadClientWorkspaceData(force: true);
@@ -45,34 +61,41 @@ class _ReservationScreenState extends State<ReservationScreen> {
   Widget build(BuildContext context) {
     final reservation = context.watch<ReservationProvider>();
     final primaryRoute = reservation.routes.first;
-    final recentRoutes = _recentRoutes(reservation).take(3).toList();
+    final suggestedAirports = _suggestedAirports(reservation);
 
     return ClientMobileScreenShell(
       userInitial: widget.userInitial,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 104),
         children: [
-          const EyebrowLabel(label: 'Planificador de aviacion privada'),
-          const SizedBox(height: 8),
+          const EyebrowLabel(label: 'Aviacion privada'),
+          const SizedBox(height: 12),
           const Text(
-            'Busca.\nReserva.\nVuela.',
+            'Vuela privado\nen minutos',
             style: TextStyle(
-              fontSize: 28,
-              height: 0.95,
+              fontSize: 38,
+              height: 1,
               fontWeight: FontWeight.w900,
+              letterSpacing: -1.2,
               color: Color(0xFF111111),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           const Text(
-            'Entra, elige y reserva tu vuelo privado con control total desde el primer paso.',
+            'Cotiza y compara aeronaves disponibles.',
             style: TextStyle(
-              color: Color(0xFF5E5A53),
-              fontSize: 15,
+              color: Color(0xFF746D64),
+              fontSize: 20,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
+          _QuickActionRail(
+            onTodayTrip: () => _applyTodayPreset(reservation),
+            onRoundTrip: () => _applyRoundTripPreset(reservation),
+            onMultiCity: () => _applyMultiCityPreset(reservation),
+          ),
+          const SizedBox(height: 28),
           ConciergeCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,14 +105,47 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   onChanged: (value) {
                     setState(() {
                       _tripType = value;
+                      if (value != 'Ida y vuelta') {
+                        _returnDate = null;
+                        _returnTime = null;
+                      }
                     });
+                    reservation.setBookingTripLabel(value);
                     _normalizeRoutesForMode(reservation);
                   },
                 ),
-                const SizedBox(height: 14),
+                if (_tripType == 'Ida y vuelta') ...[
+                  const SizedBox(height: 16),
+                  const _ModeIntroCard(
+                    eyebrow: 'Viaje redondo',
+                    title:
+                        'Define salida y regreso en un mismo flujo ejecutivo.',
+                    subtitle:
+                        'Ideal para juntas, inspecciones o regreso el mismo dia con control total del itinerario.',
+                    tint: Color(0xFF1B8F4D),
+                  ),
+                ] else if (_tripType == 'Multidestino') ...[
+                  const SizedBox(height: 16),
+                  const _ModeIntroCard(
+                    eyebrow: 'Ruta multi-destino',
+                    title: 'Construye una gira privada tramo por tramo.',
+                    subtitle:
+                        'Perfecto para roadshows, visitas ejecutivas y agendas que combinan varias ciudades.',
+                    tint: Color(0xFFB46A00),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                if (_tripType == 'Multidestino') ...[
+                  const _RouteHeader(title: 'Tramo 1'),
+                  const SizedBox(height: 12),
+                ],
                 ConciergeField(
                   label: 'Origen',
-                  value: _airportLabel(primaryRoute.fromAirport),
+                  value: _airportPrimaryLabel(primaryRoute.fromAirport),
+                  secondaryValue: _airportSecondaryLabel(
+                    primaryRoute.fromAirport,
+                  ),
+                  placeholder: 'Seleccionar aeropuerto',
                   onTap:
                       () => _pickAirport(
                         title: 'Selecciona origen',
@@ -100,7 +156,11 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 const SizedBox(height: 12),
                 ConciergeField(
                   label: 'Destino',
-                  value: _airportLabel(primaryRoute.toAirport),
+                  value: _airportPrimaryLabel(primaryRoute.toAirport),
+                  secondaryValue: _airportSecondaryLabel(
+                    primaryRoute.toAirport,
+                  ),
+                  placeholder: 'Seleccionar aeropuerto',
                   onTap:
                       () => _pickAirport(
                         title: 'Selecciona destino',
@@ -110,69 +170,53 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 ),
                 const SizedBox(height: 12),
                 ConciergeField(
-                  label: 'Fecha',
+                  label: 'Salida',
                   value:
                       primaryRoute.startDate == null
-                          ? 'dd/mm/aaaa'
+                          ? 'Seleccionar fecha'
                           : _dateFormat.format(primaryRoute.startDate!),
                   onTap: () => _pickDateForRoute(reservation, 0),
                   trailing: const Icon(
                     Icons.calendar_today_outlined,
-                    size: 18,
-                    color: Color(0xFF6B6258),
+                    size: 24,
+                    color: Color(0xFF6F675D),
                   ),
+                  placeholder: 'Seleccionar fecha',
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: _pickDepartureTime,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    side: const BorderSide(color: Color(0xFFE2D6C6)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    foregroundColor: const Color(0xFF7A5A20),
-                  ),
-                  child: Text(
-                    _departureTime == null
-                        ? 'Agregar hora especifica'
-                        : 'Hora ${_departureTime!.format(context)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                const SizedBox(height: 8),
+                _InlinePreferenceButton(
+                  title:
+                      _departureTime == null
+                          ? 'Agregar hora'
+                          : 'Hora de salida: ${_departureTime!.format(context)}',
+                  onTap: _pickDepartureTime,
                 ),
-                if (_tripType == 'Redondo') ...[
-                  const SizedBox(height: 12),
+                if (_tripType == 'Ida y vuelta') ...[
+                  const SizedBox(height: 14),
                   ConciergeField(
-                    label: 'Regreso',
+                    label: 'Fecha de regreso',
                     value:
                         _returnDate == null
-                            ? 'Seleccionar fecha de regreso'
+                            ? 'dd/mm/aaaa'
                             : _dateFormat.format(_returnDate!),
                     onTap: _pickReturnDate,
                     trailing: const Icon(
                       Icons.calendar_today_outlined,
-                      size: 18,
-                      color: Color(0xFF6B6258),
+                      size: 24,
+                      color: Color(0xFF6F675D),
                     ),
+                    placeholder: 'dd/mm/aaaa',
                   ),
-                  const SizedBox(height: 10),
-                  OutlinedButton(
-                    onPressed: _pickReturnTime,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      side: const BorderSide(color: Color(0xFFE2D6C6)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: Text(
-                      _returnTime == null
-                          ? 'Agregar hora de regreso'
-                          : 'Regreso ${_returnTime!.format(context)}',
-                    ),
+                  const SizedBox(height: 8),
+                  _InlinePreferenceButton(
+                    title:
+                        _returnTime == null
+                            ? 'Agregar hora de regreso'
+                            : 'Hora de regreso: ${_returnTime!.format(context)}',
+                    onTap: _pickReturnTime,
                   ),
                 ],
-                if (_tripType == 'Multi-destino') ...[
+                if (_tripType == 'Multidestino') ...[
                   const SizedBox(height: 14),
                   ...List.generate(
                     reservation.routes.length - 1,
@@ -213,13 +257,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
                             ? null
                             : () => reservation.addRoute(),
                     icon: const Icon(Icons.add_rounded),
-                    label: const Text('Agregar destino'),
+                    label: const Text('Agregar tramo'),
                     style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
+                      minimumSize: const Size.fromHeight(44),
                       side: const BorderSide(color: Color(0xFFE2D6C6)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                      foregroundColor: const Color(0xFF7A5A20),
                     ),
                   ),
                 ],
@@ -228,6 +273,39 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   value: reservation.passengers,
                   onChanged: reservation.setGlobalPassengers,
                 ),
+                if (suggestedAirports.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Rutas sugeridas',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                      color: Color(0xFF8A641E),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 156,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: suggestedAirports.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        final airport = suggestedAirports[index];
+                        return _SuggestedDestinationCard(
+                          airport: airport,
+                          isMultiCity: _tripType == 'Multidestino',
+                          onTap:
+                              () => _applySuggestedDestination(
+                                reservation,
+                                airport,
+                              ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
@@ -239,10 +317,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF151515),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      minimumSize: const Size.fromHeight(64),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(18),
                       ),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
                     ),
                     child:
                         reservation.isLoadingQuotePreview
@@ -255,26 +335,30 @@ class _ReservationScreenState extends State<ReservationScreen> {
                               ),
                             )
                             : const Text(
-                              'Cotizar vuelo',
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                              'Ver aeronaves disponibles',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                letterSpacing: -0.2,
+                              ),
                             ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Cotizacion estimada. Sujeta a FBO, permisos y operacion.',
+                  style: TextStyle(
+                    color: Color(0xFF8A8379),
+                    fontSize: 13,
+                    height: 1.35,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          if (reservation.isLoadingWorkspace && recentRoutes.isEmpty)
-            const LoadingBand(text: 'Sincronizando rutas del cliente...')
-          else if (recentRoutes.isNotEmpty) ...[
-            for (final route in recentRoutes)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _SuggestedRouteCard(
-                  route: route,
-                  onTap: () => _applySuggestedRoute(route, reservation),
-                ),
-              ),
+          const SizedBox(height: 16),
+          if (reservation.isLoadingWorkspace) ...[
+            const LoadingBand(text: 'Sincronizando rutas del cliente...'),
           ],
           if (reservation.quoteError != null) ...[
             ConciergeCard(
@@ -301,7 +385,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
       return;
     }
 
-    if (_tripType == 'Redondo' && _returnDate == null) {
+    if (_tripType == 'Ida y vuelta' && _returnDate == null) {
       _showMessage('Selecciona la fecha de regreso.');
       return;
     }
@@ -339,14 +423,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
     reservation.setStartDate(0, departureDateTime);
     reservation.setPassengers(0, reservation.passengers);
 
-    if (_tripType == 'Ida') {
+    if (_tripType == 'Solo ida') {
       while (reservation.routes.length > 1) {
         reservation.removeRoute(reservation.routes.length - 1);
       }
       return;
     }
 
-    if (_tripType == 'Redondo') {
+    if (_tripType == 'Ida y vuelta') {
       while (reservation.routes.length > 1) {
         reservation.removeRoute(reservation.routes.length - 1);
       }
@@ -369,6 +453,101 @@ class _ReservationScreenState extends State<ReservationScreen> {
     for (var index = 1; index < reservation.routes.length; index++) {
       reservation.setPassengers(index, reservation.passengers);
     }
+  }
+
+  List<Airport> _suggestedAirports(ReservationProvider reservation) {
+    final byCode = <String, Airport>{};
+    for (final airport in reservation.airports) {
+      final code = airport.iata?.trim().toUpperCase();
+      if (code == null || code.isEmpty || byCode.containsKey(code)) continue;
+      byCode[code] = airport;
+    }
+
+    final prioritized =
+        _priorityAirportCodes
+            .map((code) => byCode[code])
+            .whereType<Airport>()
+            .toList();
+
+    if (prioritized.length >= 4) {
+      return prioritized.take(6).toList();
+    }
+
+    final fallback = byCode.values
+        .where(
+          (airport) => !prioritized.any((item) => item.iata == airport.iata),
+        )
+        .take(6 - prioritized.length);
+
+    return [...prioritized, ...fallback];
+  }
+
+  void _applyTodayPreset(ReservationProvider reservation) {
+    final now = DateTime.now();
+    final departure = DateTime(now.year, now.month, now.day, now.hour + 2);
+    setState(() {
+      _tripType = 'Solo ida';
+      _departureTime = TimeOfDay.fromDateTime(departure);
+      _returnDate = null;
+      _returnTime = null;
+    });
+    reservation.setBookingTripLabel('Solo ida');
+    reservation.setGlobalStartDate(departure);
+    reservation.setStartDate(0, departure);
+    _normalizeRoutesForMode(reservation);
+    _showMessage('Listo para una salida hoy con respuesta rapida.');
+  }
+
+  void _applyRoundTripPreset(ReservationProvider reservation) {
+    final departureDate =
+        reservation.routes.first.startDate ??
+        reservation.startDate ??
+        DateTime.now().add(const Duration(days: 1));
+    setState(() {
+      _tripType = 'Ida y vuelta';
+      _departureTime ??= const TimeOfDay(hour: 9, minute: 0);
+      _returnDate = DateTime(
+        departureDate.year,
+        departureDate.month,
+        departureDate.day,
+      ).add(const Duration(days: 1));
+      _returnTime ??= const TimeOfDay(hour: 17, minute: 0);
+    });
+    reservation.setBookingTripLabel('Ida y vuelta');
+    _normalizeRoutesForMode(reservation);
+    _showMessage('Configuramos un viaje redondo para cerrar el itinerario.');
+  }
+
+  void _applyMultiCityPreset(ReservationProvider reservation) {
+    setState(() {
+      _tripType = 'Multidestino';
+      _returnDate = null;
+      _returnTime = null;
+    });
+    reservation.setBookingTripLabel('Multidestino');
+    _normalizeRoutesForMode(reservation);
+    if (reservation.routes.length < 2) {
+      reservation.addRoute();
+    }
+    _showMessage('Activa los tramos que necesites para una ruta especial.');
+  }
+
+  void _applySuggestedDestination(
+    ReservationProvider reservation,
+    Airport airport,
+  ) {
+    if (_tripType == 'Multidestino') {
+      final lastIndex = reservation.routes.length - 1;
+      reservation.setToAirport(lastIndex, airport);
+      if (lastIndex == 0 && reservation.routes.length < 2) {
+        reservation.addRoute();
+      }
+      _showMessage('Agregamos ${airport.city} como siguiente parada.');
+      return;
+    }
+
+    reservation.setToAirport(0, airport);
+    _showMessage('${airport.city} lista como destino sugerido.');
   }
 
   Future<void> _pickDateForRoute(
@@ -441,79 +620,23 @@ class _ReservationScreenState extends State<ReservationScreen> {
     onSelected(airport);
   }
 
-  void _applySuggestedRoute(
-    Map<String, dynamic> routeData,
-    ReservationProvider reservation,
-  ) {
-    final originText = routeData['origin']?.toString() ?? '';
-    final destinationText = routeData['destination']?.toString() ?? '';
-    final departureText =
-        routeData['departure_datetime']?.toString() ??
-        routeData['date']?.toString();
-
-    final originAirport = _findAirport(originText, reservation.airports);
-    final destinationAirport = _findAirport(
-      destinationText,
-      reservation.airports,
-    );
-
-    if (originAirport != null) {
-      reservation.setFromAirport(0, originAirport);
-    }
-    if (destinationAirport != null) {
-      reservation.setToAirport(0, destinationAirport);
-    }
-
-    if (departureText != null && departureText.isNotEmpty) {
-      final parsed = DateTime.tryParse(departureText);
-      if (parsed != null) {
-        reservation.setStartDate(0, parsed);
-      }
-    }
+  String _airportPrimaryLabel(Airport? airport) {
+    if (airport == null) return 'Seleccionar aeropuerto';
+    return airport.city;
   }
 
-  Airport? _findAirport(String query, List<Airport> airports) {
-    final normalized = query.trim().toUpperCase();
-    if (normalized.isEmpty) return null;
-
-    for (final airport in airports) {
-      final city = airport.city.toUpperCase();
-      final name = airport.name.toUpperCase();
-      final iata = (airport.iata ?? '').toUpperCase();
-      if (city == normalized || name == normalized || iata == normalized) {
-        return airport;
-      }
-    }
-
-    for (final airport in airports) {
-      final city = airport.city.toUpperCase();
-      final name = airport.name.toUpperCase();
-      final iata = (airport.iata ?? '').toUpperCase();
-      if (city.contains(normalized) ||
-          name.contains(normalized) ||
-          iata.contains(normalized)) {
-        return airport;
-      }
-    }
-
-    return null;
-  }
-
-  List<Map<String, dynamic>> _recentRoutes(ReservationProvider reservation) {
-    return reservation.flightRequests.where((request) {
-      final origin = request['origin']?.toString() ?? '';
-      final destination = request['destination']?.toString() ?? '';
-      return origin.isNotEmpty && destination.isNotEmpty;
-    }).toList();
-  }
-
-  String _airportLabel(Airport? airport) {
-    if (airport == null) return 'Seleccionar';
+  String? _airportSecondaryLabel(Airport? airport) {
+    if (airport == null) return null;
+    final parts = <String>[];
     final iata = airport.iata?.trim();
     if (iata != null && iata.isNotEmpty) {
-      return '${airport.city} / $iata';
+      parts.add(iata.toUpperCase());
     }
-    return airport.city;
+    if (airport.name.trim().isNotEmpty) {
+      parts.add(airport.name);
+    }
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
   }
 
   DateTime _mergeDateAndTime(DateTime date, TimeOfDay? time) {
@@ -531,6 +654,327 @@ class _ReservationScreenState extends State<ReservationScreen> {
   }
 }
 
+class _QuickActionRail extends StatelessWidget {
+  const _QuickActionRail({
+    required this.onTodayTrip,
+    required this.onRoundTrip,
+    required this.onMultiCity,
+  });
+
+  final VoidCallback onTodayTrip;
+  final VoidCallback onRoundTrip;
+  final VoidCallback onMultiCity;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 152,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _QuickActionCard(
+            icon: Icons.flash_on_rounded,
+            title: 'Salida hoy',
+            subtitle: 'Prioriza velocidad y minima reposicion.',
+            tint: const Color(0xFF143955),
+            onTap: onTodayTrip,
+          ),
+          const SizedBox(width: 12),
+          _QuickActionCard(
+            icon: Icons.swap_calls_rounded,
+            title: 'Round trip',
+            subtitle: 'Salida y regreso dentro del mismo flujo.',
+            tint: const Color(0xFF1B8F4D),
+            onTap: onRoundTrip,
+          ),
+          const SizedBox(width: 12),
+          _QuickActionCard(
+            icon: Icons.travel_explore_rounded,
+            title: 'Ruta especial',
+            subtitle: 'Internacional o multicity con revision operativa.',
+            tint: const Color(0xFFB46A00),
+            onTap: onMultiCity,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.tint,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color tint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0x0F141414)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: tint.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: tint, size: 20),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF111111),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF5F564C),
+                  fontSize: 12,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeIntroCard extends StatelessWidget {
+  const _ModeIntroCard({
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.tint,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tint.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            eyebrow.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              color: tint,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF141414),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: Color(0xFF544D45),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestedDestinationCard extends StatelessWidget {
+  const _SuggestedDestinationCard({
+    required this.airport,
+    required this.isMultiCity,
+    required this.onTap,
+  });
+
+  final Airport airport;
+  final bool isMultiCity;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = airport.iata?.trim().toUpperCase() ?? 'RUTA';
+    final location = [
+      airport.city,
+      airport.state,
+    ].whereType<String>().join(', ');
+
+    return SizedBox(
+      width: 164,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F3EC),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE2D6C6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                code,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF9A6F28),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                airport.city,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF111111),
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                location,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF5F564C),
+                  fontSize: 11,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                isMultiCity ? 'Agregar parada' : 'Usar destino',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF151515),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteHeader extends StatelessWidget {
+  const _RouteHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Color(0xFF7A5A20),
+        fontWeight: FontWeight.w800,
+        fontSize: 12,
+        letterSpacing: 0.4,
+      ),
+    );
+  }
+}
+
+class _InlinePreferenceButton extends StatelessWidget {
+  const _InlinePreferenceButton({required this.title, required this.onTap});
+
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          foregroundColor: const Color(0xFF7A5A20),
+          backgroundColor: const Color(0xFFF5EAD7),
+          shape: const StadiumBorder(),
+        ),
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        ),
+      ),
+    );
+  }
+}
+
 class _PassengerRow extends StatelessWidget {
   const _PassengerRow({required this.value, required this.onChanged});
 
@@ -539,104 +983,65 @@ class _PassengerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = value == 1 ? '1 pasajero' : '$value pasajeros';
+
     return Row(
       children: [
-        const Text(
-          'Pasajeros',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF171717),
+        const Expanded(
+          child: Text(
+            'Pasajeros',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF171717),
+            ),
           ),
         ),
-        const Spacer(),
-        IconButton(
-          onPressed: value <= 1 ? null : () => onChanged(value - 1),
-          icon: const Icon(Icons.remove_circle_outline_rounded),
+        _PassengerButton(
+          icon: Icons.remove_rounded,
+          onTap: value <= 1 ? null : () => onChanged(value - 1),
         ),
-        Text(
-          '$value',
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
         ),
-        IconButton(
-          onPressed: () => onChanged(value + 1),
-          icon: const Icon(Icons.add_circle_outline_rounded),
+        _PassengerButton(
+          icon: Icons.add_rounded,
+          onTap: () => onChanged(value + 1),
         ),
       ],
     );
   }
 }
 
-class _SuggestedRouteCard extends StatelessWidget {
-  const _SuggestedRouteCard({required this.route, required this.onTap});
+class _PassengerButton extends StatelessWidget {
+  const _PassengerButton({required this.icon, required this.onTap});
 
-  final Map<String, dynamic> route;
-  final VoidCallback onTap;
+  final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final origin = route['origin']?.toString() ?? 'Origen';
-    final destination = route['destination']?.toString() ?? 'Destino';
-    final aircraft =
-        route['aircraft_model']?.toString() ??
-        route['assigned_aircraft_model']?.toString() ??
-        'Aeronave por asignar';
-    final passengers =
-        route['passengers']?.toString() ??
-        route['passenger_count']?.toString() ??
-        'N/D';
-    final total =
-        route['estimated_total']?.toString() ??
-        route['final_price']?.toString() ??
-        'Cotizacion privada';
-    final note =
-        route['notes']?.toString() ??
-        route['workflow_status']?.toString() ??
-        'Ruta real recuperada desde tu historial.';
-
-    return ConciergeCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Ruta sugerida',
-            style: TextStyle(
-              color: Color(0xFF9A6F28),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$origin -> $destination',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Desde $total · $aircraft · $passengers pasajeros',
-            style: const TextStyle(color: Color(0xFF4F4A43), height: 1.3),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            note,
-            style: const TextStyle(color: Color(0xFF3A342D), height: 1.35),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: onTap,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFF0EAE0),
-                foregroundColor: const Color(0xFF171717),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text('Ver opcion'),
-            ),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: onTap == null ? const Color(0xFFF0EBE2) : Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFD8CCBB)),
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color:
+              onTap == null ? const Color(0xFFB6AA9A) : const Color(0xFF5C5246),
+        ),
       ),
     );
   }
@@ -671,7 +1076,7 @@ class _MultiLegCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                'Destino ${index + 1}',
+                'Tramo ${index + 1}',
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
               const Spacer(),
@@ -683,13 +1088,17 @@ class _MultiLegCard extends StatelessWidget {
           ),
           ConciergeField(
             label: 'Origen',
-            value: _airportValue(route.fromAirport),
+            value: _airportPrimary(route.fromAirport),
+            secondaryValue: _airportSecondary(route.fromAirport),
+            placeholder: 'Seleccionar aeropuerto',
             onTap: onPickOrigin,
           ),
           const SizedBox(height: 10),
           ConciergeField(
             label: 'Destino',
-            value: _airportValue(route.toAirport),
+            value: _airportPrimary(route.toAirport),
+            secondaryValue: _airportSecondary(route.toAirport),
+            placeholder: 'Seleccionar aeropuerto',
             onTap: onPickDestination,
           ),
           const SizedBox(height: 10),
@@ -697,7 +1106,7 @@ class _MultiLegCard extends StatelessWidget {
             label: 'Fecha',
             value:
                 route.startDate == null
-                    ? 'Seleccionar'
+                    ? 'dd/mm/aaaa'
                     : formatDate.format(route.startDate!),
             onTap: onPickDate,
             trailing: const Icon(
@@ -705,17 +1114,29 @@ class _MultiLegCard extends StatelessWidget {
               size: 18,
               color: Color(0xFF6B6258),
             ),
+            placeholder: 'dd/mm/aaaa',
           ),
         ],
       ),
     );
   }
 
-  String _airportValue(Airport? airport) {
-    if (airport == null) return 'Seleccionar';
-    return airport.iata?.isNotEmpty == true
-        ? '${airport.city} / ${airport.iata}'
-        : airport.city;
+  String _airportPrimary(Airport? airport) {
+    if (airport == null) return 'Seleccionar aeropuerto';
+    return airport.city;
+  }
+
+  String? _airportSecondary(Airport? airport) {
+    if (airport == null) return null;
+    final parts = <String>[];
+    if (airport.iata?.trim().isNotEmpty == true) {
+      parts.add(airport.iata!.trim().toUpperCase());
+    }
+    if (airport.name.trim().isNotEmpty) {
+      parts.add(airport.name);
+    }
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
   }
 }
 

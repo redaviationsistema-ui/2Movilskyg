@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
 
 class ClientMobileTopBar extends StatelessWidget {
-  const ClientMobileTopBar({
-    super.key,
-    required this.userInitial,
-    this.primaryLabel = 'Buscar',
-  });
+  const ClientMobileTopBar({super.key, required this.userInitial});
 
   final String userInitial;
-  final String primaryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -33,24 +28,42 @@ class ClientMobileTopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Flexible(
-          child: _PillAction(label: primaryLabel, onTap: () {}),
-        ),
-        const SizedBox(width: 10),
         Container(
-          width: 38,
-          height: 38,
-          decoration: const BoxDecoration(
-            color: Color(0xFF151515),
-            shape: BoxShape.circle,
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F2E8),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFE3D8C8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
+            ],
           ),
           alignment: Alignment.center,
           child: Text(
             userInitial,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF151515),
               fontWeight: FontWeight.w900,
             ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () {},
+          child: Ink(
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              color: Color(0xFF151515),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.menu_rounded, color: Colors.white),
           ),
         ),
       ],
@@ -71,16 +84,16 @@ class ClientMobileScreenShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF6F1E8),
+      color: const Color(0xFFF7F2EA),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                border: Border(bottom: BorderSide(color: Color(0xFFE8DED1))),
+                border: Border(bottom: BorderSide(color: Color(0x0F141414))),
               ),
               child: ClientMobileTopBar(userInitial: userInitial),
             ),
@@ -110,60 +123,80 @@ class ClientMobileBottomNav extends StatelessWidget {
       (label: 'Cuenta', icon: Icons.person_rounded),
     ];
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE8DED1))),
-      ),
-      child: Row(
-        children: List.generate(items.length, (index) {
-          final item = items[index];
-          final isActive = index == currentIndex;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          decoration: BoxDecoration(
+            color: const Color(0xEBFFFFFF),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: const Color(0x0F141414)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1F000000),
+                blurRadius: 40,
+                offset: Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final isActive = index == currentIndex;
 
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () => onSelect(index),
-                child: Ink(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        isActive
-                            ? const Color(0xFF151515)
-                            : const Color(0xFFF3EEE4),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        item.icon,
-                        size: 18,
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => onSelect(index),
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
                         color:
-                            isActive ? Colors.white : const Color(0xFF5C5246),
+                            isActive
+                                ? const Color(0xFF151515)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          color:
-                              isActive ? Colors.white : const Color(0xFF5C5246),
-                          fontWeight: FontWeight.w800,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            item.icon,
+                            size: 18,
+                            color:
+                                isActive
+                                    ? Colors.white
+                                    : const Color(0xFF6F675D),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            item.label,
+                            style: TextStyle(
+                              color:
+                                  isActive
+                                      ? Colors.white
+                                      : const Color(0xFF6F675D),
+                              fontWeight:
+                                  isActive ? FontWeight.w900 : FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }
@@ -200,13 +233,13 @@ class SegmentedTripSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const options = ['Ida', 'Redondo', 'Multi-destino'];
+    const options = ['Solo ida', 'Ida y vuelta', 'Multidestino'];
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: const Color(0xFFF1EBDF),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
         children:
@@ -218,13 +251,26 @@ class SegmentedTripSelector extends StatelessWidget {
                   onTap: () => onChanged(option),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 6,
+                    ),
                     decoration: BoxDecoration(
                       color:
                           isActive
                               ? const Color(0xFF151515)
                               : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow:
+                          isActive
+                              ? const [
+                                BoxShadow(
+                                  color: Color(0x2E000000),
+                                  blurRadius: 20,
+                                  offset: Offset(0, 8),
+                                ),
+                              ]
+                              : null,
                     ),
                     child: Text(
                       option,
@@ -233,7 +279,7 @@ class SegmentedTripSelector extends StatelessWidget {
                         color:
                             isActive ? Colors.white : const Color(0xFF2F2A25),
                         fontWeight: FontWeight.w800,
-                        fontSize: 13,
+                        fontSize: 15,
                       ),
                     ),
                   ),
@@ -249,7 +295,7 @@ class ConciergeCard extends StatelessWidget {
   const ConciergeCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(14),
+    this.padding = const EdgeInsets.fromLTRB(22, 24, 22, 24),
   });
 
   final Widget child;
@@ -261,8 +307,20 @@ class ConciergeCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE4DBCF)),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0x0F141414)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 60,
+            offset: Offset(0, 24),
+          ),
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: child,
     );
@@ -276,54 +334,82 @@ class ConciergeField extends StatelessWidget {
     required this.value,
     required this.onTap,
     this.trailing,
+    this.secondaryValue,
+    this.placeholder = 'Seleccionar',
   });
 
   final String label;
   final String value;
   final VoidCallback onTap;
   final Widget? trailing;
+  final String? secondaryValue;
+  final String placeholder;
 
   @override
   Widget build(BuildContext context) {
+    final isPlaceholder = value == placeholder;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
             color: Color(0xFF171717),
           ),
         ),
         const SizedBox(height: 8),
         InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(22),
           child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFDDD1C1)),
-              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0x0F141414)),
+              color: const Color(0xFFFBF8F2),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color:
-                          value == 'Seleccionar'
-                              ? const Color(0xFF7C7469)
-                              : const Color(0xFF111111),
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        value,
+                        style: TextStyle(
+                          color:
+                              isPlaceholder
+                                  ? const Color(0xFF7C7469)
+                                  : const Color(0xFF111111),
+                          fontWeight:
+                              isPlaceholder ? FontWeight.w600 : FontWeight.w800,
+                          fontSize: isPlaceholder ? 18 : 22,
+                          height: 1.1,
+                        ),
+                      ),
+                      if (secondaryValue != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          secondaryValue!,
+                          style: const TextStyle(
+                            color: Color(0xFF766D61),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 trailing ??
                     const Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF6B6258),
+                      color: Color(0xFF6F675D),
+                      size: 24,
                     ),
               ],
             ),
@@ -390,49 +476,6 @@ class FilterChipButton extends StatelessWidget {
           style: TextStyle(
             color: isActive ? Colors.white : const Color(0xFF2C2823),
             fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PillAction extends StatelessWidget {
-  const _PillAction({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF151515),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.menu_rounded, size: 16, color: Colors.white),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),

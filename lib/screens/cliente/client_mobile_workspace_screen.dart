@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/reservation_provider.dart';
 import '../reservation/reservation_screen.dart';
 import 'views/client_history_screen.dart';
 import 'views/client_live_profile_screen.dart';
@@ -19,6 +20,7 @@ class ClientMobileWorkspaceScreen extends StatefulWidget {
 class _ClientMobileWorkspaceScreenState
     extends State<ClientMobileWorkspaceScreen> {
   int _selectedIndex = 0;
+  int _searchSession = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +29,7 @@ class _ClientMobileWorkspaceScreenState
 
     final screens = [
       ReservationScreen(
+        key: ValueKey('reservation-$_searchSession'),
         userInitial: userInitial,
         onQuoteReady: () {
           Navigator.of(context).push(
@@ -34,7 +37,8 @@ class _ClientMobileWorkspaceScreenState
               builder:
                   (_) => ClientResultsScreen(
                     userInitial: userInitial,
-                    onBackToSearch: () => Navigator.of(context).pop(),
+                    onBackToSearch: _resetSearchFlow,
+                    onReservationCreated: _openFlightsFromResults,
                   ),
             ),
           );
@@ -62,5 +66,23 @@ class _ClientMobileWorkspaceScreenState
     final trimmed = label.trim();
     if (trimmed.isEmpty) return 'C';
     return trimmed.substring(0, 1).toUpperCase();
+  }
+
+  void _resetSearchFlow() {
+    context.read<ReservationProvider>().resetForm();
+    setState(() {
+      _searchSession++;
+      _selectedIndex = 0;
+    });
+    Navigator.of(context).pop();
+  }
+
+  void _openFlightsFromResults() {
+    context.read<ReservationProvider>().resetForm();
+    setState(() {
+      _searchSession++;
+      _selectedIndex = 1;
+    });
+    Navigator.of(context).pop();
   }
 }

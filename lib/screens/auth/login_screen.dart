@@ -135,76 +135,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                               color: const Color(0xFF0E2338),
                                             ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Acceso premium a tu cabina privada',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color: const Color(0xFF607282),
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
+                                      
                                     ],
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 26),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFFFF8E8),
-                                    Color(0xFFF5E5BD),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: const Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Login con valor de marca y acceso real',
-                                    style: TextStyle(
-                                      color: Color(0xFF6B4A12),
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'Aqui solo dejamos branding, estilo y confianza. Todo lo que aparece despues del login se consume desde tu backend y tu base de datos.',
-                                    style: TextStyle(
-                                      color: Color(0xFF745F2D),
-                                      height: 1.45,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: const [
-                                _InfoPill(
-                                  icon: Icons.verified_user_rounded,
-                                  label: 'Autenticacion real',
-                                ),
-                                _InfoPill(
-                                  icon: Icons.cloud_sync_rounded,
-                                  label: 'Datos desde API',
-                                ),
-                                _InfoPill(
-                                  icon: Icons.flight_takeoff_rounded,
-                                  label: 'Experiencia ejecutiva',
-                                ),
-                              ],
-                            ),
+                            
+
+                            
                             const SizedBox(height: 24),
                             TextFormField(
                               controller: _emailController,
@@ -298,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           ),
                                         )
                                         : const Text(
-                                          'Entrar a Red Sky',
+                                          'Ingresar',
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w900,
@@ -352,37 +291,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F5F9),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: const Color(0xFF13314A)),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF13314A),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _GlowOrb extends StatelessWidget {
   const _GlowOrb({required this.size, required this.colors});

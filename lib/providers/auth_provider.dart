@@ -57,6 +57,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+
   Future<void> signOut() async {
     if (_user != null && _api.hasToken) {
       try {
