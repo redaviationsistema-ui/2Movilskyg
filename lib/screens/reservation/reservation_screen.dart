@@ -273,6 +273,46 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   value: reservation.passengers,
                   onChanged: reservation.setGlobalPassengers,
                 ),
+                const SizedBox(height: 18),
+                const _SectionLabel(label: 'Tipo de servicio'),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final option
+                        in ReservationProvider.priorityLabels.entries)
+                      ChoiceChip(
+                        label: Text(option.value),
+                        selected:
+                            reservation.selectedPriorityType == option.key,
+                        onSelected:
+                            (_) =>
+                                reservation.setSelectedPriorityType(option.key),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _ReservationTextField(
+                  label: 'Preferencia de cabina o servicio',
+                  initialValue: reservation.preference,
+                  hintText: 'Ej. cabina silenciosa, wifi, catering ejecutivo',
+                  onChanged: reservation.setPreference,
+                ),
+                const SizedBox(height: 12),
+                _ReservationTextField(
+                  label: 'Mascotas',
+                  initialValue: reservation.pets,
+                  hintText: 'Ej. 1 perro pequeno o sin mascotas',
+                  onChanged: reservation.setPets,
+                ),
+                const SizedBox(height: 12),
+                _ReservationTextField(
+                  label: 'Equipaje especial',
+                  initialValue: reservation.specialBaggage,
+                  hintText: 'Ej. golf, ski, instrumentos o equipo medico',
+                  onChanged: reservation.setSpecialBaggage,
+                ),
                 if (suggestedAirports.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   const Text(
@@ -1262,6 +1302,95 @@ class _AirportPickerSheetState extends State<_AirportPickerSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.4,
+        color: Color(0xFF8A641E),
+      ),
+    );
+  }
+}
+
+class _ReservationTextField extends StatefulWidget {
+  const _ReservationTextField({
+    required this.label,
+    required this.initialValue,
+    required this.hintText,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String initialValue;
+  final String hintText;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_ReservationTextField> createState() => _ReservationTextFieldState();
+}
+
+class _ReservationTextFieldState extends State<_ReservationTextField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReservationTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue &&
+        _controller.text != widget.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      onChanged: widget.onChanged,
+      minLines: 1,
+      maxLines: 2,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hintText,
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFE2D6C6)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFE2D6C6)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFF10253A)),
+        ),
+      ),
     );
   }
 }

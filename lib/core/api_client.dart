@@ -177,6 +177,12 @@ class ApiClient {
     String? tripLabel,
     String? aircraftType,
     List<Map<String, dynamic>> requirements = const [],
+    List<Map<String, dynamic>> legs = const [],
+    String? flightPackage,
+    String? priorityType,
+    String? preference,
+    String? pets,
+    String? specialBaggage,
     String? notes,
   }) {
     return post(
@@ -191,6 +197,16 @@ class ApiClient {
         'trip_label': tripLabel ?? _tripLabelForType(tripType),
         if (aircraftType != null && aircraftType.trim().isNotEmpty)
           'aircraft_type': aircraftType.trim(),
+        if (flightPackage != null && flightPackage.trim().isNotEmpty)
+          'flight_package': flightPackage.trim(),
+        if (priorityType != null && priorityType.trim().isNotEmpty)
+          'priority_type': priorityType.trim(),
+        if (preference != null && preference.trim().isNotEmpty)
+          'preference': preference.trim(),
+        if (pets != null && pets.trim().isNotEmpty) 'pets': pets.trim(),
+        if (specialBaggage != null && specialBaggage.trim().isNotEmpty)
+          'special_baggage': specialBaggage.trim(),
+        if (legs.isNotEmpty) 'legs': legs,
         if (requirements.isNotEmpty) 'requirements': requirements,
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
@@ -211,6 +227,7 @@ class ApiClient {
     String? matchId,
     String? matchedOptionId,
     List<Map<String, dynamic>> requirements = const [],
+    Map<String, dynamic> extraBody = const {},
   }) {
     return postFirstAvailable(
       const ['/client/flight-requests', '/cliente/solicitudes'],
@@ -234,6 +251,7 @@ class ApiClient {
           'matched_option_id': matchedOptionId,
         if (requirements.isNotEmpty) 'requirements': requirements,
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        ...extraBody,
       },
     );
   }

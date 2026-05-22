@@ -25,9 +25,9 @@ class ClientLiveProfileScreen extends StatelessWidget {
             : 'Cuenta privada';
 
     return ClientExperienceShell(
-      title: 'Cuenta',
+      title: 'Perfil',
       subtitle:
-          'Consulta tu informacion de contacto, acceso y preferencias de vuelo.',
+          'Cuenta, datos de contacto, acceso comercial y preferencias de vuelo.',
       showBackButton: showBackButton,
       trailing: StatusBadge(
         label: statusLabel == 'Activo' ? 'Cliente activo' : 'Cliente',
@@ -40,7 +40,7 @@ class ClientLiveProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           const Text(
-            'Perfil de cliente',
+            'Tu cuenta vuela mejor cuando ya te conoce',
             style: TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w900,
@@ -50,7 +50,7 @@ class ClientLiveProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Consulta tu informacion de contacto, acceso y preferencias de vuelo.',
+            'Guarda datos, viajeros frecuentes y preferencias para reservar en segundos la siguiente vez.',
             style: TextStyle(
               color: Color(0xFF607080),
               fontSize: 16,
@@ -69,9 +69,56 @@ class ClientLiveProfileScreen extends StatelessWidget {
             secondaryAction: () => context.read<AuthProvider>().signOut(),
           ),
           const SizedBox(height: 24),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 720;
+              if (compact) {
+                return const Column(
+                  children: [
+                    _HighlightCard(
+                      eyebrow: 'Viajeros frecuentes',
+                      title: 'CEO, familia o equipo ejecutivo',
+                      copy:
+                          'Deja perfiles guardados para acelerar futuras reservas y reducir friccion operativa.',
+                    ),
+                    SizedBox(height: 12),
+                    _HighlightCard(
+                      eyebrow: 'Facturacion',
+                      title: 'Pagos y datos listos',
+                      copy:
+                          'Metodo de pago, razon social y datos de contacto siempre a mano dentro del mismo flujo.',
+                    ),
+                  ],
+                );
+              }
+
+              return const Row(
+                children: [
+                  Expanded(
+                    child: _HighlightCard(
+                      eyebrow: 'Viajeros frecuentes',
+                      title: 'CEO, familia o equipo ejecutivo',
+                      copy:
+                          'Deja perfiles guardados para acelerar futuras reservas y reducir friccion operativa.',
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: _HighlightCard(
+                      eyebrow: 'Facturacion',
+                      title: 'Pagos y datos listos',
+                      copy:
+                          'Metodo de pago, razon social y datos de contacto siempre a mano dentro del mismo flujo.',
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
           const ClientSectionTitle(
             title: 'Datos de cuenta',
-            subtitle: 'Informacion registrada en tu perfil.',
+            subtitle: 'Informacion principal registrada en tu perfil.',
           ),
           const SizedBox(height: 14),
           GlassInfoCard(
@@ -121,6 +168,42 @@ class ClientLiveProfileScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+          const ClientSectionTitle(
+            title: 'Perfil operativo',
+            subtitle: 'Campos pensados como en el portal web del cliente.',
+          ),
+          const SizedBox(height: 14),
+          const GlassInfoCard(
+            child: Column(
+              children: [
+                _ProfileItem(
+                  label: 'Pasaporte / ID',
+                  value: 'Documento principal por registrar',
+                ),
+                SizedBox(height: 12),
+                _ProfileItem(
+                  label: 'Metodo de pago',
+                  value: 'Tarjeta corporativa o transferencia',
+                ),
+                SizedBox(height: 12),
+                _ProfileItem(
+                  label: 'Facturacion',
+                  value: 'RFC y razon social por confirmar',
+                ),
+                SizedBox(height: 12),
+                _ProfileItem(
+                  label: 'Seguridad',
+                  value: 'NDA, privacidad y requerimientos especiales',
+                ),
+                SizedBox(height: 12),
+                _ProfileItem(
+                  label: 'Preferencias',
+                  value: 'Cabina, catering, wifi y pasajeros frecuentes',
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -154,6 +237,63 @@ class ClientLiveProfileScreen extends StatelessWidget {
       return access['plan_name'].toString();
     }
     return 'Sin plan';
+  }
+}
+
+class _HighlightCard extends StatelessWidget {
+  const _HighlightCard({
+    required this.eyebrow,
+    required this.title,
+    required this.copy,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String copy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE3EAF1)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120E2238),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            eyebrow,
+            style: const TextStyle(
+              color: Color(0xFF9A6F28),
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF111111),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            copy,
+            style: const TextStyle(color: Color(0xFF625D55), height: 1.35),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -343,8 +483,7 @@ class _ProfileItem extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF607080),
-              fontSize: 13,
+              color: Color(0xFF625D55),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -352,10 +491,8 @@ class _ProfileItem extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Color(0xFF10253A),
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              height: 1.25,
+              color: Color(0xFF111111),
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

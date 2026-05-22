@@ -5,7 +5,9 @@ import '../../providers/reservation_provider.dart';
 import 'success_screen.dart';
 
 class QuotePreviewScreen extends StatelessWidget {
-  const QuotePreviewScreen({super.key});
+  const QuotePreviewScreen({super.key, this.onReservationCreated});
+
+  final ValueChanged<String?>? onReservationCreated;
 
   Future<void> confirm(BuildContext context) async {
     final reservation = context.read<ReservationProvider>();
@@ -56,11 +58,23 @@ class QuotePreviewScreen extends StatelessWidget {
     );
 
     try {
-      await reservation.createFlightRequestForMatch(quote);
+      final response = await reservation.createFlightRequestForMatch(quote);
+      await reservation.loadClientWorkspaceData(force: true);
 
       if (!context.mounted) return;
 
       Navigator.pop(context);
+      if (onReservationCreated != null) {
+        final createdId =
+            response['flight_request']?['id']?.toString() ??
+            response['data']?['id']?.toString() ??
+            response['data']?['flight_request']?['id']?.toString() ??
+            response['id']?.toString();
+        reservation.resetForm();
+        onReservationCreated!(createdId);
+        return;
+      }
+
       reservation.resetForm();
       Navigator.pushReplacement(
         context,
@@ -122,6 +136,19 @@ class QuotePreviewScreen extends StatelessWidget {
     final overnight =
         breakdown['overnight'] ?? breakdown['overnight_fee'] ?? '-';
     final breakdownTotal = breakdown['total'] ?? quote['total'] ?? '-';
+    final packageLabel = reservation.selectedPriorityLabel;
+    final preference =
+        reservation.preference.trim().isEmpty
+            ? 'Sin preferencia especial'
+            : reservation.preference.trim();
+    final pets =
+        reservation.pets.trim().isEmpty
+            ? 'Sin mascotas registradas'
+            : reservation.pets.trim();
+    final baggage =
+        reservation.specialBaggage.trim().isEmpty
+            ? 'Sin equipaje especial'
+            : reservation.specialBaggage.trim();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Vista previa de cotizacion')),
@@ -168,6 +195,37 @@ class QuotePreviewScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _MetaPill(label: 'Paquete', value: packageLabel),
+                      _MetaPill(
+                        label: 'Tipo de viaje',
+                        value: reservation.currentTripTypeLabel,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Preferencias del cliente',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _LineItem(label: 'Preferencia', value: preference),
+                  _LineItem(label: 'Mascotas', value: pets),
+                  _LineItem(label: 'Equipaje especial', value: baggage),
                 ],
               ),
             ),
@@ -246,6 +304,31 @@ class _PriceBlock extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F8FB),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          color: Color(0xFF10253A),
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

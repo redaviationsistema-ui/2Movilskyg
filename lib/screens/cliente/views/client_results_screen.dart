@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../providers/reservation_provider.dart';
+import '../../reservation/quote_preview_screen.dart';
 import '../widgets/client_mobile_flow_widgets.dart';
 
 class ClientResultsScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class ClientResultsScreen extends StatefulWidget {
   });
 
   final VoidCallback? onBackToSearch;
-  final VoidCallback? onReservationCreated;
+  final ValueChanged<String?>? onReservationCreated;
   final String userInitial;
 
   @override
@@ -107,6 +108,30 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                               }),
                         );
                       }).toList(),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'PAQUETE DE SERVICIO',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2E2A26),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final option
+                        in ReservationProvider.priorityLabels.entries)
+                      ChoiceChip(
+                        label: Text(option.value),
+                        selected: provider.selectedPriorityType == option.key,
+                        onSelected:
+                            (_) => provider.setSelectedPriorityType(option.key),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -287,18 +312,16 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     });
 
     try {
-      await reservation.createFlightRequestForMatch(match);
+      reservation.setSelectedQuoteMatch(match);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reserva registrada. Te llevamos a Mis vuelos.'),
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => QuotePreviewScreen(
+                onReservationCreated: widget.onReservationCreated,
+              ),
         ),
       );
-      if (widget.onReservationCreated != null) {
-        widget.onReservationCreated!();
-        return;
-      }
-      Navigator.of(context).maybePop();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(

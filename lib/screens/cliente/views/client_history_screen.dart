@@ -8,9 +8,16 @@ import 'client_aircraft_detail_screen.dart';
 import 'client_concierge_screen.dart';
 
 class ClientHistoryScreen extends StatefulWidget {
-  const ClientHistoryScreen({super.key, this.showBackButton = true});
+  const ClientHistoryScreen({
+    super.key,
+    this.showBackButton = true,
+    this.onOpenContract,
+    this.onOpenPayment,
+  });
 
   final bool showBackButton;
+  final ValueChanged<Map<String, dynamic>>? onOpenContract;
+  final ValueChanged<Map<String, dynamic>>? onOpenPayment;
 
   @override
   State<ClientHistoryScreen> createState() => _ClientHistoryScreenState();
@@ -115,14 +122,8 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
                   onOpenConcierge: _openConcierge,
                   onOpenAircraft:
                       () => _openAircraft(provider, highlightedRequest),
-                  onOpenContract:
-                      () => _showActionMessage(
-                        'Firma de contrato disponible pronto.',
-                      ),
-                  onOpenPayment:
-                      () => _showActionMessage(
-                        'Checkout seguro disponible pronto.',
-                      ),
+                  onOpenContract: () => _handleOpenContract(highlightedRequest),
+                  onOpenPayment: () => _handleOpenPayment(highlightedRequest),
                 ),
               if (secondaryRequests.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -341,6 +342,22 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _handleOpenContract(Map<String, dynamic> request) {
+    if (widget.onOpenContract != null) {
+      widget.onOpenContract!(request);
+      return;
+    }
+    _showActionMessage('Firma de contrato disponible pronto.');
+  }
+
+  void _handleOpenPayment(Map<String, dynamic> request) {
+    if (widget.onOpenPayment != null) {
+      widget.onOpenPayment!(request);
+      return;
+    }
+    _showActionMessage('Checkout seguro disponible pronto.');
   }
 }
 

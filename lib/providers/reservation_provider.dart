@@ -31,6 +31,11 @@ class ReservationProvider extends ChangeNotifier {
   String language = 'ES';
   String routeType = 'NACIONAL';
   String bookingTripLabel = 'Solo ida';
+  String selectedPriorityType = 'essential';
+  String pets = '';
+  String specialBaggage = '';
+  String preference = '';
+  bool conciergeRequested = false;
 
   bool isLoadingData = false;
   bool isLoadingWorkspace = false;
@@ -69,6 +74,16 @@ class ReservationProvider extends ChangeNotifier {
       dashboardData != null ||
       flightRequests.isNotEmpty ||
       aircraftFleet.isNotEmpty;
+
+  static const Map<String, String> priorityLabels = {
+    'empty_leg': 'Empty Leg',
+    'essential': 'Essential',
+    'business': 'Business',
+    'elite': 'Elite',
+  };
+
+  String get selectedPriorityLabel =>
+      priorityLabels[selectedPriorityType] ?? 'Essential';
 
   void setLanguage(String value) {
     language = value;
@@ -328,6 +343,7 @@ class ReservationProvider extends ChangeNotifier {
       final tripType = currentTripTypeCode;
       final segmentCount = routes.length;
       final requirements = buildRequirementsPayload();
+      final legs = buildLegsPayload();
       final previewPayload = {
         'origin': origin,
         'destination': destination,
@@ -336,6 +352,12 @@ class ReservationProvider extends ChangeNotifier {
         'trip_type': tripType,
         'trip_label': currentTripTypeLabel,
         'aircraft_type': flightType ?? aircraftType,
+        'flight_package': selectedPriorityLabel,
+        'priority_type': selectedPriorityType,
+        'preference': preference,
+        'pets': pets,
+        'special_baggage': specialBaggage,
+        'legs': legs,
         'requirements': requirements,
         'notes':
             'App movil Red Sky. Pasajero: ${fullName.isEmpty ? 'pendiente' : fullName}.',
@@ -351,6 +373,12 @@ class ReservationProvider extends ChangeNotifier {
         tripType: tripType,
         tripLabel: currentTripTypeLabel,
         aircraftType: flightType ?? aircraftType,
+        flightPackage: selectedPriorityLabel,
+        priorityType: selectedPriorityType,
+        preference: preference,
+        pets: pets,
+        specialBaggage: specialBaggage,
+        legs: legs,
         requirements: requirements,
         notes:
             'App movil Red Sky. Pasajero: ${fullName.isEmpty ? 'pendiente' : fullName}.',
@@ -413,7 +441,9 @@ class ReservationProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> createFlightRequestForMatch(Map<String, dynamic> quote) async {
+  Future<Map<String, dynamic>> createFlightRequestForMatch(
+    Map<String, dynamic> quote,
+  ) async {
     final primaryRoute = routes.first;
     final origin =
         primaryRoute.fromAirport?.iata ?? primaryRoute.fromAirport?.name ?? '';
@@ -425,7 +455,19 @@ class ReservationProvider extends ChangeNotifier {
       throw StateError('Faltan datos base para crear la solicitud.');
     }
 
-    await _api.createFlightRequest(
+    final pricingBreakdown =
+        quote['pricing_breakdown'] is Map
+            ? Map<String, dynamic>.from(quote['pricing_breakdown'] as Map)
+            : <String, dynamic>{};
+    final selectedAircraftModel =
+        (quote['aircraft'] ??
+                quote['aircraft_name'] ??
+                quote['model'] ??
+                quote['registration'] ??
+                '')
+            .toString();
+
+    final response = await _api.createFlightRequest(
       origin: origin,
       destination: destination,
       departure: departure,
@@ -440,9 +482,62 @@ class ReservationProvider extends ChangeNotifier {
           quote['matched_option_id']?.toString() ??
           quote['match_id']?.toString(),
       requirements: buildRequirementsPayload(),
+      extraBody: {
+        'legs': buildLegsPayload(),
+        'pets': pets,
+        'special_baggage': specialBaggage,
+        'preference': preference,
+        'flight_package': selectedPriorityLabel,
+        'service_tier': selectedPriorityLabel,
+        'priority_type': selectedPriorityType,
+        'priority_multiplier': _asNumber(
+          quote['priority_multiplier'] ??
+              pricingBreakdown['priority_multiplier'],
+          1,
+        ),
+        'priority_price': _asNumber(
+          quote['priority_price'] ?? pricingBreakdown['priority_price'],
+        ),
+        'base_price': _asNumber(
+          quote['base_price'] ?? pricingBreakdown['base_price'],
+        ),
+        'subtotal': _asNumber(
+          quote['subtotal'] ?? pricingBreakdown['subtotal'],
+        ),
+        'total': _asNumber(quote['total'] ?? pricingBreakdown['total']),
+        'final_price': _asNumber(
+          quote['total'] ??
+              quote['final_price'] ??
+              pricingBreakdown['total'] ??
+              pricingBreakdown['final_price'],
+        ),
+        'estimated_total': _asNumber(
+          quote['total'] ??
+              quote['final_price'] ??
+              pricingBreakdown['total'] ??
+              pricingBreakdown['final_price'],
+        ),
+        'billable_hours': _asNumber(
+          pricingBreakdown['billable_hours'] ??
+              pricingBreakdown['billableHours'],
+        ),
+        'aircraft_model': selectedAircraftModel,
+        'assigned_aircraft_model': selectedAircraftModel,
+        'aircraft_name': selectedAircraftModel,
+        'aircraft_snapshot': {
+          ...quote,
+          'aircraft': selectedAircraftModel,
+          'model': quote['model'] ?? selectedAircraftModel,
+          'category': quote['cabin'] ?? quote['category'] ?? '',
+          'capacity': quote['capacity'] ?? '',
+          'registration': quote['registration'] ?? '',
+        },
+      },
       notes:
           'Solicitud creada desde app movil Red Sky para ${fullName.isEmpty ? 'cliente' : fullName}.',
     );
+
+    return response;
   }
 
   List<Map<String, dynamic>> _extractQuoteMatches(
@@ -1163,6 +1258,29 @@ class ReservationProvider extends ChangeNotifier {
         .toList();
   }
 
+  List<Map<String, dynamic>> buildLegsPayload() {
+    return routes
+        .map((route) {
+          return {
+            'origin': route.fromAirport?.iata ?? route.fromAirport?.name ?? '',
+            'destination': route.toAirport?.iata ?? route.toAirport?.name ?? '',
+            'date':
+                (route.startDate ?? startDate)
+                    ?.toIso8601String()
+                    .split('T')
+                    .first,
+            'time': _timeStringForRoute(route),
+            'passengers': route.passengers > 0 ? route.passengers : passengers,
+          };
+        })
+        .where((route) {
+          return (route['origin'] as String).isNotEmpty &&
+              (route['destination'] as String).isNotEmpty &&
+              route['date'] != null;
+        })
+        .toList();
+  }
+
   Map<String, dynamic> _nestedMap(dynamic value) {
     if (value is Map) {
       return Map<String, dynamic>.from(value);
@@ -1382,6 +1500,32 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSelectedPriorityType(String value) {
+    if (value.trim().isEmpty) return;
+    selectedPriorityType = value.trim();
+    notifyListeners();
+  }
+
+  void setPets(String value) {
+    pets = value;
+    notifyListeners();
+  }
+
+  void setSpecialBaggage(String value) {
+    specialBaggage = value;
+    notifyListeners();
+  }
+
+  void setPreference(String value) {
+    preference = value;
+    notifyListeners();
+  }
+
+  void setConciergeRequested(bool value) {
+    conciergeRequested = value;
+    notifyListeners();
+  }
+
   void setName(String value) {
     name = value;
     notifyListeners();
@@ -1482,6 +1626,12 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSelectedQuoteMatch(Map<String, dynamic>? value) {
+    selectedQuoteMatch =
+        value == null ? null : Map<String, dynamic>.from(value);
+    notifyListeners();
+  }
+
   void resetRoutes() {
     routes = [RouteModel()];
     notifyListeners();
@@ -1491,6 +1641,7 @@ class ReservationProvider extends ChangeNotifier {
     flightType = null;
     routeType = 'NACIONAL';
     bookingTripLabel = 'Solo ida';
+    selectedPriorityType = 'essential';
     selectedAircraft = null;
     passengers = 1;
     startDate = null;
@@ -1498,6 +1649,10 @@ class ReservationProvider extends ChangeNotifier {
     fullName = '';
     email = '';
     phone = '';
+    pets = '';
+    specialBaggage = '';
+    preference = '';
+    conciergeRequested = false;
     paymentMethod = null;
     paymentNumber = null;
     bankName = null;
