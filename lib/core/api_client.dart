@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -40,6 +39,7 @@ class ApiClient {
   ApiClient._();
 
   static final ApiClient instance = ApiClient._();
+  static const String _defaultBaseUrl = 'https://uber-aviones.onrender.com/api/v1/';
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -62,10 +62,8 @@ class ApiClient {
 
     if (_configuredBaseUrl.isNotEmpty) {
       candidates.add(_normalizeBaseUrl(_configuredBaseUrl));
-    } else if (Platform.isAndroid) {
-      candidates.add('http://10.0.2.2:8000/api/v1');
     } else {
-      candidates.add('http://127.0.0.1:8000/api/v1');
+      candidates.add(_defaultBaseUrl);
     }
 
     if (_configuredFallbackBaseUrl.isNotEmpty) {

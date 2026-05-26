@@ -12,134 +12,41 @@ import 'views/client_search_screen.dart';
 import 'views/client_tracking_screen.dart';
 import 'widgets/client_fleet_cards.dart';
 
+const Color kBg = Color(0xFFF7F7F7);
+const Color kWhite = Colors.white;
+const Color kBlack = Color(0xFF050505);
+const Color kText = Color(0xFF111111);
+const Color kMuted = Color(0xFF666666);
+const Color kBorder = Color(0xFFE6E6E6);
+const Color kSoft = Color(0xFFF2F2F2);
+
 class ClientDashboardScreen extends StatelessWidget {
   const ClientDashboardScreen({super.key});
 
-  static const List<FeatureEntry> _featureViews = [
+  static const List<FeatureEntry> _quickViews = [
     FeatureEntry(
-      title: 'Busqueda',
-      subtitle: 'Reserva inmediata con accesos rapidos y tono premium.',
+      title: 'Buscar',
+      subtitle: 'Cotizar ruta',
       icon: Icons.search_rounded,
       screen: ClientSearchScreen(),
     ),
     FeatureEntry(
-      title: 'Resultados',
-      subtitle: 'Comparador premium con score, tarifa y detalle util.',
+      title: 'Opciones',
+      subtitle: 'Ver aeronaves',
       icon: Icons.view_agenda_rounded,
       screen: ClientResultsScreen(),
     ),
     FeatureEntry(
-      title: 'Seguimiento',
-      subtitle:
-          'Seguimiento ejecutivo con linea de tiempo, sincronizacion y soporte.',
-      icon: Icons.route_rounded,
-      screen: ClientTrackingScreen(),
-    ),
-    FeatureEntry(
-      title: 'Historial',
-      subtitle: 'Mis vuelos, reagenda y politicas para recompra.',
+      title: 'Vuelos',
+      subtitle: 'Mis reservas',
       icon: Icons.history_rounded,
       screen: ClientHistoryScreen(),
     ),
     FeatureEntry(
-      title: 'Asistente VIP',
-      subtitle: 'Asistencia premium para amenidades, traslados y urgencias.',
+      title: 'Concierge',
+      subtitle: 'Soporte VIP',
       icon: Icons.support_agent_rounded,
       screen: ClientConciergeScreen(),
-    ),
-  ];
-
-  static const List<MarketplaceMetric> _metrics = [
-    MarketplaceMetric(
-      label: 'Reserva',
-      value: 'Directa + asistida',
-      helper: 'Combina flujo de app con respaldo de concierge y operaciones.',
-    ),
-    MarketplaceMetric(
-      label: 'Disponibilidad',
-      value: 'Hoy / manana',
-      helper:
-          'Estados claros para mover rapido al cliente sin falsas promesas.',
-    ),
-    MarketplaceMetric(
-      label: 'Perfil',
-      value: 'Profesional',
-      helper: 'Lenguaje premium, visual sobrio y menos texto estatico.',
-    ),
-  ];
-
-  static const List<MarketplaceModule> _flows = [
-    MarketplaceModule(
-      title: 'Descubrir la mejor ruta',
-      description:
-          'Origen, destino, urgencia, pasajeros y experiencia requerida.',
-    ),
-    MarketplaceModule(
-      title: 'Recibir opciones recomendadas',
-      description: 'Tarjetas con tarifa, velocidad, base y accion inmediata.',
-    ),
-    MarketplaceModule(
-      title: 'Abrir detalle ejecutivo',
-      description: 'Snapshot de aeronave, razon comercial y servicio esperado.',
-    ),
-    MarketplaceModule(
-      title: 'Reservar con soporte',
-      description:
-          'Flujo directo con respaldo humano cuando el caso lo requiere.',
-    ),
-    MarketplaceModule(
-      title: 'Seguir el vuelo',
-      description: 'Timeline claro con acceso FBO, tripulacion y concierge.',
-    ),
-  ];
-
-  static const List<MarketplaceModule> _extraViews = [
-    MarketplaceModule(
-      title: 'Vista de reserva inmediata',
-      description:
-          'Home con CTA fuertes, accesos rapidos y tono de movilidad premium.',
-    ),
-    MarketplaceModule(
-      title: 'Vista de opciones',
-      description:
-          'Comparador con tarjetas vivas, score premium y propuestas claras.',
-    ),
-    MarketplaceModule(
-      title: 'Vista de detalle',
-      description:
-          'Ficha ejecutiva con snapshot operativo y argumentos comerciales.',
-    ),
-    MarketplaceModule(
-      title: 'Vista de concierge',
-      description:
-          'Chat premium con soporte humano, compliance y servicios extra.',
-    ),
-  ];
-
-  static const List<CancellationRule> _rules = [
-    CancellationRule(
-      window: 'Antes de confirmar',
-      penalty: 'Sin cargo',
-      action:
-          'El cliente puede editar o cancelar la solicitud sin penalizacion.',
-    ),
-    CancellationRule(
-      window: 'Mas de 72 horas',
-      penalty: 'Cargo bajo',
-      action:
-          'Puede aplicar reembolso completo o credito futuro segun proveedor.',
-    ),
-    CancellationRule(
-      window: '72 a 24 horas',
-      penalty: 'Cargo parcial',
-      action:
-          'Se muestra monto retenido, motivo y posibilidad de reprogramacion.',
-    ),
-    CancellationRule(
-      window: 'Menos de 24 horas',
-      penalty: 'Cargo alto',
-      action:
-          'Se aplica politica del operador y se conserva evidencia del caso.',
     ),
   ];
 
@@ -147,26 +54,68 @@ class ClientDashboardScreen extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: kWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
       builder:
-          (_) => Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Solicitud de cotizacion',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'Ideal para jets pesados, rutas internacionales, VIP o salida de ultima hora.',
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'La app envia la solicitud a operadores y concentra propuestas en una vista comparativa.',
-                ),
-              ],
+          (_) => SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Solicitud privada',
+                    style: TextStyle(
+                      fontSize: 26,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      color: kBlack,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Para rutas internacionales, jets pesados, vuelos urgentes o solicitudes VIP.',
+                    style: TextStyle(
+                      color: kMuted,
+                      fontSize: 15,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ReservationScreen(),
+                          ),
+                        );
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kBlack,
+                        foregroundColor: kWhite,
+                        minimumSize: const Size.fromHeight(54),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: const Text(
+                        'Iniciar solicitud',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
     );
@@ -178,85 +127,416 @@ class ClientDashboardScreen extends StatelessWidget {
     final fleet = provider.aircraftFleet.take(4).toList();
 
     return RoleDashboardScaffold(
-      title: 'Sky Group | Cliente',
-      subtitle:
-          'Busca, compara y reserva una aeronave con una experiencia mas viva y ejecutiva.',
-      roleLabel: 'Cabina cliente',
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const SyncStatusBanner(),
-          const SubscriptionStatusBanner(),
-          DashboardHero(
-            eyebrow: 'Cliente',
-            title: 'Marketplace premium de vuelos privados bajo demanda',
-            subtitle:
-                'Busca origen, destino, fecha, hora y pasajeros; compara aeronaves disponibles y convierte la demo en membresia cuando estes listo para reservar.',
-            primaryLabel: 'Reservar ahora',
-            primaryAction: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ReservationScreen()),
-              );
-            },
-            secondaryLabel: 'Solicitar cotizacion',
-            secondaryAction: () => _openRfqSheet(context),
+      title: 'Sky Group',
+      subtitle: 'Cliente',
+      roleLabel: 'Cliente',
+      body: Container(
+        color: kBg,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          children: [
+            const SyncStatusBanner(),
+            const SizedBox(height: 12),
+            const SubscriptionStatusBanner(),
+            const SizedBox(height: 16),
+
+            _MinimalHero(
+              onReserve: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ReservationScreen()),
+                );
+              },
+              onRequestQuote: () => _openRfqSheet(context),
+            ),
+
+            const SizedBox(height: 22),
+
+            const _MinimalSectionTitle(
+              title: 'Accesos rápidos',
+              subtitle: 'Lo esencial para operar tu vuelo.',
+            ),
+            const SizedBox(height: 12),
+            const _QuickAccessGrid(items: _quickViews),
+
+            const SizedBox(height: 22),
+
+            const _MinimalSectionTitle(
+              title: 'Aeronaves',
+              subtitle: 'Opciones disponibles en tu cuenta.',
+            ),
+            const SizedBox(height: 12),
+            if (fleet.isEmpty)
+              const _MinimalEmptyCard(
+                message: 'Todavía no hay aeronaves disponibles.',
+              )
+            else
+              ClientFleetSection(aircraft: fleet),
+
+            const SizedBox(height: 22),
+
+            _TrackingCard(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ClientTrackingScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MinimalHero extends StatelessWidget {
+  const _MinimalHero({
+    required this.onReserve,
+    required this.onRequestQuote,
+  });
+
+  final VoidCallback onReserve;
+  final VoidCallback onRequestQuote;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: kBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 32,
+            offset: Offset(0, 18),
           ),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Vistas creadas',
-            subtitle:
-                'Pantallas listas para navegar desde la cabina del cliente.',
-          ),
-          const SizedBox(height: 14),
-          const FeatureNavigationGrid(items: _featureViews),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Direccion visual',
-            subtitle:
-                'Una experiencia tipo Uber ejecutivo: rapida, guiada y profesional.',
-          ),
-          const SizedBox(height: 14),
-          const MetricGrid(metrics: _metrics),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Flujo principal',
-            subtitle:
-                'El producto cliente ahora se organiza como journey comercial y operativo.',
-          ),
-          const SizedBox(height: 14),
-          const ModuleList(items: _flows),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Mas vistas',
-            subtitle:
-                'La cabina ya contempla discovery, comparacion, detalle y concierge.',
-          ),
-          const SizedBox(height: 14),
-          const ModuleList(items: _extraViews),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Aeronaves disponibles',
-            subtitle:
-                'Listado dinamico usando la flota sincronizada del sistema.',
-          ),
-          const SizedBox(height: 14),
-          if (fleet.isEmpty)
-            const EmptyStateCard(
-              message:
-                  'Todavia no hay aeronaves disponibles para mostrar en esta cuenta.',
-            )
-          else
-            ClientFleetSection(aircraft: fleet),
-          const SizedBox(height: 24),
-          const SectionHeading(
-            title: 'Cancelaciones',
-            subtitle:
-                'Politicas presentadas con claridad para evitar friccion y disputas.',
-          ),
-          const SizedBox(height: 14),
-          const ClientCancellationSection(rules: _rules),
         ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PRIVATE AVIATION',
+            style: TextStyle(
+              color: kMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Reserva un jet privado\nen minutos.',
+            style: TextStyle(
+              color: kBlack,
+              fontSize: 34,
+              height: 0.98,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Busca ruta, compara opciones y continúa con soporte ejecutivo.',
+            style: TextStyle(
+              color: kMuted,
+              fontSize: 16,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: onReserve,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kBlack,
+                    foregroundColor: kWhite,
+                    minimumSize: const Size.fromHeight(54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Reservar',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onRequestQuote,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kBlack,
+                    minimumSize: const Size.fromHeight(54),
+                    side: const BorderSide(color: kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cotizar',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MinimalSectionTitle extends StatelessWidget {
+  const _MinimalSectionTitle({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: kBlack,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: kMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickAccessGrid extends StatelessWidget {
+  const _QuickAccessGrid({required this.items});
+
+  final List<FeatureEntry> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      itemCount: items.length,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.35,
+      ),
+      itemBuilder: (context, index) {
+        final item = items[index];
+
+        return _QuickAccessCard(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => item.screen),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _QuickAccessCard extends StatelessWidget {
+  const _QuickAccessCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: kBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0D000000),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: kBlack,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: kWhite, size: 20),
+            ),
+            const Spacer(),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: kBlack,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: kMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackingCard extends StatelessWidget {
+  const _TrackingCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(26),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: kBlack,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 28,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.route_rounded,
+              color: kWhite,
+              size: 26,
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Seguimiento',
+                    style: TextStyle(
+                      color: kWhite,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Consulta el avance de tu reserva.',
+                    style: TextStyle(
+                      color: Color(0xFFBDBDBD),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: kWhite,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MinimalEmptyCard extends StatelessWidget {
+  const _MinimalEmptyCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorder),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: kText,
+          fontWeight: FontWeight.w800,
+          height: 1.35,
+        ),
       ),
     );
   }

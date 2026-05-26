@@ -12,8 +12,15 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  // final _emailController = TextEditingController();
+  // final _passwordController = TextEditingController();
+  final _emailController = TextEditingController(
+  text: 'cliente@privateflights.test',
+);
+
+final _passwordController = TextEditingController(
+  text: 'password',
+);
   static final RegExp _emailRegex = RegExp(
     r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$',
     caseSensitive: false,

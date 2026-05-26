@@ -13,33 +13,70 @@ class ClientMobileTopBar extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('assets/logo.png', width: 42, height: 28),
-              const SizedBox(width: 6),
-              const Text(
-                'sky\nGroup',
-                style: TextStyle(
-                  fontSize: 10,
-                  height: 0.9,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF151515),
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE7E7E7)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0D000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
                 ),
+                padding: const EdgeInsets.all(7),
+                child: Image.asset(
+                  'assets/logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Sky Group',
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                      color: Color(0xFF050505),
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Private aviation',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF777777),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
         const SizedBox(width: 10),
         Container(
-          width: 48,
-          height: 48,
+          width: 46,
+          height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F2E8),
+            color: const Color(0xFF050505),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE3D8C8)),
+            border: Border.all(color: const Color(0xFF050505)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x14000000),
+                color: Color(0x24000000),
                 blurRadius: 18,
-                offset: Offset(0, 6),
+                offset: Offset(0, 8),
               ),
             ],
           ),
@@ -47,25 +84,14 @@ class ClientMobileTopBar extends StatelessWidget {
           child: Text(
             userInitial,
             style: const TextStyle(
-              color: Color(0xFF151515),
+              color: Colors.white,
               fontWeight: FontWeight.w900,
+              fontSize: 16,
             ),
           ),
         ),
         const SizedBox(width: 10),
-        InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () {},
-          child: Ink(
-            width: 46,
-            height: 46,
-            decoration: const BoxDecoration(
-              color: Color(0xFF151515),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.menu_rounded, color: Colors.white),
-          ),
-        ),
+       
       ],
     );
   }
@@ -84,16 +110,18 @@ class ClientMobileScreenShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF7F2EA),
+      color: const Color(0xFFF7F7F7),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(bottom: BorderSide(color: Color(0x0F141414))),
+                color: Color(0xFFF7F7F7),
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFE8E8E8)),
+                ),
               ),
               child: ClientMobileTopBar(userInitial: userInitial),
             ),
@@ -128,15 +156,15 @@ class ClientMobileBottomNav extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xEBFFFFFF),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: const Color(0x0F141414)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: const Color(0xFFE7E7E7)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x1F000000),
-                blurRadius: 40,
+                color: Color(0x20000000),
+                blurRadius: 38,
                 offset: Offset(0, 18),
               ),
             ],
@@ -150,19 +178,27 @@ class ClientMobileBottomNav extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(22),
                     onTap: () => onSelect(index),
-                    child: Ink(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
+                        horizontal: 10,
                         vertical: 14,
                       ),
                       decoration: BoxDecoration(
                         color:
                             isActive
-                                ? const Color(0xFF151515)
-                                : Colors.transparent,
-                        borderRadius: BorderRadius.circular(18),
+                                ? const Color(0xFF050505)
+                                : const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color:
+                              isActive
+                                  ? const Color(0xFF050505)
+                                  : const Color(0xFFEDEDED),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -173,7 +209,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                             color:
                                 isActive
                                     ? Colors.white
-                                    : const Color(0xFF6F675D),
+                                    : const Color(0xFF646464),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -182,10 +218,10 @@ class ClientMobileBottomNav extends StatelessWidget {
                               color:
                                   isActive
                                       ? Colors.white
-                                      : const Color(0xFF6F675D),
+                                      : const Color(0xFF646464),
                               fontWeight:
                                   isActive ? FontWeight.w900 : FontWeight.w700,
-                              fontSize: 15,
+                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -213,9 +249,9 @@ class EyebrowLabel extends StatelessWidget {
       label.toUpperCase(),
       style: const TextStyle(
         fontSize: 11,
-        letterSpacing: 0.7,
-        color: Color(0xFF9A6F28),
-        fontWeight: FontWeight.w700,
+        letterSpacing: 1.1,
+        color: Color(0xFF050505),
+        fontWeight: FontWeight.w900,
       ),
     );
   }
@@ -238,8 +274,9 @@ class SegmentedTripSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1EBDF),
-        borderRadius: BorderRadius.circular(22),
+        color: const Color(0xFFF1F1F1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE7E7E7)),
       ),
       child: Row(
         children:
@@ -251,6 +288,7 @@ class SegmentedTripSelector extends StatelessWidget {
                   onTap: () => onChanged(option),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
                     padding: const EdgeInsets.symmetric(
                       vertical: 14,
                       horizontal: 6,
@@ -258,15 +296,15 @@ class SegmentedTripSelector extends StatelessWidget {
                     decoration: BoxDecoration(
                       color:
                           isActive
-                              ? const Color(0xFF151515)
+                              ? const Color(0xFF050505)
                               : Colors.transparent,
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(19),
                       boxShadow:
                           isActive
                               ? const [
                                 BoxShadow(
-                                  color: Color(0x2E000000),
-                                  blurRadius: 20,
+                                  color: Color(0x22000000),
+                                  blurRadius: 18,
                                   offset: Offset(0, 8),
                                 ),
                               ]
@@ -277,9 +315,10 @@ class SegmentedTripSelector extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color:
-                            isActive ? Colors.white : const Color(0xFF2F2A25),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
+                            isActive ? Colors.white : const Color(0xFF505050),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        letterSpacing: -0.2,
                       ),
                     ),
                   ),
@@ -307,18 +346,18 @@ class ConciergeCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0x0F141414)),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: const Color(0xFFE7E7E7)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 60,
-            offset: Offset(0, 24),
+            color: Color(0x12000000),
+            blurRadius: 42,
+            offset: Offset(0, 22),
           ),
           BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 20,
-            offset: Offset(0, 8),
+            color: Color(0x08000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -353,23 +392,24 @@ class ConciergeField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          label.toUpperCase(),
           style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF171717),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+            color: Color(0xFF565656),
           ),
         ),
         const SizedBox(height: 8),
         InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0x0F141414)),
-              color: const Color(0xFFFBF8F2),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFE4E4E4)),
+              color: const Color(0xFFF8F8F8),
             ),
             child: Row(
               children: [
@@ -379,25 +419,30 @@ class ConciergeField extends StatelessWidget {
                     children: [
                       Text(
                         value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color:
                               isPlaceholder
-                                  ? const Color(0xFF7C7469)
-                                  : const Color(0xFF111111),
+                                  ? const Color(0xFF8A8A8A)
+                                  : const Color(0xFF050505),
                           fontWeight:
-                              isPlaceholder ? FontWeight.w600 : FontWeight.w800,
-                          fontSize: isPlaceholder ? 18 : 22,
+                              isPlaceholder ? FontWeight.w700 : FontWeight.w900,
+                          fontSize: isPlaceholder ? 17 : 21,
                           height: 1.1,
+                          letterSpacing: -0.4,
                         ),
                       ),
                       if (secondaryValue != null) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Text(
                           secondaryValue!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF766D61),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6F6F6F),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             height: 1.3,
                           ),
                         ),
@@ -408,8 +453,8 @@ class ConciergeField extends StatelessWidget {
                 trailing ??
                     const Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF6F675D),
-                      size: 24,
+                      color: Color(0xFF050505),
+                      size: 25,
                     ),
               ],
             ),
@@ -429,19 +474,41 @@ class LoadingBand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE4DBCF)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7E7E7)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF2A2A2A),
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Color(0xFF050505),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Color(0xFF050505),
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -463,19 +530,35 @@ class FilterChipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF151515) : const Color(0xFFF3EEE4),
+          color: isActive ? const Color(0xFF050505) : Colors.white,
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isActive ? const Color(0xFF050505) : const Color(0xFFE1E1E1),
+          ),
+          boxShadow:
+              isActive
+                  ? const [
+                    BoxShadow(
+                      color: Color(0x16000000),
+                      blurRadius: 16,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
+                  : null,
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isActive ? Colors.white : const Color(0xFF2C2823),
-            fontWeight: FontWeight.w800,
+            color: isActive ? Colors.white : const Color(0xFF050505),
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
           ),
         ),
       ),

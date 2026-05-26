@@ -3,6 +3,14 @@ import 'package:intl/intl.dart';
 
 import '../widgets/client_experience_widgets.dart';
 
+const Color kBg = Color(0xFFF7F7F7);
+const Color kWhite = Colors.white;
+const Color kBlack = Color(0xFF050505);
+const Color kText = Color(0xFF111111);
+const Color kMuted = Color(0xFF666666);
+const Color kBorder = Color(0xFFE6E6E6);
+const Color kSoft = Color(0xFFF2F2F2);
+
 class ClientContractScreen extends StatefulWidget {
   const ClientContractScreen({
     super.key,
@@ -22,6 +30,7 @@ class ClientContractScreen extends StatefulWidget {
 class _ClientContractScreenState extends State<ClientContractScreen> {
   final TextEditingController _signatureController = TextEditingController();
   bool _accepted = false;
+  bool _showContractDetails = false;
 
   @override
   void initState() {
@@ -49,20 +58,18 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       title: 'Contrato',
       subtitle: 'Documento completo previo al checkout y liberacion operativa.',
       showBackButton: widget.showBackButton,
-      trailing: const StatusBadge(
-        label: 'Contrato ejecutivo',
-        color: Color(0xFF143955),
-      ),
+      trailing: const StatusBadge(label: 'Contrato', color: kBlack),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           const Text(
-            'Contrato de prestacion de servicios de aviacion ejecutiva',
+            'Contrato',
             style: TextStyle(
-              fontSize: 30,
+              fontSize: 34,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-              height: 0.98,
+              color: kBlack,
+              height: 1,
+              letterSpacing: -1.1,
             ),
           ),
           const SizedBox(height: 10),
@@ -77,6 +84,12 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
           const SizedBox(height: 18),
           _ContractHeroCard(model: contractModel),
           const SizedBox(height: 18),
+          const _SectionBadge(
+            title: 'Seccion 1',
+            subtitle:
+                'Resumen visible para revisar la reserva antes de firmar.',
+          ),
+          const SizedBox(height: 12),
           GlassInfoCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,17 +183,26 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          ..._definitions(contractModel).map(
-            (section) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _ContractSectionCard(section: section),
-            ),
-          ),
-          ..._clauses(contractModel).map(
-            (section) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _ContractSectionCard(section: section),
-            ),
+          _ContractLegalSection(
+            isExpanded: _showContractDetails,
+            onToggle:
+                () => setState(() {
+                  _showContractDetails = !_showContractDetails;
+                }),
+            children: [
+              ..._definitions(contractModel).map(
+                (section) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ContractSectionCard(section: section),
+                ),
+              ),
+              ..._clauses(contractModel).map(
+                (section) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _ContractSectionCard(section: section),
+                ),
+              ),
+            ],
           ),
           GlassInfoCard(
             child: Column(
@@ -234,9 +256,15 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
             onPressed: _canContinue ? widget.onConfirm : null,
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(56),
-              backgroundColor: const Color(0xFF10253A),
+              backgroundColor: kBlack,
+              foregroundColor: kWhite,
+              disabledBackgroundColor: const Color(0xFFE5E5E5),
+              disabledForegroundColor: const Color(0xFF999999),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
             ),
-            child: const Text('Firmar y continuar a pago'),
+            child: const Text('Firmar y continuar'),
           ),
         ],
       ),
@@ -247,6 +275,113 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       _accepted && _signatureController.text.trim().isNotEmpty;
 }
 
+class _SectionBadge extends StatelessWidget {
+  const _SectionBadge({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              color: kMuted,
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: kText,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContractLegalSection extends StatelessWidget {
+  const _ContractLegalSection({
+    required this.isExpanded,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final bool isExpanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionBadge(
+          title: 'Seccion 2',
+          subtitle:
+              'Contrato legal completo. Este bloque inicia oculto para dar prioridad al resumen.',
+        ),
+        const SizedBox(height: 12),
+        GlassInfoCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Texto completo del contrato',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: onToggle,
+                    icon: Icon(
+                      isExpanded
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
+                    ),
+                    label: Text(
+                      isExpanded ? 'Ocultar contrato' : 'Mostrar contrato',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Puedes revisar primero la operacion, el itinerario y los datos de pago. Abre esta seccion solo cuando quieras leer el clausulado completo.',
+                style: TextStyle(color: Color(0xFF625D55), height: 1.4),
+              ),
+            ],
+          ),
+        ),
+        if (isExpanded) ...[const SizedBox(height: 16), ...children],
+        const SizedBox(height: 18),
+      ],
+    );
+  }
+}
+
 class _ContractHeroCard extends StatelessWidget {
   const _ContractHeroCard({required this.model});
 
@@ -255,65 +390,58 @@ class _ContractHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       decoration: BoxDecoration(
+        color: kBlack,
         borderRadius: BorderRadius.circular(30),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF08121C), Color(0xFF12304A), Color(0xFF1C5170)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1F0E2238),
+            color: Color(0x1F000000),
             blurRadius: 28,
-            offset: Offset(0, 16),
+            offset: Offset(0, 14),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              model.code,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+          _HeroChip(label: model.code),
           const SizedBox(height: 16),
           Text(
             model.routeLabel,
             style: const TextStyle(
-              fontSize: 28,
+              fontSize: 30,
               fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 1.04,
+              color: kWhite,
+              height: 1,
+              letterSpacing: -1,
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            'Servicio ${model.serviceTier} con salida ${model.departureLabel}, aeronave ${model.aircraftLabel} y monto total ${model.finalPriceLabel}.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.84),
-              height: 1.45,
+            model.departureLabel,
+            style: const TextStyle(
+              color: Color(0xFFBDBDBD),
+              height: 1.35,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 18),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          Row(
             children: [
-              _HeroChip(label: model.passengerLabel),
-              _HeroChip(label: model.categoryLabel),
-              _HeroChip(label: model.operatorLabel),
+              Expanded(
+                child: _DarkMetric(
+                  label: 'Total',
+                  value: model.finalPriceLabel,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _DarkMetric(
+                  label: 'Depósito',
+                  value: model.depositLabel,
+                ),
+              ),
             ],
           ),
         ],
@@ -332,15 +460,61 @@ class _HeroChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: kWhite.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: kWhite.withValues(alpha: 0.16)),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+          color: kWhite,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
         ),
+      ),
+    );
+  }
+}
+
+class _DarkMetric extends StatelessWidget {
+  const _DarkMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kWhite.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: Color(0xFFBDBDBD),
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: kWhite,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -360,21 +534,25 @@ class _ContractRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 128,
+            width: 118,
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF625D55),
+                color: kMuted,
                 fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
             ),
           ),
           Expanded(
             child: Text(
               value,
+              textAlign: TextAlign.right,
               style: const TextStyle(
-                color: Color(0xFF111111),
-                fontWeight: FontWeight.w800,
+                color: kBlack,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+                height: 1.25,
               ),
             ),
           ),
@@ -394,9 +572,9 @@ class _LegRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFEFC),
+        color: kSoft,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFEADFCE)),
+        border: Border.all(color: kBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,20 +582,21 @@ class _LegRow extends StatelessWidget {
           Text(
             'Tramo ${leg.order}',
             style: const TextStyle(
-              color: Color(0xFF9A6F28),
-              fontWeight: FontWeight.w800,
+              color: kMuted,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            '${leg.origin} -> ${leg.destination}',
-            style: const TextStyle(
-              color: Color(0xFF111111),
-              fontWeight: FontWeight.w900,
-            ),
+            '${leg.origin} → ${leg.destination}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
-          Text(leg.departure, style: const TextStyle(color: Color(0xFF625D55))),
+          Text(
+            leg.departure,
+            style: const TextStyle(color: kMuted, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );
@@ -435,21 +614,18 @@ class _BankCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFEFC),
+        color: kSoft,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFEADFCE)),
+        border: Border.all(color: kBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             account.bank,
-            style: const TextStyle(
-              color: Color(0xFF111111),
-              fontWeight: FontWeight.w900,
-            ),
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text('Cuenta: ${account.account}'),
           Text('CLABE: ${account.clabe}'),
           Text('Beneficiario: ${account.beneficiary}'),
@@ -467,56 +643,53 @@ class _ContractSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassInfoCard(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBorder),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             section.title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: kBlack,
+            ),
           ),
           if (section.paragraphs.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             ...section.paragraphs.map(
               (paragraph) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
                   paragraph,
                   style: const TextStyle(
-                    color: Color(0xFF3B3428),
-                    height: 1.45,
+                    color: kMuted,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ),
           ],
           if (section.items.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 10),
             ...section.items.map(
               (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Icon(
-                        Icons.circle,
-                        size: 8,
-                        color: Color(0xFFE0B86E),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        item,
-                        style: const TextStyle(
-                          color: Color(0xFF3B3428),
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '• $item',
+                  style: const TextStyle(
+                    color: kMuted,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),

@@ -7,6 +7,14 @@ import '../widgets/client_experience_widgets.dart';
 import 'client_aircraft_detail_screen.dart';
 import 'client_concierge_screen.dart';
 
+const Color kBg = Color(0xFFF7F7F7);
+const Color kWhite = Colors.white;
+const Color kBlack = Color(0xFF050505);
+const Color kText = Color(0xFF111111);
+const Color kMuted = Color(0xFF666666);
+const Color kBorder = Color(0xFFE6E6E6);
+const Color kSoft = Color(0xFFF2F2F2);
+
 class ClientHistoryScreen extends StatefulWidget {
   const ClientHistoryScreen({
     super.key,
@@ -29,7 +37,9 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
   @override
   void initState() {
     super.initState();
+
     final provider = context.read<ReservationProvider>();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       provider.loadClientWorkspaceData();
@@ -41,49 +51,50 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     final provider = context.watch<ReservationProvider>();
     final allRequests = provider.flightRequests;
     final filteredRequests = _filterRequests(allRequests);
-    final highlightedRequest =
-        filteredRequests.isNotEmpty ? filteredRequests.first : null;
-    final secondaryRequests =
-        filteredRequests.length > 1 ? filteredRequests.sublist(1) : const [];
 
     return ClientExperienceShell(
       title: 'Mis vuelos',
-      subtitle: 'Activos, proximos e historial en un solo lugar.',
+      subtitle: 'Reservas y seguimiento.',
       showBackButton: widget.showBackButton,
       trailing: StatusBadge(
         label: '${allRequests.length} vuelos',
-        color: const Color(0xFF143955),
+        color: kBlack,
       ),
       child: RefreshIndicator(
+        color: kBlack,
+        backgroundColor: kWhite,
         onRefresh: () => provider.loadClientWorkspaceData(force: true),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
             const Text(
-              'Activos, proximos e historial\nen un solo lugar.',
+              'Tus vuelos',
               style: TextStyle(
-                fontSize: 30,
+                fontSize: 32,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF111111),
-                height: 0.98,
+                color: kBlack,
+                height: 1,
+                letterSpacing: -1.1,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             const Text(
-              'Tu experiencia de vuelo privado, pagos y seguimiento viven dentro de cada reserva.',
+              'Consulta tus reservas de forma simple.',
               style: TextStyle(
-                color: Color(0xFF625D55),
+                color: kMuted,
                 fontSize: 16,
                 height: 1.35,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 18),
+
             Wrap(
               spacing: 10,
               runSpacing: 10,
               children: [
                 _TripTabButton(
-                  label: 'Proximos',
+                  label: 'Próximos',
                   active: _activeTab == _TripTab.upcoming,
                   onTap: () => setState(() => _activeTab = _TripTab.upcoming),
                 ),
@@ -99,51 +110,23 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
                 ),
               ],
             ),
+
             const SizedBox(height: 18),
+
             if (provider.isLoadingWorkspace && allRequests.isEmpty)
-              const GlassInfoCard(
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const _MinimalLoadingCard()
             else if (filteredRequests.isEmpty)
-              GlassInfoCard(
-                child: Text(
-                  'No hay viajes en ${_activeTabLabel.toLowerCase()}.',
-                  style: const TextStyle(
-                    color: Color(0xFF3B3428),
-                    fontWeight: FontWeight.w800,
-                    height: 1.35,
+              _EmptyFlightsCard(label: _activeTabLabel)
+            else
+              ...filteredRequests.map(
+                (request) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _MinimalFlightCard(
+                    request: request,
+                    onTap: () => _showFlightSheet(provider, request),
                   ),
                 ),
-              )
-            else ...[
-              if (highlightedRequest != null)
-                _FlightExecutiveCard(
-                  request: highlightedRequest,
-                  onOpenConcierge: _openConcierge,
-                  onOpenAircraft:
-                      () => _openAircraft(provider, highlightedRequest),
-                  onOpenContract: () => _handleOpenContract(highlightedRequest),
-                  onOpenPayment: () => _handleOpenPayment(highlightedRequest),
-                ),
-              if (secondaryRequests.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const ClientSectionTitle(
-                  title: 'Mas vuelos',
-                  subtitle:
-                      'Acceso rapido a otras reservas del mismo historial.',
-                ),
-                const SizedBox(height: 14),
-                ...secondaryRequests.map(
-                  (request) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _FlightSummaryCard(
-                      request: request,
-                      onTap: () => _showFlightSheet(provider, request),
-                    ),
-                  ),
-                ),
-              ],
-            ],
+              ),
           ],
         ),
       ),
@@ -153,7 +136,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
   String get _activeTabLabel {
     switch (_activeTab) {
       case _TripTab.upcoming:
-        return 'Proximos';
+        return 'Próximos';
       case _TripTab.processing:
         return 'En proceso';
       case _TripTab.history:
@@ -170,11 +153,14 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
           final departure = _departureDate(request);
           final isFuture =
               departure != null && departure.isAfter(DateTime.now());
+
           switch (_activeTab) {
             case _TripTab.upcoming:
               return !status.isClosed && isFuture;
+
             case _TripTab.processing:
               return !status.isClosed;
+
             case _TripTab.history:
               return status.isClosed ||
                   (departure != null && departure.isBefore(DateTime.now()));
@@ -184,9 +170,11 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     filtered.sort((a, b) {
       final firstDate = _departureDate(a);
       final secondDate = _departureDate(b);
+
       if (firstDate == null && secondDate == null) return 0;
       if (firstDate == null) return 1;
       if (secondDate == null) return -1;
+
       return firstDate.compareTo(secondDate);
     });
 
@@ -198,7 +186,9 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
         request['departure_datetime']?.toString() ??
         request['date']?.toString() ??
         request['created_at']?.toString();
+
     if (raw == null || raw.isEmpty) return null;
+
     return DateTime.tryParse(raw);
   }
 
@@ -213,6 +203,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     Map<String, dynamic> request,
   ) {
     final aircraft = _resolveAircraft(provider, request);
+
     if (aircraft == null) {
       _showActionMessage(
         'Aeronave disponible cuando el proveedor la confirme.',
@@ -235,6 +226,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
         request['assigned_aircraft_id']?.toString() ??
         request['aircraft_id']?.toString() ??
         '';
+
     final aircraftName =
         request['aircraft']?.toString() ??
         request['aircraft_model']?.toString() ??
@@ -245,6 +237,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
       if (aircraftId.isNotEmpty && aircraft.id == aircraftId) {
         return aircraft;
       }
+
       if (aircraftName.isNotEmpty &&
           (aircraft.name.toLowerCase() == aircraftName.toLowerCase() ||
               aircraft.aircraftType.toLowerCase() ==
@@ -284,60 +277,150 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
     });
   }
 
-  void _showFlightSheet(
-    ReservationProvider provider,
-    Map<String, dynamic> request,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder:
-          (_) => Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+void _showFlightSheet(
+  ReservationProvider provider,
+  Map<String, dynamic> request,
+) {
+  final meta = _statusMeta(request);
+
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: kWhite,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+    ),
+    builder: (_) {
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.72,
+        minChildSize: 0.45,
+        maxChildSize: 0.92,
+        builder: (context, scrollController) {
+          return SafeArea(
+            top: false,
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               children: [
                 Text(
                   _routeLabel(request),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 22,
+                    fontSize: 26,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
+                    color: kBlack,
+                    height: 1,
+                    letterSpacing: -0.8,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _statusMeta(request).nextAction,
-                  style: const TextStyle(
-                    color: Color(0xFF625D55),
-                    height: 1.35,
-                  ),
+
+                const SizedBox(height: 10),
+
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MinimalStatusPill(meta: meta),
                 ),
+
                 const SizedBox(height: 18),
+
+                _DetailRow(
+                  label: 'Fecha',
+                  value: _departureCopy(request),
+                ),
+                _DetailRow(
+                  label: 'Aeronave',
+                  value: _aircraftLabel(request),
+                ),
+                _DetailRow(
+                  label: 'Pasajeros',
+                  value: '${_passengerCount(request)} pasajeros',
+                ),
+                _DetailRow(
+                  label: 'Reserva',
+                  value: _requestCode(request),
+                ),
+
+                const SizedBox(height: 14),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: kSoft,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: kBorder),
+                  ),
+                  child: Text(
+                    meta.nextAction,
+                    style: const TextStyle(
+                      color: kText,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton(
-                        onPressed: _openConcierge,
-                        child: const Text('Concierge'),
+                      child: _SheetButton(
+                        label: 'Concierge',
+                        icon: Icons.support_agent_rounded,
+                        onTap: _openConcierge,
+                        filled: true,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _openAircraft(provider, request),
-                        child: const Text('Ver aeronave'),
+                      child: _SheetButton(
+                        label: 'Aeronave',
+                        icon: Icons.flight_rounded,
+                        onTap: () => _openAircraft(provider, request),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SheetButton(
+                        label: 'Contrato',
+                        icon: Icons.description_outlined,
+                        onTap:
+                            meta.contractReady
+                                ? () => _handleOpenContract(request)
+                                : null,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _SheetButton(
+                        label: 'Pago',
+                        icon: Icons.credit_card_rounded,
+                        onTap:
+                            meta.paymentReady
+                                ? () => _handleOpenPayment(request)
+                                : null,
                       ),
                     ),
                   ],
                 ),
               ],
             ),
-          ),
-    );
-  }
-
+          );
+        },
+      );
+    },
+  );
+}
   void _showActionMessage(String message) {
     ScaffoldMessenger.of(
       context,
@@ -349,6 +432,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
       widget.onOpenContract!(request);
       return;
     }
+
     _showActionMessage('Firma de contrato disponible pronto.');
   }
 
@@ -357,6 +441,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
       widget.onOpenPayment!(request);
       return;
     }
+
     _showActionMessage('Checkout seguro disponible pronto.');
   }
 }
@@ -408,19 +493,35 @@ class _TripTabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF111111) : const Color(0xFFF0E9DE),
-          borderRadius: BorderRadius.circular(18),
+          color: active ? kBlack : kWhite,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active ? kBlack : kBorder,
+          ),
+          boxShadow:
+              active
+                  ? const [
+                    BoxShadow(
+                      color: Color(0x16000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
+                  : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.white : const Color(0xFF1F1B18),
+            color: active ? kWhite : kText,
             fontWeight: FontWeight.w900,
-            fontSize: 15,
+            fontSize: 14,
+            letterSpacing: -0.2,
           ),
         ),
       ),
@@ -428,170 +529,11 @@ class _TripTabButton extends StatelessWidget {
   }
 }
 
-class _FlightExecutiveCard extends StatelessWidget {
-  const _FlightExecutiveCard({
+class _MinimalFlightCard extends StatelessWidget {
+  const _MinimalFlightCard({
     required this.request,
-    required this.onOpenConcierge,
-    required this.onOpenAircraft,
-    required this.onOpenContract,
-    required this.onOpenPayment,
+    required this.onTap,
   });
-
-  final Map<String, dynamic> request;
-  final VoidCallback onOpenConcierge;
-  final VoidCallback onOpenAircraft;
-  final VoidCallback onOpenContract;
-  final VoidCallback onOpenPayment;
-
-  @override
-  Widget build(BuildContext context) {
-    final meta = _statusMeta(request);
-    final route = _routeLabel(request);
-    final aircraft = _aircraftLabel(request);
-    final departure = _departureCopy(request);
-    final passengers = _passengerCount(request);
-    final totalSegments = _segments(request).length;
-
-    return GlassInfoCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _requestCode(request),
-                      style: const TextStyle(
-                        color: Color(0xFF9A6F28),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                        letterSpacing: 0.08,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      route,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
-                        height: 1.02,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: [
-                        _MetaText(label: departure),
-                        _MetaText(label: '$passengers pasajeros'),
-                        _MetaText(label: aircraft),
-                        _MetaText(label: '$totalSegments tramos'),
-                        _MetaText(label: meta.label),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              _WorkflowStatusBadge(meta: meta),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _ProgressRow(meta: meta),
-          const SizedBox(height: 12),
-          Wrap(spacing: 8, runSpacing: 8, children: _steps(meta)),
-          const SizedBox(height: 18),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 640;
-              final aircraftCard = _ExecutiveInfoCard(
-                mediaUrl: _aircraftImage(request),
-                title: aircraft,
-                lines: [
-                  'Capacidad: ${_aircraftCapacity(request)} pax',
-                  'Cabina: ${_aircraftCategory(request)}',
-                  'Servicios: ${_amenities(request)}',
-                ],
-              );
-              final nextStepCard = _NextStepCard(
-                title: 'Proximo paso',
-                lines: [
-                  meta.nextAction,
-                  _paymentLabel(request),
-                  'Concierge 24/7 disponible',
-                ],
-              );
-
-              if (stacked) {
-                return Column(
-                  children: [
-                    aircraftCard,
-                    const SizedBox(height: 12),
-                    nextStepCard,
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(child: aircraftCard),
-                  const SizedBox(width: 12),
-                  Expanded(child: nextStepCard),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                _segments(
-                  request,
-                ).map((segment) => _LegPill(label: segment)).toList(),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _ActionButton(
-                label: 'Contrato',
-                icon: Icons.description_outlined,
-                onTap: meta.contractReady ? onOpenContract : null,
-              ),
-              _ActionButton(
-                label: 'Pago',
-                icon: Icons.credit_card_rounded,
-                onTap: meta.paymentReady ? onOpenPayment : null,
-              ),
-              _ActionButton(
-                label: 'Concierge',
-                icon: Icons.support_agent_rounded,
-                onTap: onOpenConcierge,
-              ),
-              _ActionButton(
-                label: 'Ver aeronave',
-                icon: Icons.flight_rounded,
-                onTap: onOpenAircraft,
-                emphasized: true,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FlightSummaryCard extends StatelessWidget {
-  const _FlightSummaryCard({required this.request, required this.onTap});
 
   final Map<String, dynamic> request;
   final VoidCallback onTap;
@@ -602,53 +544,94 @@ class _FlightSummaryCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(24),
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5E1D8)),
+          color: kWhite,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: kBorder),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x14000000),
+              color: Color(0x0D000000),
               blurRadius: 18,
-              offset: Offset(0, 10),
+              offset: Offset(0, 8),
             ),
           ],
         ),
         child: Row(
           children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: kBlack,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.flight_takeoff_rounded,
+                color: kWhite,
+                size: 21,
+              ),
+            ),
+            const SizedBox(width: 13),
+
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     _routeLabel(request),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      color: kBlack,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF111111),
+                      letterSpacing: -0.4,
+                      height: 1.05,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     _departureCopy(request),
-                    style: const TextStyle(color: Color(0xFF625D55)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: kMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 3),
                   Text(
                     _aircraftLabel(request),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF9A6F28),
-                      fontWeight: FontWeight.w700,
+                      color: kText,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
             ),
+
             const SizedBox(width: 10),
-            _WorkflowStatusBadge(meta: meta, compact: true),
+
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _MiniDotStatus(meta: meta),
+                const SizedBox(height: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: kBlack,
+                  size: 24,
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -656,237 +639,104 @@ class _FlightSummaryCard extends StatelessWidget {
   }
 }
 
-class _ProgressRow extends StatelessWidget {
-  const _ProgressRow({required this.meta});
+class _MiniDotStatus extends StatelessWidget {
+  const _MiniDotStatus({required this.meta});
 
   final _WorkflowMeta meta;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 14,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEBE3D4),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: meta.progress / 100,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF111111), Color(0xFF9A6F28)],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '${meta.progress}%',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF111111),
-          ),
-        ),
-      ],
+    final isConfirmed =
+        meta.tone == _WorkflowTone.confirmed ||
+        meta.tone == _WorkflowTone.completed;
+
+    final isCancelled = meta.tone == _WorkflowTone.cancelled;
+
+    return Container(
+      width: 11,
+      height: 11,
+      decoration: BoxDecoration(
+        color:
+            isConfirmed
+                ? kBlack
+                : isCancelled
+                    ? const Color(0xFF9A9A9A)
+                    : kWhite,
+        shape: BoxShape.circle,
+        border: Border.all(color: kBlack, width: 1.4),
+      ),
     );
   }
 }
 
-class _WorkflowStatusBadge extends StatelessWidget {
-  const _WorkflowStatusBadge({required this.meta, this.compact = false});
+class _MinimalStatusPill extends StatelessWidget {
+  const _MinimalStatusPill({required this.meta});
 
   final _WorkflowMeta meta;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final (bg, fg, icon) = switch (meta.tone) {
-      _WorkflowTone.searching => (
-        const Color(0xFFE8F1FF),
-        const Color(0xFF2351A8),
-        '🌀',
-      ),
-      _WorkflowTone.info => (
-        const Color(0xFFEEF4FF),
-        const Color(0xFF355DA8),
-        '●',
-      ),
-      _WorkflowTone.pending => (
-        const Color(0xFFFFF2D8),
-        const Color(0xFF9A6500),
-        '◔',
-      ),
-      _WorkflowTone.confirmed => (
-        const Color(0xFFE5F7EA),
-        const Color(0xFF14673A),
-        '✅',
-      ),
-      _WorkflowTone.completed => (
-        const Color(0xFFDDF7E6),
-        const Color(0xFF0D6A34),
-        '✓',
-      ),
-      _WorkflowTone.cancelled => (
-        const Color(0xFFFFE6E2),
-        const Color(0xFFA13622),
-        '✕',
-      ),
-    };
+    final isConfirmed =
+        meta.tone == _WorkflowTone.confirmed ||
+        meta.tone == _WorkflowTone.completed;
 
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 10 : 14,
-        vertical: compact ? 8 : 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: bg,
+        color: isConfirmed ? kBlack : kSoft,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isConfirmed ? kBlack : kBorder,
+        ),
       ),
       child: Text(
-        '$icon ${meta.label}',
+        meta.label,
         style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w800,
-          fontSize: compact ? 12 : 14,
+          color: isConfirmed ? kWhite : kBlack,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
   }
 }
 
-class _MetaText extends StatelessWidget {
-  const _MetaText({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: const TextStyle(
-        color: Color(0xFF625D55),
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-}
-
-class _ExecutiveInfoCard extends StatelessWidget {
-  const _ExecutiveInfoCard({
-    required this.title,
-    required this.lines,
-    this.mediaUrl,
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.label,
+    required this.value,
   });
 
-  final String title;
-  final List<String> lines;
-  final String? mediaUrl;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F0E7),
-        borderRadius: BorderRadius.circular(22),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              width: 110,
-              height: 110,
-              child:
-                  mediaUrl != null && mediaUrl!.isNotEmpty
-                      ? Image.network(
-                        mediaUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, __, ___) => _PlaceholderMedia(label: title),
-                      )
-                      : _PlaceholderMedia(label: title),
+          SizedBox(
+            width: 86,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: kMuted,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
           ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...lines.map(
-                  (line) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      line,
-                      style: const TextStyle(
-                        color: Color(0xFF625D55),
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NextStepCard extends StatelessWidget {
-  const _NextStepCard({required this.title, required this.lines});
-
-  final String title;
-  final List<String> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F0E7),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...lines.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                line,
-                style: const TextStyle(color: Color(0xFF625D55), height: 1.35),
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: kBlack,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+                height: 1.25,
               ),
             ),
           ),
@@ -896,140 +746,131 @@ class _NextStepCard extends StatelessWidget {
   }
 }
 
-class _LegPill extends StatelessWidget {
-  const _LegPill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F0E7),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(label, style: const TextStyle(color: Color(0xFF433C31))),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
+class _SheetButton extends StatelessWidget {
+  const _SheetButton({
     required this.label,
     required this.icon,
     required this.onTap,
-    this.emphasized = false,
+    this.filled = false,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
-  final bool emphasized;
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
-    final child =
-        emphasized
-            ? FilledButton.icon(
-              onPressed: onTap,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF111111),
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: Icon(icon, size: 18),
-              label: Text(label),
-            )
-            : OutlinedButton.icon(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF111111),
-                minimumSize: const Size(0, 50),
-                side: const BorderSide(color: Color(0xFFDED6C8)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: Icon(icon, size: 18),
-              label: Text(label),
-            );
+    if (filled) {
+      return FilledButton.icon(
+        onPressed: onTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: kBlack,
+          foregroundColor: kWhite,
+          disabledBackgroundColor: const Color(0xFFE5E5E5),
+          disabledForegroundColor: const Color(0xFF999999),
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        icon: Icon(icon, size: 18),
+        label: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      );
+    }
 
-    return child;
-  }
-}
-
-class _StepPill extends StatelessWidget {
-  const _StepPill({required this.label, required this.state});
-
-  final String label;
-  final _StepState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final (bg, fg, icon) = switch (state) {
-      _StepState.done => (
-        const Color(0xFFE5F7EA),
-        const Color(0xFF14673A),
-        '✓',
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: kBlack,
+        disabledForegroundColor: const Color(0xFF999999),
+        minimumSize: const Size.fromHeight(52),
+        side: const BorderSide(color: kBorder),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
       ),
-      _StepState.active => (
-        const Color(0xFFFFF2D8),
-        const Color(0xFF9A6500),
-        '●',
-      ),
-      _StepState.todo => (
-        const Color(0xFFF1EDE7),
-        const Color(0xFF7A7266),
-        '○',
-      ),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$icon $label',
-        style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w900),
       ),
     );
   }
 }
 
-enum _StepState { done, active, todo }
+class _MinimalLoadingCard extends StatelessWidget {
+  const _MinimalLoadingCard();
 
-List<Widget> _steps(_WorkflowMeta meta) {
-  final states = <String, _StepState>{
-    'Reserva': _StepState.done,
-    'Respuesta proveedor':
-        meta.providerConfirmed ? _StepState.done : _StepState.todo,
-    'Contrato': meta.contractReady ? _StepState.done : _StepState.todo,
-    'Pago': meta.paymentReady ? _StepState.done : _StepState.todo,
-    'Vuelo': meta.flightReady ? _StepState.done : _StepState.todo,
-    'Tracking': meta.trackingReady ? _StepState.done : _StepState.todo,
-  };
-
-  if (!meta.providerConfirmed) {
-    states['Respuesta proveedor'] = _StepState.active;
-  } else if (!meta.contractReady) {
-    states['Contrato'] = _StepState.active;
-  } else if (!meta.paymentReady) {
-    states['Pago'] = _StepState.active;
-  } else if (!meta.flightReady) {
-    states['Vuelo'] = _StepState.active;
-  } else if (!meta.trackingReady) {
-    states['Tracking'] = _StepState.active;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              color: kBlack,
+              strokeWidth: 2,
+            ),
+          ),
+          SizedBox(width: 12),
+          Text(
+            'Cargando vuelos...',
+            style: TextStyle(
+              color: kBlack,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
   }
+}
 
-  return states.entries
-      .map((entry) => _StepPill(label: entry.key, state: entry.value))
-      .toList();
+class _EmptyFlightsCard extends StatelessWidget {
+  const _EmptyFlightsCard({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorder),
+      ),
+      child: Text(
+        'No hay viajes en ${label.toLowerCase()}.',
+        style: const TextStyle(
+          color: kText,
+          fontWeight: FontWeight.w800,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
 }
 
 _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
@@ -1039,21 +880,25 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
         request['flight_status'] ??
         request['reservation_status'],
   );
+
   final contractStatus = _normalizedStatus(
     request['contract_status'] ??
         request['contract'] ??
         request['signature_status'],
   );
+
   final paymentStatus = _normalizedStatus(
     request['payment_status'] ??
         request['checkout_status'] ??
         request['payment'],
   );
+
   final providerStatus = _normalizedStatus(
     request['provider_status'] ??
         request['match_status'] ??
         request['supplier_status'],
   );
+
   final trackingStatus = _normalizedStatus(
     request['tracking_status'] ??
         request['tracking'] ??
@@ -1154,7 +999,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       progress: 90,
       activeStep: 5,
       nextAction:
-          'Monitorea terminal, tripulacion y seguimiento en tiempo real.',
+          'Monitorea terminal, tripulación y seguimiento en tiempo real.',
       isClosed: false,
       providerConfirmed: true,
       contractReady: true,
@@ -1170,7 +1015,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       tone: _WorkflowTone.confirmed,
       progress: 82,
       activeStep: 4,
-      nextAction: 'Todo listo para la operacion del vuelo.',
+      nextAction: 'Todo listo para la operación del vuelo.',
       isClosed: false,
       providerConfirmed: true,
       contractReady: true,
@@ -1206,7 +1051,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       tone: _WorkflowTone.pending,
       progress: 66,
       activeStep: 3,
-      nextAction: 'Completa el pago para confirmar la operacion.',
+      nextAction: 'Completa el pago para confirmar la operación.',
       isClosed: false,
       providerConfirmed: true,
       contractReady: true,
@@ -1288,7 +1133,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     tone: _WorkflowTone.info,
     progress: 16,
     activeStep: 0,
-    nextAction: 'La reserva ya esta registrada.',
+    nextAction: 'La reserva ya está registrada.',
     isClosed: false,
     providerConfirmed: false,
     contractReady: false,
@@ -1308,9 +1153,11 @@ String _providerNextAction(Map<String, dynamic> request) {
       request['provider_name']?.toString() ??
       _nestedText(request['provider'], 'name') ??
       _nestedText(request['provider'], 'company_name');
+
   if (providerName != null && providerName.isNotEmpty) {
     return 'Proveedor confirmado: $providerName. Siguiente paso: contrato.';
   }
+
   return 'El proveedor ya fue confirmado. Siguiente paso: contrato.';
 }
 
@@ -1322,6 +1169,7 @@ bool _containsAny(String value, List<String> patterns) {
   for (final pattern in patterns) {
     if (value.contains(pattern)) return true;
   }
+
   return false;
 }
 
@@ -1332,35 +1180,43 @@ bool _hasValue(dynamic value) {
 
 bool _asBool(dynamic value) {
   if (value is bool) return value;
+
   final text = value?.toString().trim().toLowerCase() ?? '';
+
   return text == 'true' || text == '1' || text == 'yes' || text == 'si';
 }
 
 String? _nestedText(dynamic value, String key) {
   if (value is Map && value[key] != null) {
     final text = value[key].toString().trim();
+
     if (text.isNotEmpty) return text;
   }
+
   return null;
 }
 
 String _routeLabel(Map<String, dynamic> request) {
   final legs = request['legs'] ?? request['segments'] ?? request['routes'];
+
   if (legs is List && legs.isNotEmpty) {
     final first = legs.first;
+
     if (first is Map) {
       final origin = first['origin']?.toString() ?? '';
       final destination = first['destination']?.toString() ?? '';
+
       if (origin.isNotEmpty || destination.isNotEmpty) {
-        return '$origin -> $destination';
+        return '$origin → $destination';
       }
     }
   }
 
   final origin = request['origin']?.toString() ?? '';
   final destination = request['destination']?.toString() ?? '';
+
   if (origin.isNotEmpty || destination.isNotEmpty) {
-    return '$origin -> $destination';
+    return '$origin → $destination';
   }
 
   return 'Ruta por confirmar';
@@ -1371,8 +1227,11 @@ String _departureCopy(Map<String, dynamic> request) {
       request['departure_datetime']?.toString() ??
       request['date']?.toString() ??
       '';
+
   if (raw.isEmpty) return 'Fecha por confirmar';
+
   final parsed = DateTime.tryParse(raw);
+
   if (parsed == null) return raw;
 
   const months = [
@@ -1389,13 +1248,17 @@ String _departureCopy(Map<String, dynamic> request) {
     'nov',
     'dic',
   ];
+
   final month = months[parsed.month - 1];
+
   final hour =
       parsed.hour == 0
           ? 12
           : (parsed.hour > 12 ? parsed.hour - 12 : parsed.hour);
+
   final suffix = parsed.hour >= 12 ? 'p.m.' : 'a.m.';
   final minute = parsed.minute.toString().padLeft(2, '0');
+
   return '${parsed.day}-$month, $hour:$minute $suffix';
 }
 
@@ -1416,107 +1279,4 @@ String _aircraftLabel(Map<String, dynamic> request) {
       _nestedText(request['assigned_aircraft'], 'model') ??
       _nestedText(request['aircraft_data'], 'model') ??
       'Aeronave por asignar';
-}
-
-String _aircraftCategory(Map<String, dynamic> request) {
-  return request['aircraft_category']?.toString() ??
-      _nestedText(request['assigned_aircraft'], 'aircraft_type') ??
-      request['cabin']?.toString() ??
-      'Jet privado';
-}
-
-String _aircraftCapacity(Map<String, dynamic> request) {
-  return request['aircraft_capacity']?.toString() ??
-      request['capacity']?.toString() ??
-      _nestedText(request['assigned_aircraft'], 'capacity') ??
-      'N/D';
-}
-
-String _amenities(Map<String, dynamic> request) {
-  final amenities =
-      request['amenities'] ?? request['services'] ?? request['service_items'];
-  if (amenities is List && amenities.isNotEmpty) {
-    return amenities.take(3).map((item) => item.toString()).join(' • ');
-  }
-  if (amenities is String && amenities.trim().isNotEmpty) {
-    return amenities.trim();
-  }
-  return 'Concierge, privacidad y soporte premium';
-}
-
-String? _aircraftImage(Map<String, dynamic> request) {
-  final direct = [
-    request['aircraft_image'],
-    request['image_url'],
-    request['main_image'],
-  ];
-  for (final item in direct) {
-    final value = item?.toString().trim() ?? '';
-    if (value.isNotEmpty) return value;
-  }
-  return null;
-}
-
-List<String> _segments(Map<String, dynamic> request) {
-  final legs = request['legs'] ?? request['segments'] ?? request['routes'];
-  if (legs is List && legs.isNotEmpty) {
-    final result = <String>[];
-    for (var i = 0; i < legs.length; i++) {
-      final leg = legs[i];
-      if (leg is! Map) continue;
-      final origin = leg['origin']?.toString() ?? '';
-      final destination = leg['destination']?.toString() ?? '';
-      final departure = leg['departure_datetime']?.toString() ?? '';
-      final dateText =
-          departure.isEmpty
-              ? ''
-              : ' · ${_departureCopy({'departure_datetime': departure})}';
-      result.add('Tramo ${i + 1} · $origin -> $destination$dateText');
-    }
-    if (result.isNotEmpty) return result;
-  }
-
-  return [_routeLabel(request)];
-}
-
-String _paymentLabel(Map<String, dynamic> request) {
-  final payment =
-      request['payment_status']?.toString() ??
-      request['checkout_status']?.toString() ??
-      '';
-  final reference =
-      request['payment_reference']?.toString() ??
-      request['payment_intent']?.toString() ??
-      '';
-  if (payment.isEmpty && reference.isEmpty) {
-    return 'Pago segun etapa comercial de la reserva';
-  }
-  if (reference.isNotEmpty) {
-    return 'Pago: $payment · Ref. $reference';
-  }
-  return 'Pago: $payment';
-}
-
-class _PlaceholderMedia extends StatelessWidget {
-  const _PlaceholderMedia({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF1F1B18),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
 }
