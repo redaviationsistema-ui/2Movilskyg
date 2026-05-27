@@ -93,11 +93,7 @@ class _ClientHistoryScreenState extends State<ClientHistoryScreen> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _TripTabButton(
-                  label: 'Próximos',
-                  active: _activeTab == _TripTab.upcoming,
-                  onTap: () => setState(() => _activeTab = _TripTab.upcoming),
-                ),
+              
                 _TripTabButton(
                   label: 'En proceso',
                   active: _activeTab == _TripTab.processing,

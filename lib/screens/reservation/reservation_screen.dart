@@ -185,7 +185,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
         reservation.removeRoute(reservation.routes.length - 1);
       }
 
-      reservation.addRoute();
+      if (reservation.routes.length < 2) {
+        reservation.addRoute(allowIncomplete: true);
+      }
+      if (reservation.routes.length < 2) {
+        return;
+      }
       final returnRoute = reservation.routes[1];
       returnRoute.fromAirport = firstRoute.toAirport;
       returnRoute.toAirport = firstRoute.fromAirport;

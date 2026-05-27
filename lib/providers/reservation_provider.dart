@@ -1546,7 +1546,7 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addRoute() {
+  void addRoute({bool allowIncomplete = false}) {
     if (routes.isEmpty) {
       routes.add(RouteModel());
       notifyListeners();
@@ -1555,7 +1555,7 @@ class ReservationProvider extends ChangeNotifier {
 
     final lastRoute = routes.last;
 
-    if (lastRoute.toAirport == null) {
+    if (lastRoute.toAirport == null && !allowIncomplete) {
       return;
     }
 
