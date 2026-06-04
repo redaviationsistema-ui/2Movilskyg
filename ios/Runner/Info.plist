@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Red Sky usa la camara para capturar tu selfie y validar tu identidad en el registro.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Red Sky usa tu galeria para seleccionar imagenes de identificacion y documentos del portal.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Red Sky puede guardar contratos o comprobantes generados desde el portal.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

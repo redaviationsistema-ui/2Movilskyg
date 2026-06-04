@@ -4,10 +4,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import 'providers/auth_provider.dart';
-import 'providers/reservation_provider.dart';
-import 'providers/workflow_provider.dart';
-import 'screens/auth/auth_gate_screen.dart';
+import 'providers/proveedor_autenticacion.dart';
+import 'providers/proveedor_reservaciones.dart';
+import 'providers/proveedor_flujo_trabajo.dart';
+import 'screens/auth/pantalla_puerta_autenticacion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
