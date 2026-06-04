@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -15,6 +14,7 @@ class CrewRegisterScreen extends StatefulWidget {
 }
 
 class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
+  static const bool _localMlKitAvailable = false;
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
   final _nameController = TextEditingController();
@@ -71,16 +71,20 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     setState(() {
       _document = File(picked.path);
       _readingDocument = true;
-      _documentMessage = 'Leyendo licencia/documento...';
+      _documentMessage =
+          _localMlKitAvailable
+              ? 'Leyendo licencia/documento...'
+              : 'Documento cargado. Completa licencia y vigencia manualmente.';
     });
 
     try {
-      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final recognized = await recognizer.processImage(
-        InputImage.fromFilePath(picked.path),
-      );
-      await recognizer.close();
-      _applyDocumentText(recognized.text);
+      if (_localMlKitAvailable) {
+        _applyDocumentText('');
+      } else {
+        setState(() {
+          _scanStatus = 'pending_manual_review';
+        });
+      }
     } catch (_) {
       setState(() {
         _documentMessage =

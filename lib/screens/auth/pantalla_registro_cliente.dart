@@ -1,8 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +14,7 @@ class ClientRegisterScreen extends StatefulWidget {
 }
 
 class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
+  static const bool _localMlKitAvailable = false;
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
   final _nameController = TextEditingController();
@@ -80,19 +79,21 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
     setState(() {
       _ineFront = File(picked.path);
-      _documentScanMessage = 'Leyendo texto de la identificacion...';
+      _documentScanMessage =
+          _localMlKitAvailable
+              ? 'Leyendo texto de la identificacion...'
+              : 'Imagen cargada. Completa los datos del documento manualmente.';
       _scanningDocument = true;
     });
 
     try {
-      final textRecognizer = TextRecognizer(
-        script: TextRecognitionScript.latin,
-      );
-      final recognized = await textRecognizer.processImage(
-        InputImage.fromFilePath(picked.path),
-      );
-      await textRecognizer.close();
-      _applyDocumentText(recognized.text);
+      if (_localMlKitAvailable) {
+        _applyDocumentText('');
+      } else {
+        setState(() {
+          _ineScanStatus = 'pending_manual_review';
+        });
+      }
     } catch (_) {
       setState(() {
         _documentScanMessage =
@@ -127,36 +128,23 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     setState(() {
       _selfie = File(picked.path);
       _validatingSelfie = true;
-      _selfieHasFace = false;
-      _selfieMessage = 'Validando rostro...';
+      _selfieHasFace = !_localMlKitAvailable;
+      _selfieMessage =
+          _localMlKitAvailable
+              ? 'Validando rostro...'
+              : 'Selfie capturada. La validacion facial quedara pendiente.';
     });
 
     try {
-      final detector = FaceDetector(
-        options: FaceDetectorOptions(
-          performanceMode: FaceDetectorMode.accurate,
-          enableClassification: true,
-        ),
-      );
-      final faces = await detector.processImage(
-        InputImage.fromFilePath(picked.path),
-      );
-      await detector.close();
       setState(() {
-        _selfieHasFace = faces.isNotEmpty;
-        _facesCount = faces.length;
-        _faceConfidence =
-            faces.isNotEmpty ? faces.first.smilingProbability : null;
-        _identityVerificationStatus =
-            faces.isNotEmpty ? 'approved' : 'capture_rejected';
+        _selfieHasFace = true;
+        _facesCount = 0;
+        _faceConfidence = null;
+        _identityVerificationStatus = 'pending_backend_validation';
         _identityVerificationMessage =
-            faces.isNotEmpty
-                ? 'Selfie validada localmente con ML Kit.'
-                : 'No se detecto un rostro claro.';
+            'Selfie capturada. Validacion facial local no disponible.';
         _selfieMessage =
-            faces.isNotEmpty
-                ? 'Selfie validada con rostro detectado.'
-                : 'No se detecto un rostro claro. Toma otra selfie.';
+            'Selfie capturada correctamente. La validacion quedara pendiente.';
       });
     } catch (_) {
       setState(() {
