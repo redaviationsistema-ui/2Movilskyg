@@ -360,6 +360,12 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> previewClientQuotesPayload(
+    Map<String, dynamic> payload,
+  ) {
+    return post('/client/quotes/preview', authenticated: true, body: payload);
+  }
+
   Future<Map<String, dynamic>> createFlightRequest({
     required String origin,
     required String destination,
@@ -400,6 +406,16 @@ class ApiClient {
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
         ...extraBody,
       },
+    );
+  }
+
+  Future<Map<String, dynamic>> createFlightRequestPayload(
+    Map<String, dynamic> payload,
+  ) {
+    return postFirstAvailable(
+      const ['/client/flight-requests', '/cliente/solicitudes'],
+      authenticated: true,
+      body: payload,
     );
   }
 
