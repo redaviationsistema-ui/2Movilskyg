@@ -84,6 +84,16 @@ class AuthProvider extends ChangeNotifier {
     bool faceDetected = false,
     int facesCount = 0,
     double? faceConfidence,
+    double? qualityBrightness,
+    double? qualitySharpness,
+    double? poseYaw,
+    double? posePitch,
+    double? poseRoll,
+    bool? faceOccluded,
+    bool biometricImageSaved = false,
+    String biometricCapturedAt = '',
+    String biometricProvider = 'aws_rekognition',
+    String biometricTemplateType = 'selfie-photo',
     File? ineFront,
     File? ineBack,
     File? selfieBiometric,
@@ -118,6 +128,16 @@ class AuthProvider extends ChangeNotifier {
         faceDetected: faceDetected,
         facesCount: facesCount,
         faceConfidence: faceConfidence,
+        qualityBrightness: qualityBrightness,
+        qualitySharpness: qualitySharpness,
+        poseYaw: poseYaw,
+        posePitch: posePitch,
+        poseRoll: poseRoll,
+        faceOccluded: faceOccluded,
+        biometricImageSaved: biometricImageSaved,
+        biometricCapturedAt: biometricCapturedAt,
+        biometricProvider: biometricProvider,
+        biometricTemplateType: biometricTemplateType,
         ineFront: ineFront,
         ineBack: ineBack,
         selfieBiometric: selfieBiometric,
@@ -128,7 +148,7 @@ class AuthProvider extends ChangeNotifier {
       _storeSessionPayload(response);
       return true;
     } on ApiException catch (error) {
-      errorMessage = error.message;
+      errorMessage = _apiErrorMessage(error);
       return false;
     } catch (_) {
       errorMessage = 'No fue posible crear la cuenta.';
@@ -190,7 +210,7 @@ class AuthProvider extends ChangeNotifier {
       _storeSessionPayload(response);
       return true;
     } on ApiException catch (error) {
-      errorMessage = error.message;
+      errorMessage = _apiErrorMessage(error);
       return false;
     } catch (_) {
       errorMessage = 'No fue posible crear la cuenta de sobrecargo.';
@@ -334,5 +354,23 @@ class AuthProvider extends ChangeNotifier {
         data['token']?.toString() ??
         data['access_token']?.toString() ??
         data['plainTextToken']?.toString();
+  }
+
+  String _apiErrorMessage(ApiException error) {
+    final rawErrors = error.payload?['errors'];
+    if (rawErrors is! Map) return error.message;
+
+    final details = <String>[];
+    for (final entry in rawErrors.entries) {
+      final messages = entry.value;
+      if (messages is List) {
+        details.addAll(messages.where((item) => item != null).map((item) {
+          final field = entry.key == 'email' ? 'Correo' : entry.key;
+          return '$field: $item';
+        }));
+      }
+    }
+
+    return details.isEmpty ? error.message : '${error.message}\n${details.join('\n')}';
   }
 }

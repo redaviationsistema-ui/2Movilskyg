@@ -1,10 +1,14 @@
 import 'dart:io';
+import 'dart:math';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/cliente_api.dart';
 import '../../providers/proveedor_autenticacion.dart';
+import '../marketplace/pantalla_inicio_mercado.dart';
 
 class CrewRegisterScreen extends StatefulWidget {
   const CrewRegisterScreen({super.key});
@@ -14,9 +18,9 @@ class CrewRegisterScreen extends StatefulWidget {
 }
 
 class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
-  static const bool _localMlKitAvailable = false;
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
+  final _api = ApiClient.instance;
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -36,7 +40,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   final _passwordConfirmationController = TextEditingController();
 
   File? _document;
+  int _currentStep = 0;
   bool _readingDocument = false;
+  bool _passwordVisible = false;
+  bool _passwordConfirmationVisible = false;
   String _scanRaw = '';
   String _scanStatus = '';
   String _documentMessage = '';
@@ -62,37 +69,76 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   }
 
   Future<void> _pickDocument() async {
-    final picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
-    );
-    if (picked == null) return;
+    final selected = await _selectDocumentImage();
+    if (selected == null) return;
 
     setState(() {
-      _document = File(picked.path);
+      _document = selected;
       _readingDocument = true;
-      _documentMessage =
-          _localMlKitAvailable
-              ? 'Leyendo licencia/documento...'
-              : 'Documento cargado. Completa licencia y vigencia manualmente.';
+      _documentMessage = 'Escaneando licencia en backend...';
     });
 
     try {
-      if (_localMlKitAvailable) {
-        _applyDocumentText('');
-      } else {
-        setState(() {
-          _scanStatus = 'pending_manual_review';
-        });
-      }
-    } catch (_) {
+      final response = await _api.scanRegistrationDocument(
+        document: _document!,
+        documentType: 'auto',
+      );
+      _applyDocumentResponse(response);
+    } on ApiException catch (error) {
       setState(() {
-        _documentMessage =
-            'Documento cargado. Completa licencia y vigencia manualmente.';
+        _scanStatus = 'pending_manual_review';
+        _documentMessage = '${error.message} Completa los datos manualmente.';
       });
     } finally {
       if (mounted) setState(() => _readingDocument = false);
     }
+  }
+
+  Future<File?> _selectDocumentImage() async {
+    final source = await showModalBottomSheet<_DocumentImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder:
+          (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_rounded),
+                  title: const Text('Tomar foto'),
+                  subtitle: const Text('Capturar la licencia con la camara'),
+                  onTap:
+                      () => Navigator.pop(context, _DocumentImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder_open_rounded),
+                  title: const Text('Elegir de archivos'),
+                  subtitle: const Text('Seleccionar una imagen guardada'),
+                  onTap:
+                      () => Navigator.pop(context, _DocumentImageSource.files),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+    );
+    if (source == null) return null;
+
+    if (source == _DocumentImageSource.camera) {
+      final picked = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 96,
+      );
+      return picked == null ? null : File(picked.path);
+    }
+
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+    final path = result?.files.single.path;
+    return path == null ? null : File(path);
   }
 
   void _applyDocumentText(String rawText) {
@@ -145,8 +191,84 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     });
   }
 
+  void _applyDocumentResponse(Map<String, dynamic> response) {
+    final data = _map(
+      response['data'] ??
+          response['document'] ??
+          response['result'] ??
+          response,
+    );
+    final rawText =
+        (data['ocr_raw_text'] ??
+                data['raw'] ??
+                data['raw_text'] ??
+                data['texto'] ??
+                data['text'] ??
+                '')
+            .toString();
+    _applyDocumentText(rawText);
+
+    setState(() {
+      _setIfPresent(
+        _nameController,
+        data['name'] ??
+            data['holder_name'] ??
+            data['nombre'] ??
+            data['nombre_completo'],
+      );
+      _setIfPresent(
+        _licenseTypeController,
+        data['tipo_documento'] ?? data['document_type'],
+      );
+      _setIfPresent(
+        _licenseController,
+        data['license_number'] ??
+            data['document_number'] ??
+            data['numero_licencia'] ??
+            data['numeroLicencia'],
+      );
+      _setIfPresent(
+        _licenseCategoryController,
+        data['license_category'] ??
+            data['categoria_cargo'] ??
+            data['category'] ??
+            data['categoria'] ??
+            data['cargo'],
+      );
+      _setIfPresent(
+        _birthDateController,
+        data['birth_date'] ?? data['fecha_nacimiento'],
+      );
+      _setIfPresent(
+        _nationalityController,
+        data['nationality'] ?? data['nacionalidad'],
+      );
+      _setIfPresent(
+        _licenseIssueDateController,
+        data['document_issue_date'] ??
+            data['issue_date'] ??
+            data['fecha_emision'],
+      );
+      _setIfPresent(
+        _licenseExpirationController,
+        data['document_expiration'] ??
+            data['expiration_date'] ??
+            data['fecha_vencimiento'],
+      );
+      _setIfPresent(
+        _issuingCountryController,
+        data['issuing_country'] ?? data['country'] ?? data['pais_emisor'],
+      );
+      _licenseStatusController.text = _documentStatus(
+        _licenseExpirationController.text,
+      );
+      _scanStatus = 'scanned';
+      _documentMessage =
+          'Escaneo completado. Revisa los datos detectados antes de continuar.';
+    });
+  }
+
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
     if (_passwordController.text != _passwordConfirmationController.text) {
       _showMessage('Las contrasenas no coinciden.');
       return;
@@ -183,7 +305,41 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         context.read<AuthProvider>().errorMessage ??
             'No fue posible crear la cuenta de sobrecargo.',
       );
+      return;
     }
+
+    final auth = context.read<AuthProvider>();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => MarketplaceHomeScreen(role: auth.role)),
+      (route) => false,
+    );
+  }
+
+  void _continueToAccess() {
+    if (!_formKey.currentState!.validate()) return;
+    if (_document == null) {
+      _showMessage('Sube la licencia de sobrecargo.');
+      return;
+    }
+    setState(() => _currentStep = 1);
+  }
+
+  void _generatePassword() {
+    const alphabet =
+        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#\$%*';
+    final random = Random.secure();
+    final password =
+        List.generate(
+          14,
+          (_) => alphabet[random.nextInt(alphabet.length)],
+        ).join();
+    setState(() {
+      _passwordController.text = password;
+      _passwordConfirmationController.text = password;
+      _passwordVisible = true;
+      _passwordConfirmationVisible = true;
+    });
+    _showMessage('Contrasena segura generada. Puedes editarla.');
   }
 
   @override
@@ -205,102 +361,173 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
             padding: const EdgeInsets.all(20),
             children: [
               const _CrewRegisterHero(),
-              const SizedBox(height: 22),
-              const _SectionLabel(
-                icon: Icons.person_pin_rounded,
-                title: 'Datos del usuario',
-              ),
-              _field(_nameController, 'Nombre completo'),
-              _field(
-                _emailController,
-                'Correo',
-                keyboard: TextInputType.emailAddress,
-              ),
-              _field(
-                _phoneController,
-                'Telefono',
-                keyboard: TextInputType.phone,
-              ),
-              _field(_baseController, 'Base operativa'),
-              _field(
-                _birthDateController,
-                'Fecha de nacimiento',
-                hint: 'AAAA-MM-DD',
-              ),
-              _field(_nationalityController, 'Nacionalidad del titular'),
-              const SizedBox(height: 14),
-              const _SectionLabel(
-                icon: Icons.workspace_premium_rounded,
-                title: 'Licencia de sobrecargo',
-              ),
-              _FileButton(
-                title: 'Licencia de sobrecargo',
-                value: _document?.path.split(Platform.pathSeparator).last,
-                loading: _readingDocument,
-                onTap: _pickDocument,
-              ),
-              if (_documentMessage.isNotEmpty) _HintText(_documentMessage),
-              const SizedBox(height: 10),
-              _field(_licenseTypeController, 'Tipo de documento'),
-              _field(_licenseController, 'Numero de licencia'),
-              _field(_licenseCategoryController, 'Categoria / cargo'),
-              _field(
-                _licenseIssueDateController,
-                'Fecha de emision',
-                hint: 'AAAA-MM-DD',
-              ),
-              _field(
-                _licenseExpirationController,
-                'Vigencia de licencia',
-                hint: 'AAAA-MM-DD',
-              ),
-              _field(_issuingCountryController, 'Pais emisor'),
-              _field(_licenseStatusController, 'Estado del documento'),
-              const SizedBox(height: 14),
-              const _SectionLabel(
-                icon: Icons.lock_outline_rounded,
-                title: 'Acceso',
-              ),
-              _field(
-                _passwordController,
-                'Contrasena',
-                obscure: true,
-                minLength: 8,
-              ),
-              _field(
-                _passwordConfirmationController,
-                'Confirmar contrasena',
-                obscure: true,
-                minLength: 8,
-              ),
               const SizedBox(height: 18),
-              FilledButton(
-                onPressed: auth.isLoading ? null : _submit,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  backgroundColor: const Color(0xFF0E2338),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+              _RegistrationProgress(currentStep: _currentStep),
+              const SizedBox(height: 22),
+              if (_currentStep == 0) ..._profileStep(),
+              if (_currentStep == 1) ..._accessStep(),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  if (_currentStep > 0) ...[
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            auth.isLoading
+                                ? null
+                                : () => setState(() => _currentStep = 0),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(56),
+                        ),
+                        child: const Text('Regresar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: FilledButton(
+                      onPressed:
+                          auth.isLoading
+                              ? null
+                              : (_currentStep == 0
+                                  ? _continueToAccess
+                                  : () {
+                                    if (_formKey.currentState!.validate()) {
+                                      _submit();
+                                    }
+                                  }),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        backgroundColor: const Color(0xFF0E2338),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child:
+                          auth.isLoading
+                              ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                              : Text(
+                                _currentStep == 0
+                                    ? 'Continuar'
+                                    : 'Crear cuenta',
+                              ),
+                    ),
                   ),
-                ),
-                child:
-                    auth.isLoading
-                        ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                        : const Text('Crear cuenta sobrecargo'),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  List<Widget> _profileStep() {
+    return [
+      const _SectionLabel(
+        icon: Icons.person_pin_rounded,
+        title: 'Datos del usuario',
+      ),
+      const _HintText(
+        'Captura tus datos, sube la licencia y revisa la informacion detectada.',
+      ),
+      _field(_nameController, 'Nombre completo'),
+      _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
+      _field(_baseController, 'Base operativa'),
+      _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
+      _field(_nationalityController, 'Nacionalidad del titular'),
+      const SizedBox(height: 14),
+      const _SectionLabel(
+        icon: Icons.workspace_premium_rounded,
+        title: 'Licencia de sobrecargo',
+      ),
+      _FileButton(
+        title:
+            _document == null
+                ? 'Subir licencia de sobrecargo'
+                : 'Cambiar licencia',
+        value: _document?.path.split(Platform.pathSeparator).last,
+        loading: _readingDocument,
+        onTap: _pickDocument,
+      ),
+      if (_documentMessage.isNotEmpty) _HintText(_documentMessage),
+      const SizedBox(height: 10),
+      _field(_licenseTypeController, 'Tipo de documento'),
+      _field(_licenseController, 'Numero de licencia'),
+      _field(_licenseCategoryController, 'Categoria / cargo'),
+      _field(
+        _licenseIssueDateController,
+        'Fecha de emision',
+        hint: 'AAAA-MM-DD',
+      ),
+      _field(
+        _licenseExpirationController,
+        'Vigencia de licencia',
+        hint: 'AAAA-MM-DD',
+        onChanged:
+            () =>
+                _licenseStatusController.text = _documentStatus(
+                  _licenseExpirationController.text,
+                ),
+      ),
+      _field(_issuingCountryController, 'Pais emisor'),
+      _field(
+        _licenseStatusController,
+        'Estado del documento',
+        requiredField: false,
+      ),
+    ];
+  }
+
+  List<Widget> _accessStep() {
+    return [
+      const _SectionLabel(
+        icon: Icons.lock_outline_rounded,
+        title: 'Correo / Contrasena',
+      ),
+      _field(_emailController, 'Correo', keyboard: TextInputType.emailAddress),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: _generatePassword,
+          icon: const Icon(Icons.password_rounded),
+          label: const Text('Generar contrasena'),
+        ),
+      ),
+      _field(
+        _passwordController,
+        'Contrasena',
+        obscure: !_passwordVisible,
+        minLength: 8,
+      ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Mostrar contrasena'),
+        value: _passwordVisible,
+        onChanged: (value) => setState(() => _passwordVisible = value),
+      ),
+      _field(
+        _passwordConfirmationController,
+        'Confirmar contrasena',
+        obscure: !_passwordConfirmationVisible,
+        minLength: 8,
+      ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Mostrar confirmacion'),
+        value: _passwordConfirmationVisible,
+        onChanged:
+            (value) => setState(() => _passwordConfirmationVisible = value),
+      ),
+    ];
   }
 
   Widget _field(
@@ -310,6 +537,8 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     bool obscure = false,
     int minLength = 1,
     TextInputType? keyboard,
+    bool requiredField = true,
+    VoidCallback? onChanged,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -317,6 +546,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         controller: controller,
         obscureText: obscure,
         keyboardType: keyboard,
+        onChanged: (_) => onChanged?.call(),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
@@ -339,6 +569,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         ),
         validator: (value) {
           final text = value?.trim() ?? '';
+          if (!requiredField) return null;
           if (text.length < minLength) return 'Completa $label.';
           return null;
         },
@@ -399,6 +630,66 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                   : '${word[0].toUpperCase()}${word.substring(1)}',
         )
         .join(' ');
+  }
+
+  Map<String, dynamic> _map(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
+  void _setIfPresent(TextEditingController controller, dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) controller.text = text;
+  }
+}
+
+enum _DocumentImageSource { camera, files }
+
+class _RegistrationProgress extends StatelessWidget {
+  const _RegistrationProgress({required this.currentStep});
+
+  final int currentStep;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = ['Perfil / Licencia', 'Correo / Contrasena'];
+    return Row(
+      children: List.generate(labels.length, (index) {
+        final active = index <= currentStep;
+        return Expanded(
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundColor:
+                    active ? const Color(0xFFE0B86E) : const Color(0xFFD9E1E8),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: Color(0xFF07121D),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  labels[index],
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color:
+                        active
+                            ? const Color(0xFF0E2338)
+                            : const Color(0xFF7A8792),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
   }
 }
 

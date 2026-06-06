@@ -178,7 +178,7 @@ class _RoleOptionState extends State<_RoleOption> {
             child: Ink(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF102438),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: const Color(0xFFE0B86E)),
                 boxShadow: const [
@@ -212,24 +212,21 @@ class _RoleOptionState extends State<_RoleOption> {
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF0E2338),
+                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           widget.subtitle,
                           style: const TextStyle(
-                            color: Color(0xFF5F6975),
+                            color: Color(0xFFD8E2EA),
                             height: 1.35,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF7A5A18),
-                  ),
+                  const Icon(Icons.chevron_right_rounded, color: Colors.white),
                 ],
               ),
             ),

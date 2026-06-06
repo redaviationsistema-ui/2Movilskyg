@@ -120,6 +120,10 @@ class ApiClient {
     double? posePitch,
     double? poseRoll,
     bool? faceOccluded,
+    bool biometricImageSaved = false,
+    String biometricCapturedAt = '',
+    String biometricProvider = 'aws_rekognition',
+    String biometricTemplateType = 'selfie-photo',
     File? ineFront,
     File? ineBack,
     File? selfieBiometric,
@@ -155,12 +159,16 @@ class ApiClient {
         'face_detected': faceDetected ? '1' : '0',
         'face_match_score': '',
         'liveness_score': '',
-        'image_storage_score': selfieBiometric == null ? '0' : '100',
-        'biometric_image_saved': selfieBiometric == null ? '0' : '1',
+        'image_storage_score': biometricImageSaved ? '100' : '0',
+        'biometric_image_saved': biometricImageSaved ? '1' : '0',
         'biometric_captured_at':
-            selfieBiometric == null ? '' : DateTime.now().toIso8601String(),
-        'biometric_provider': 'mobile_mlkit',
-        'biometric_template_type': 'selfie-photo',
+            biometricCapturedAt.isEmpty
+                ? (selfieBiometric == null
+                    ? ''
+                    : DateTime.now().toIso8601String())
+                : biometricCapturedAt,
+        'biometric_provider': biometricProvider,
+        'biometric_template_type': biometricTemplateType,
         'biometric_version': 'v1',
         'faces_count': facesCount.toString(),
         'face_confidence': faceConfidence?.toString() ?? '',
@@ -233,6 +241,26 @@ class ApiClient {
         'license_document_status': documentStatus,
       },
       files: {if (documentFront != null) 'license_file': documentFront},
+    );
+  }
+
+  Future<Map<String, dynamic>> scanRegistrationDocument({
+    required File document,
+    String documentType = 'auto',
+    String mergeMode = 'safe_overwrite',
+  }) {
+    return postMultipart(
+      '/auth/ocr/scan-document',
+      fields: {'document_type': documentType, 'merge_mode': mergeMode},
+      files: {'documento': document},
+    );
+  }
+
+  Future<Map<String, dynamic>> validateBiometricSelfie(File selfie) {
+    return postMultipart(
+      '/public/biometric/detect-face',
+      fields: const {},
+      files: {'selfie': selfie},
     );
   }
 
@@ -572,6 +600,7 @@ class ApiClient {
           authenticated: authenticated,
         );
       } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
         lastError = error;
       }
     }
@@ -635,12 +664,14 @@ class ApiClient {
         _activeBackendIndex = index;
         return _decode(response, candidate);
       } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
         lastError = error;
       } catch (error) {
         lastError = error;
       }
     }
 
+    if (lastError is ApiException) throw lastError;
     throw ApiException(
       'No fue posible conectar con el backend configurado.',
       cause: lastError,
@@ -671,12 +702,14 @@ class ApiClient {
         _activeBackendIndex = index;
         return _decode(response, candidate);
       } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
         lastError = error;
       } catch (error) {
         lastError = error;
       }
     }
 
+    if (lastError is ApiException) throw lastError;
     throw ApiException(
       'No fue posible conectar con el backend configurado.',
       cause: lastError,
@@ -734,6 +767,11 @@ class ApiClient {
     };
   }
 
+  bool _shouldTryAlternative(ApiException error) {
+    final status = error.statusCode ?? 0;
+    return status == 0 || status == 404 || status == 405 || status >= 500;
+  }
+
   Map<String, dynamic> _decode(
     http.Response response,
     String candidateBaseUrl,
@@ -748,6 +786,7 @@ class ApiClient {
         decoded['message']?.toString() ??
             'Error HTTP ${response.statusCode} en $candidateBaseUrl',
         statusCode: response.statusCode,
+        payload: decoded,
       );
     }
 
@@ -772,8 +811,9 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
   final Object? cause;
+  final Map<String, dynamic>? payload;
 
-  const ApiException(this.message, {this.statusCode, this.cause});
+  const ApiException(this.message, {this.statusCode, this.cause, this.payload});
 
   @override
   String toString() => message;
