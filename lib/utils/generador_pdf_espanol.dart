@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import '../utils/calculadora_precio.dart';
 import '../utils/calculadora_cotizacion.dart';
@@ -15,8 +14,8 @@ class ReservationPdf {
   static final PdfColor _panel = PdfColor.fromInt(0xFFF8FAFC);
 
   static Future<Uint8List> generate(reservation) async {
-    final font = await PdfGoogleFonts.robotoRegular();
-    final bold = await PdfGoogleFonts.robotoBold();
+    final font = pw.Font.helvetica();
+    final bold = pw.Font.helveticaBold();
     final theme = pw.ThemeData.withFont(base: font, bold: bold);
     final pdf = pw.Document();
 

@@ -1,9 +1,6 @@
 import 'dart:io';
 
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:image/image.dart' as img;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:path_provider/path_provider.dart';
 
 class RegistrationOcrResult {
   const RegistrationOcrResult({
@@ -21,7 +18,6 @@ class RegistrationOcrService {
   RegistrationOcrService._();
 
   static Future<RegistrationOcrResult> scanIne(List<File> images) async {
-    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final scanner = MobileScannerController(
       formats: const [
         BarcodeFormat.pdf417,
@@ -30,32 +26,11 @@ class RegistrationOcrService {
         BarcodeFormat.aztec,
       ],
     );
-    final ocrParts = <String>[];
     final barcodeParts = <String>[];
 
     try {
       for (var index = 0; index < images.length; index++) {
         final source = images[index];
-        final variants = await _buildOcrVariants(source, index);
-        try {
-          for (final variant in variants) {
-            final recognized = await textRecognizer.processImage(
-              InputImage.fromFilePath(variant.path),
-            );
-            if (recognized.text.trim().isNotEmpty) {
-              ocrParts.add(recognized.text);
-            }
-          }
-        } finally {
-          for (final variant in variants.skip(1)) {
-            try {
-              await variant.delete();
-            } catch (_) {
-              // El sistema tambien limpia estos temporales.
-            }
-          }
-        }
-
         try {
           final capture = await scanner.analyzeImage(source.path);
           for (final barcode in capture?.barcodes ?? const <Barcode>[]) {
@@ -67,20 +42,14 @@ class RegistrationOcrService {
         }
       }
     } finally {
-      await textRecognizer.close();
       await scanner.dispose();
     }
 
-    final rawText = [...barcodeParts, ...ocrParts].join('\n\n');
+    final rawText = barcodeParts.join('\n\n');
     return RegistrationOcrResult(
       rawText: rawText,
       fields: _parseIne(rawText),
-      method:
-          barcodeParts.isNotEmpty && ocrParts.isNotEmpty
-              ? 'codigo+ocr'
-              : barcodeParts.isNotEmpty
-              ? 'codigo'
-              : 'ocr',
+      method: barcodeParts.isNotEmpty ? 'codigo' : 'sin_datos',
     );
   }
 
@@ -316,58 +285,5 @@ class RegistrationOcrService {
     final century =
         birthDate ? (shortYear > currentShortYear ? 1900 : 2000) : 2000;
     return '${century + shortYear}-${value.substring(2, 4)}-${value.substring(4, 6)}';
-  }
-
-  static Future<List<File>> _buildOcrVariants(
-    File source,
-    int imageIndex,
-  ) async {
-    final decoded = img.decodeImage(await source.readAsBytes());
-    if (decoded == null) return [source];
-
-    final directory = await getTemporaryDirectory();
-    final prefix =
-        '${directory.path}${Platform.pathSeparator}ine_${DateTime.now().microsecondsSinceEpoch}_$imageIndex';
-    final variants = <File>[source];
-    final scaled =
-        decoded.width < 2200
-            ? img.copyResize(decoded, width: 2200)
-            : img.Image.from(decoded);
-    final contrast = img.adjustColor(
-      img.grayscale(img.Image.from(scaled)),
-      contrast: 1.65,
-    );
-    variants.add(await _writeVariant('$prefix-contrast.jpg', contrast));
-
-    final threshold = img.Image.from(contrast);
-    for (final pixel in threshold) {
-      final value = pixel.r > 145 ? 255 : 0;
-      pixel
-        ..r = value
-        ..g = value
-        ..b = value;
-    }
-    variants.add(await _writeVariant('$prefix-threshold.jpg', threshold));
-
-    final lowerCrop = img.copyCrop(
-      scaled,
-      x: 0,
-      y: (scaled.height * 0.56).round(),
-      width: scaled.width,
-      height: (scaled.height * 0.44).round(),
-    );
-    variants.add(
-      await _writeVariant(
-        '$prefix-lower.jpg',
-        img.adjustColor(img.grayscale(lowerCrop), contrast: 1.7),
-      ),
-    );
-    return variants;
-  }
-
-  static Future<File> _writeVariant(String path, img.Image image) async {
-    final file = File(path);
-    await file.writeAsBytes(img.encodeJpg(image, quality: 94));
-    return file;
   }
 }

@@ -290,12 +290,7 @@ class _QuoteMatchCard extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            if (provider.isNotEmpty)
-              _DetailLine(label: 'Proveedor', value: provider),
-            if (reason.isNotEmpty)
-              _DetailLine(label: 'Disponibilidad', value: reason),
+            ),            
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
