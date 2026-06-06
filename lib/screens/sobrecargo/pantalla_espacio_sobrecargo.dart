@@ -45,6 +45,12 @@ class CrewWorkspaceScreen extends StatelessWidget {
           screen: CrewPortalScreen(initialTab: CrewPortalTab.calendar),
         ),
         RoleWorkspaceItem(
+          label: 'Mi disponibilidad',
+          shortLabel: 'Disponible',
+          icon: Icons.event_available_rounded,
+          screen: CrewPortalScreen(initialTab: CrewPortalTab.availability),
+        ),
+        RoleWorkspaceItem(
           label: 'Perfil vuelo',
           shortLabel: 'Perfil',
           icon: Icons.badge_rounded,
@@ -83,6 +89,7 @@ enum CrewPortalTab {
   dashboard,
   missions,
   calendar,
+  availability,
   profile,
   documents,
   incidents,
@@ -106,16 +113,21 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
   final List<CrewIncident> _incidents = [...CrewIncident.demo];
   final List<CrewDocument> _documents = [...CrewDocument.demo];
   final List<CrewBlock> _blocks = [];
+  final List<CrewAvailabilityRecord> _availability = [];
+  List<CrewAvailabilityStatus> _availabilityStatuses = [
+    ...CrewAvailabilityStatus.defaults,
+  ];
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _socketSubscription;
   bool _isLoading = false;
+  bool _availabilityLoading = false;
   String _syncMessage = 'Portal listo con datos locales.';
   DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _loadPortal();
+    _refreshPortal();
     _connectLiveAssignments();
   }
 
@@ -166,6 +178,40 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
     }
   }
 
+  Future<void> _refreshPortal() async {
+    await Future.wait([_loadPortal(), _loadAvailability(_selectedDate)]);
+  }
+
+  Future<void> _loadAvailability(DateTime focusedDay) async {
+    final from = DateTime(focusedDay.year, focusedDay.month);
+    final to = DateTime(focusedDay.year, focusedDay.month + 1, 0);
+    if (mounted) setState(() => _availabilityLoading = true);
+
+    try {
+      final data = await _api.getCrewAvailability(from: from, to: to);
+      final records = _asList(data['availability']);
+      final statuses = _asList(data['statuses']);
+      if (!mounted) return;
+      setState(() {
+        _availability
+          ..clear()
+          ..addAll(records.map(CrewAvailabilityRecord.fromJson));
+        if (statuses.isNotEmpty) {
+          _availabilityStatuses =
+              statuses.map(CrewAvailabilityStatus.fromJson).toList();
+        }
+      });
+    } catch (_) {
+      if (mounted && widget.initialTab == CrewPortalTab.availability) {
+        setState(() {
+          _syncMessage = 'No se pudo cargar la disponibilidad del servidor.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _availabilityLoading = false);
+    }
+  }
+
   void _connectLiveAssignments() {
     try {
       final uri = Uri.parse(
@@ -197,7 +243,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
           'Misiones, disponibilidad, documentos, incidencias y contexto operativo.',
       roleLabel: 'Sobrecargo',
       body: RefreshIndicator(
-        onRefresh: _loadPortal,
+        onRefresh: _refreshPortal,
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
@@ -218,6 +264,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
         return 'Misiones activas';
       case CrewPortalTab.calendar:
         return 'Operacion del dia';
+      case CrewPortalTab.availability:
+        return 'Mi disponibilidad';
       case CrewPortalTab.profile:
         return 'Perfil de vuelo';
       case CrewPortalTab.documents:
@@ -253,6 +301,18 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
           blocks: _blocks,
           onDateSelected: (date) => setState(() => _selectedDate = date),
           onBlock: _createAvailabilityBlock,
+        );
+      case CrewPortalTab.availability:
+        return _AvailabilityView(
+          selectedDate: _selectedDate,
+          assignments: _assignments,
+          records: _availability,
+          statuses: _availabilityStatuses,
+          isLoading: _availabilityLoading,
+          onDateSelected: (date) => setState(() => _selectedDate = date),
+          onMonthChanged: _loadAvailability,
+          onSave: _saveAvailability,
+          onRequestChange: _requestAvailabilityChange,
         );
       case CrewPortalTab.profile:
         return const _ProfileView();
@@ -350,6 +410,40 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
     } catch (_) {
       setState(() => _syncMessage = 'Bloqueo guardado localmente.');
     }
+  }
+
+  Future<void> _saveAvailability(
+    DateTime date,
+    String statusKey,
+    String comment,
+  ) async {
+    setState(() => _syncMessage = 'Guardando disponibilidad...');
+    try {
+      await _api.saveCrewAvailabilityDay(
+        date: date,
+        statusKey: statusKey,
+        comment: comment,
+      );
+      await _loadAvailability(date);
+      if (mounted) {
+        setState(() => _syncMessage = 'Disponibilidad sincronizada con admin.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _syncMessage = 'No se pudo guardar la disponibilidad.');
+      }
+    }
+  }
+
+  Future<void> _requestAvailabilityChange(DateTime date) async {
+    final reason = await _TextDialog.show(
+      context,
+      title: 'Solicitar cambio',
+      label: 'Motivo de la solicitud',
+      initial: 'Solicito revision de la operacion asignada',
+    );
+    if (reason == null || reason.trim().isEmpty) return;
+    await _saveAvailability(date, 'BLOQUEO_SOLICITADO', reason.trim());
   }
 
   Future<void> _uploadDocument() async {

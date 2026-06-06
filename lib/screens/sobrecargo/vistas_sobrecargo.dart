@@ -251,6 +251,391 @@ class _CalendarView extends StatelessWidget {
   }
 }
 
+class _AvailabilityView extends StatefulWidget {
+  const _AvailabilityView({
+    required this.selectedDate,
+    required this.assignments,
+    required this.records,
+    required this.statuses,
+    required this.isLoading,
+    required this.onDateSelected,
+    required this.onMonthChanged,
+    required this.onSave,
+    required this.onRequestChange,
+  });
+
+  final DateTime selectedDate;
+  final List<CrewAssignment> assignments;
+  final List<CrewAvailabilityRecord> records;
+  final List<CrewAvailabilityStatus> statuses;
+  final bool isLoading;
+  final ValueChanged<DateTime> onDateSelected;
+  final ValueChanged<DateTime> onMonthChanged;
+  final Future<void> Function(DateTime, String, String) onSave;
+  final Future<void> Function(DateTime) onRequestChange;
+
+  @override
+  State<_AvailabilityView> createState() => _AvailabilityViewState();
+}
+
+class _AvailabilityViewState extends State<_AvailabilityView> {
+  late final TextEditingController _commentController;
+  String _selectedStatus = 'DISPONIBLE';
+
+  @override
+  void initState() {
+    super.initState();
+    _commentController = TextEditingController();
+    _syncEditor();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AvailabilityView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldRecord = _recordFor(oldWidget.records, oldWidget.selectedDate);
+    final newRecord = _selectedRecord;
+    if (!isSameDay(oldWidget.selectedDate, widget.selectedDate) ||
+        oldRecord?.statusKey != newRecord?.statusKey ||
+        oldRecord?.comment != newRecord?.comment) {
+      _syncEditor();
+    }
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  CrewAvailabilityRecord? get _selectedRecord =>
+      _recordFor(widget.records, widget.selectedDate);
+
+  CrewAvailabilityRecord? _recordFor(
+    List<CrewAvailabilityRecord> records,
+    DateTime day,
+  ) {
+    for (final record in records) {
+      if (isSameDay(record.date, day)) return record;
+    }
+    return null;
+  }
+
+  void _syncEditor() {
+    final record = _selectedRecord;
+    final selectableKeys = widget.statuses.map((item) => item.key).toSet();
+    final candidate = record?.statusKey ?? 'DISPONIBLE';
+    _selectedStatus =
+        selectableKeys.contains(candidate)
+            ? candidate
+            : (widget.statuses.isEmpty
+                ? 'DISPONIBLE'
+                : widget.statuses.first.key);
+    _commentController.text = record?.comment ?? '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedRecord = _selectedRecord;
+    final operation = _operationFor(widget.selectedDate);
+    final locked = selectedRecord?.isOperation == true;
+    final activity =
+        widget.records
+            .where(
+              (item) =>
+                  item.isStored &&
+                  item.statusKey != 'POR_CONFIRMAR' &&
+                  item.statusKey != 'EN_OPERACION',
+            )
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _OperationalStrip(
+          title: 'Calendario mensual',
+          subtitle:
+              'Marca tus dias disponibles, descanso o restricciones para que admin pueda planear operaciones.',
+          status: widget.isLoading ? 'Actualizando...' : 'Sincronizado',
+        ),
+        const SizedBox(height: 14),
+        _availabilitySummary(),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: _panelDecoration(),
+          child: TableCalendar<CrewAvailabilityRecord>(
+            locale: 'es_MX',
+            firstDay: DateTime.now().subtract(const Duration(days: 365)),
+            lastDay: DateTime.now().add(const Duration(days: 730)),
+            focusedDay: widget.selectedDate,
+            selectedDayPredicate: (day) => isSameDay(day, widget.selectedDate),
+            onDaySelected: (selected, _) => widget.onDateSelected(selected),
+            onPageChanged: widget.onMonthChanged,
+            eventLoader: (day) {
+              final record = _recordFor(widget.records, day);
+              return record == null ? [] : [record];
+            },
+            calendarBuilders: CalendarBuilders(
+              defaultBuilder:
+                  (context, day, focusedDay) => _dayCell(day, false),
+              todayBuilder: (context, day, focusedDay) => _dayCell(day, false),
+              selectedBuilder:
+                  (context, day, focusedDay) => _dayCell(day, true),
+              markerBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+            headerStyle: const HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (locked)
+          _operationEditor(operation, selectedRecord)
+        else
+          _availabilityEditor(selectedRecord),
+        if (activity.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text(
+            'Actividad reciente',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          ...activity
+              .take(6)
+              .map(
+                (item) => _InfoTile(
+                  icon: Icons.history_rounded,
+                  title: '${_dateLabel(item.date)} | ${item.label}',
+                  subtitle:
+                      item.comment.isEmpty
+                          ? 'Actualizado desde ${item.origin.toLowerCase()}.'
+                          : item.comment,
+                ),
+              ),
+        ],
+      ],
+    );
+  }
+
+  Widget _availabilitySummary() {
+    final keys = [
+      'DISPONIBLE',
+      'DESCANSO',
+      'NO_DISPONIBLE',
+      'BLOQUEO_SOLICITADO',
+    ];
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children:
+          keys.map((key) {
+            final status = _statusFor(key);
+            final count =
+                widget.records.where((item) => item.statusKey == key).length;
+            return Container(
+              width: 155,
+              padding: const EdgeInsets.all(13),
+              decoration: _panelDecoration(),
+              child: Row(
+                children: [
+                  CircleAvatar(radius: 7, backgroundColor: status.color),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$count dias',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          status.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF5F6975),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+    );
+  }
+
+  Widget _dayCell(DateTime day, bool selected) {
+    final record = _recordFor(widget.records, day);
+    final color = record?.color ?? const Color(0xFFE2E8F0);
+    return Center(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: selected ? 1 : 0.18),
+          shape: BoxShape.circle,
+          border:
+              selected
+                  ? Border.all(color: const Color(0xFF0E2338), width: 2)
+                  : null,
+        ),
+        child: Text(
+          '${day.day}',
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF15293A),
+            fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _availabilityEditor(CrewAvailabilityRecord? record) {
+    final selectable =
+        widget.statuses.where((item) => item.selectable).toList();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Disponibilidad del ${_dateLabel(widget.selectedDate)}',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            record?.label ?? 'Sin estado registrado',
+            style: TextStyle(
+              color: record?.color ?? const Color(0xFF5F6975),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                selectable.map((status) {
+                  return ChoiceChip(
+                    selected: _selectedStatus == status.key,
+                    label: Text(status.label),
+                    avatar: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: status.color,
+                    ),
+                    onSelected:
+                        (_) => setState(() => _selectedStatus = status.key),
+                  );
+                }).toList(),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _commentController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Comentario o motivo',
+              hintText: 'Agrega contexto para operaciones',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  widget.isLoading
+                      ? null
+                      : () => widget.onSave(
+                        widget.selectedDate,
+                        _selectedStatus,
+                        _commentController.text.trim(),
+                      ),
+              icon: const Icon(Icons.save_rounded),
+              label: const Text('Guardar disponibilidad'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _operationEditor(
+    CrewAssignment? operation,
+    CrewAvailabilityRecord? record,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration().copyWith(
+        border: Border.all(color: const Color(0xFF93C5FD)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dia asignado a operacion',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            operation == null
+                ? record?.comment ?? 'La operacion fue asignada por admin.'
+                : '${operation.code} | ${operation.route} | ${operation.showTime}',
+            style: const TextStyle(color: Color(0xFF41566A), height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed:
+                widget.isLoading
+                    ? null
+                    : () => widget.onRequestChange(widget.selectedDate),
+            icon: const Icon(Icons.edit_calendar_rounded),
+            label: const Text('Solicitar cambio'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  CrewAssignment? _operationFor(DateTime day) {
+    for (final assignment in widget.assignments) {
+      if (isSameDay(assignment.date, day) &&
+          !assignment.status.toLowerCase().contains('rechaz')) {
+        return assignment;
+      }
+    }
+    return null;
+  }
+
+  CrewAvailabilityStatus _statusFor(String key) {
+    for (final status in widget.statuses) {
+      if (status.key == key) return status;
+    }
+    for (final status in CrewAvailabilityStatus.defaults) {
+      if (status.key == key) return status;
+    }
+    return CrewAvailabilityStatus(
+      key: key,
+      label: key.replaceAll('_', ' '),
+      description: '',
+      color: const Color(0xFF94A3B8),
+    );
+  }
+
+  String _dateLabel(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
+  }
+}
+
 class _ProfileView extends StatelessWidget {
   const _ProfileView();
 

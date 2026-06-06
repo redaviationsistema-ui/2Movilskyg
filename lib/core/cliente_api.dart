@@ -493,17 +493,58 @@ class ApiClient {
     required DateTime endsAt,
     required String reason,
   }) {
-    return postFirstAvailable(
-      const [
-        '/crew/availability/blocks',
-        '/sobrecargo/disponibilidad/bloqueos',
-      ],
+    return saveCrewAvailabilityDay(
+      date: startsAt,
+      statusKey: 'BLOQUEO_SOLICITADO',
+      comment: reason,
+    );
+  }
+
+  Future<Map<String, dynamic>> getCrewAvailability({
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return get(
+      '/sobrecargo/availability',
+      authenticated: true,
+      query: {'from': _apiDate(from), 'to': _apiDate(to)},
+    );
+  }
+
+  Future<Map<String, dynamic>> getCrewAvailabilityStatuses() {
+    return get('/sobrecargo/availability/statuses', authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> saveCrewAvailabilityDay({
+    required DateTime date,
+    required String statusKey,
+    String comment = '',
+    String base = '',
+    String coverage = '',
+  }) {
+    final normalizedStatus = statusKey.trim().toUpperCase();
+    return post(
+      '/sobrecargo/availability',
       authenticated: true,
       body: {
-        'starts_at': startsAt.toIso8601String(),
-        'ends_at': endsAt.toIso8601String(),
-        'reason': reason,
+        'fecha': _apiDate(date),
+        'from': _apiDate(date),
+        'to': _apiDate(date),
+        'status_key': normalizedStatus,
+        'clave': normalizedStatus,
+        'motivo': comment.trim(),
+        'comentario': comment.trim(),
+        'notes': comment.trim(),
+        if (base.trim().isNotEmpty) 'base': base.trim(),
+        if (coverage.trim().isNotEmpty) 'coverage': coverage.trim(),
       },
+    );
+  }
+
+  Future<Map<String, dynamic>> deleteCrewAvailability(String availabilityId) {
+    return delete(
+      '/sobrecargo/availability/$availabilityId',
+      authenticated: true,
     );
   }
 
@@ -543,6 +584,12 @@ class ApiClient {
     return normalized.length > maxLength
         ? normalized.substring(0, maxLength)
         : normalized;
+  }
+
+  String _apiDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
   }
 
   Future<Map<String, dynamic>> getFirstAvailable(
@@ -633,6 +680,13 @@ class ApiClient {
       authenticated: authenticated,
       body: body,
     );
+  }
+
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    bool authenticated = false,
+  }) async {
+    return _request(path, method: 'DELETE', authenticated: authenticated);
   }
 
   Future<Map<String, dynamic>> postMultipart(
@@ -732,6 +786,11 @@ class ApiClient {
           uri,
           headers: _headers(authenticated: authenticated),
           body: jsonEncode(body ?? {}),
+        );
+      case 'DELETE':
+        return http.delete(
+          uri,
+          headers: _headers(authenticated: authenticated),
         );
       default:
         return http.get(uri, headers: _headers(authenticated: authenticated));

@@ -175,3 +175,120 @@ class CrewBlock {
   final DateTime date;
   final String reason;
 }
+
+class CrewAvailabilityStatus {
+  const CrewAvailabilityStatus({
+    required this.key,
+    required this.label,
+    required this.description,
+    required this.color,
+    this.selectable = true,
+  });
+
+  final String key;
+  final String label;
+  final String description;
+  final Color color;
+  final bool selectable;
+
+  factory CrewAvailabilityStatus.fromJson(Map<String, dynamic> json) {
+    return CrewAvailabilityStatus(
+      key:
+          json['clave']?.toString().toUpperCase() ??
+          json['status_key']?.toString().toUpperCase() ??
+          'POR_CONFIRMAR',
+      label:
+          json['nombre']?.toString() ??
+          json['state']?.toString() ??
+          'Por confirmar',
+      description: json['descripcion']?.toString() ?? '',
+      color: _availabilityColor(json['color']?.toString()),
+      selectable: json['seleccionable_sobrecargo'] != false,
+    );
+  }
+
+  static const defaults = [
+    CrewAvailabilityStatus(
+      key: 'DISPONIBLE',
+      label: 'Disponible',
+      description: 'Disponible para asignaciones.',
+      color: Color(0xFF22C55E),
+    ),
+    CrewAvailabilityStatus(
+      key: 'DESCANSO',
+      label: 'Descanso',
+      description: 'Dia reservado para descanso.',
+      color: Color(0xFF64748B),
+    ),
+    CrewAvailabilityStatus(
+      key: 'NO_DISPONIBLE',
+      label: 'No disponible',
+      description: 'No aceptar asignaciones.',
+      color: Color(0xFFEF4444),
+    ),
+    CrewAvailabilityStatus(
+      key: 'BLOQUEO_SOLICITADO',
+      label: 'Bloqueo solicitado',
+      description: 'Solicitud pendiente de revision.',
+      color: Color(0xFFEAB308),
+    ),
+  ];
+}
+
+class CrewAvailabilityRecord {
+  const CrewAvailabilityRecord({
+    required this.id,
+    required this.date,
+    required this.statusKey,
+    required this.label,
+    required this.color,
+    required this.comment,
+    required this.origin,
+    required this.operationId,
+  });
+
+  final String id;
+  final DateTime date;
+  final String statusKey;
+  final String label;
+  final Color color;
+  final String comment;
+  final String origin;
+  final String operationId;
+
+  bool get isStored => id.isNotEmpty;
+  bool get isOperation => statusKey == 'EN_OPERACION' || operationId.isNotEmpty;
+
+  factory CrewAvailabilityRecord.fromJson(Map<String, dynamic> json) {
+    return CrewAvailabilityRecord(
+      id: json['id']?.toString() ?? '',
+      date:
+          DateTime.tryParse(
+            json['fecha']?.toString() ?? json['from']?.toString() ?? '',
+          ) ??
+          DateTime.now(),
+      statusKey:
+          json['clave']?.toString().toUpperCase() ??
+          json['status']?.toString().toUpperCase() ??
+          'POR_CONFIRMAR',
+      label:
+          json['nombre']?.toString() ??
+          json['state']?.toString() ??
+          'Por confirmar',
+      color: _availabilityColor(json['color']?.toString()),
+      comment:
+          json['comentario']?.toString() ?? json['motivo']?.toString() ?? '',
+      origin: json['origen']?.toString() ?? 'SISTEMA',
+      operationId: json['operacion_id']?.toString() ?? '',
+    );
+  }
+}
+
+Color _availabilityColor(String? value) {
+  final normalized = (value ?? '').replaceAll('#', '').trim();
+  if (normalized.length == 6) {
+    final parsed = int.tryParse('FF$normalized', radix: 16);
+    if (parsed != null) return Color(parsed);
+  }
+  return const Color(0xFFC7A253);
+}
