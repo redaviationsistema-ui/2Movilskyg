@@ -146,25 +146,67 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
 
     try {
       final data = await _api.getCrewPortal();
-      final assignments = _asList(data['assignments'] ?? data['misiones']);
-      final incidents = _asList(data['incidents'] ?? data['incidencias']);
-      final documents = _asList(data['documents'] ?? data['documentos']);
+      final source = _payloadSource(data);
+      final assignments = _pickList(source, const [
+        'assignments',
+        'misiones',
+        'missions',
+        'crew_assignments',
+        'asignaciones',
+      ]);
+      final incidents = _pickList(source, const [
+        'incidents',
+        'incidencias',
+        'incidentes',
+      ]);
+      final documents = _pickList(source, const [
+        'documents',
+        'documentos',
+        'files',
+        'expediente',
+      ]);
+      final availability = _pickList(source, const [
+        'availability',
+        'disponibilidad',
+        'calendar',
+        'calendario',
+      ]);
 
       setState(() {
-        if (assignments.isNotEmpty) {
+        if (_hasAnyKey(source, const [
+          'assignments',
+          'misiones',
+          'missions',
+          'crew_assignments',
+          'asignaciones',
+        ])) {
           _assignments
             ..clear()
             ..addAll(assignments.map(CrewAssignment.fromJson));
         }
-        if (incidents.isNotEmpty) {
+        if (_hasAnyKey(source, const [
+          'incidents',
+          'incidencias',
+          'incidentes',
+        ])) {
           _incidents
             ..clear()
             ..addAll(incidents.map(CrewIncident.fromJson));
         }
-        if (documents.isNotEmpty) {
+        if (_hasAnyKey(source, const [
+          'documents',
+          'documentos',
+          'files',
+          'expediente',
+        ])) {
           _documents
             ..clear()
             ..addAll(documents.map(CrewDocument.fromJson));
+        }
+        if (availability.isNotEmpty) {
+          _availability
+            ..clear()
+            ..addAll(_expandAvailabilityRecords(availability));
         }
         _syncMessage = 'Sincronizado con admin.';
       });
@@ -189,13 +231,25 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
 
     try {
       final data = await _api.getCrewAvailability(from: from, to: to);
-      final records = _asList(data['availability']);
-      final statuses = _asList(data['statuses']);
+      final source = _payloadSource(data);
+      final records = _pickList(source, const [
+        'availability',
+        'disponibilidad',
+        'calendar',
+        'calendario',
+        'items',
+      ]);
+      final statuses = _pickList(source, const [
+        'statuses',
+        'estatuses',
+        'catalog',
+        'catalogo',
+      ]);
       if (!mounted) return;
       setState(() {
         _availability
           ..clear()
-          ..addAll(records.map(CrewAvailabilityRecord.fromJson));
+          ..addAll(_expandAvailabilityRecords(records));
         if (statuses.isNotEmpty) {
           _availabilityStatuses =
               statuses.map(CrewAvailabilityStatus.fromJson).toList();
@@ -222,6 +276,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
         (_) {
           if (mounted) {
             setState(() => _syncMessage = 'Asignaciones actualizadas en vivo.');
+            unawaited(_refreshPortal());
           }
         },
         onError: (_) {
@@ -291,8 +346,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
       case CrewPortalTab.missions:
         return _MissionList(
           assignments: _assignments,
-          onAccept: (item) => _respondAssignment(item, 'accepted'),
+          onAccept: (item) => _respondAssignment(item, 'Confirmado'),
           onReject: _rejectAssignment,
+          onRequestChange: _requestAssignmentChange,
+          onAdvance: _advanceAssignmentStep,
         );
       case CrewPortalTab.calendar:
         return _CalendarView(
@@ -334,11 +391,15 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
   Future<void> _respondAssignment(CrewAssignment item, String status) async {
     final oldStatus = item.status;
     setState(() {
-      item.status = status == 'accepted' ? 'Aceptada' : 'Rechazada';
+      item.status = CrewAssignment.normalizeStatus(status);
       _syncMessage = 'Enviando respuesta a admin...';
     });
     try {
-      await _api.respondCrewAssignment(assignmentId: item.id, status: status);
+      await _api.respondCrewAssignment(
+        assignmentId: item.backendId,
+        status: status,
+      );
+      await _loadPortal();
       setState(() => _syncMessage = 'Admin actualizado.');
     } catch (_) {
       setState(() {
@@ -365,15 +426,73 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
     });
     try {
       await _api.respondCrewAssignment(
-        assignmentId: item.id,
-        status: 'rejected',
+        assignmentId: item.backendId,
+        status: 'Rechazado',
         reason: reason.trim(),
       );
+      await _loadPortal();
       setState(() => _syncMessage = 'Rechazo sincronizado con admin.');
     } catch (_) {
       setState(() {
         item.status = oldStatus;
         _syncMessage = 'No se pudo sincronizar el rechazo.';
+      });
+    }
+  }
+
+  Future<void> _requestAssignmentChange(CrewAssignment item) async {
+    final reason = await _TextDialog.show(
+      context,
+      title: 'Solicitar revision',
+      label: 'Comentario para operaciones',
+      initial: 'Solicito revision de horario, ruta o condicion operativa',
+    );
+    if (reason == null || reason.trim().isEmpty) return;
+
+    final oldStatus = item.status;
+    setState(() {
+      item.status = 'Solicitar revision';
+      item.rejectReason = reason.trim();
+      _syncMessage = 'Solicitando revision a admin...';
+    });
+    try {
+      await _api.respondCrewAssignment(
+        assignmentId: item.backendId,
+        status: 'Solicitar revision',
+        reason: reason.trim(),
+      );
+      await _loadPortal();
+      setState(() => _syncMessage = 'Revision enviada a admin.');
+    } catch (_) {
+      setState(() {
+        item.status = oldStatus;
+        _syncMessage = 'No se pudo solicitar la revision.';
+      });
+    }
+  }
+
+  Future<void> _advanceAssignmentStep(
+    CrewAssignment item,
+    CrewMissionAction action,
+  ) async {
+    final oldStatus = item.status;
+    setState(() {
+      item.status = action.nextStatus;
+      _syncMessage = 'Actualizando ${action.label.toLowerCase()}...';
+    });
+
+    try {
+      await _api.updateCrewOperationStep(
+        assignmentId: item.backendId,
+        step: action.step,
+        note: action.note,
+      );
+      await _loadPortal();
+      setState(() => _syncMessage = '${action.label} sincronizado.');
+    } catch (_) {
+      setState(() {
+        item.status = oldStatus;
+        _syncMessage = 'No se pudo avanzar el flujo operativo.';
       });
     }
   }
@@ -424,6 +543,15 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
         statusKey: statusKey,
         comment: comment,
       );
+      try {
+        await _api.auditCrewAvailabilityDay(
+          date: date,
+          statusKey: statusKey,
+          comment: comment,
+        );
+      } catch (_) {
+        // La auditoria es best-effort como en web; el guardado principal manda.
+      }
       await _loadAvailability(date);
       if (mounted) {
         setState(() => _syncMessage = 'Disponibilidad sincronizada con admin.');
@@ -494,7 +622,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
     });
     try {
       await _api.createCrewIncident(
-        assignmentId: assignment.id,
+        assignmentId: assignment.backendId,
         title: incident.title,
         description: description.trim(),
         evidence: evidence,
@@ -526,10 +654,79 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
   }
 
   List<Map<String, dynamic>> _asList(dynamic value) {
+    if (value is Map && value['data'] is List) {
+      return _asList(value['data']);
+    }
     if (value is! List) return [];
-    return value
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    return value.whereType<Map>().map((item) {
+      return Map<String, dynamic>.from(item);
+    }).toList();
+  }
+
+  Map<String, dynamic> _payloadSource(Map<String, dynamic> data) {
+    final nested = data['data'];
+    if (nested is Map) return Map<String, dynamic>.from(nested);
+    return data;
+  }
+
+  List<Map<String, dynamic>> _pickList(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final items = _asList(source[key]);
+      if (items.isNotEmpty || source.containsKey(key)) return items;
+    }
+    if (source['data'] is List) return _asList(source['data']);
+    return const [];
+  }
+
+  bool _hasAnyKey(Map<String, dynamic> source, List<String> keys) {
+    return keys.any(source.containsKey);
+  }
+
+  List<CrewAvailabilityRecord> _expandAvailabilityRecords(
+    List<Map<String, dynamic>> records,
+  ) {
+    final expanded = <CrewAvailabilityRecord>[];
+    for (final record in records) {
+      final start =
+          DateTime.tryParse(
+            _firstString([
+                  record['fecha'],
+                  record['from'],
+                  record['date'],
+                  record['starts_at'],
+                  record['start_datetime'],
+                ]) ??
+                '',
+          ) ??
+          DateTime.now();
+      final end =
+          DateTime.tryParse(
+            _firstString([
+                  record['to'],
+                  record['ends_at'],
+                  record['end_datetime'],
+                  record['fecha'],
+                  record['from'],
+                  record['date'],
+                ]) ??
+                '',
+          ) ??
+          start;
+      final last = DateTime(end.year, end.month, end.day);
+      var cursor = DateTime(start.year, start.month, start.day);
+      while (!cursor.isAfter(last)) {
+        expanded.add(
+          CrewAvailabilityRecord.fromJson({
+            ...record,
+            'fecha': cursor.toIso8601String(),
+          }),
+        );
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+    return expanded;
   }
 }

@@ -150,31 +150,60 @@ class _MissionList extends StatelessWidget {
     required this.assignments,
     required this.onAccept,
     required this.onReject,
+    required this.onRequestChange,
+    required this.onAdvance,
   });
 
   final List<CrewAssignment> assignments;
   final ValueChanged<CrewAssignment> onAccept;
   final ValueChanged<CrewAssignment> onReject;
+  final ValueChanged<CrewAssignment> onRequestChange;
+  final void Function(CrewAssignment, CrewMissionAction) onAdvance;
 
   @override
   Widget build(BuildContext context) {
+    if (assignments.isEmpty) {
+      return const _InfoTile(
+        icon: Icons.assignment_turned_in_rounded,
+        title: 'Sin misiones asignadas',
+        subtitle: 'Cuando admin publique una operacion aparecera aqui.',
+      );
+    }
+
     return Column(
       children:
           assignments.map((item) {
+            final nextAction = item.nextAction;
             return _AssignmentCard(
               item: item,
-              actions: [
-                OutlinedButton.icon(
-                  onPressed: () => onReject(item),
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Rechazar'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => onAccept(item),
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('Confirmar'),
-                ),
-              ],
+              actions:
+                  item.canRespondToAssignment
+                      ? [
+                        OutlinedButton.icon(
+                          onPressed: () => onReject(item),
+                          icon: const Icon(Icons.close_rounded),
+                          label: const Text('Rechazar'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => onRequestChange(item),
+                          icon: const Icon(Icons.edit_note_rounded),
+                          label: const Text('Revision'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () => onAccept(item),
+                          icon: const Icon(Icons.check_rounded),
+                          label: const Text('Confirmar'),
+                        ),
+                      ]
+                      : nextAction == null
+                      ? const []
+                      : [
+                        FilledButton.icon(
+                          onPressed: () => onAdvance(item, nextAction),
+                          icon: Icon(nextAction.icon),
+                          label: Text(nextAction.label),
+                        ),
+                      ],
             );
           }).toList(),
     );
@@ -711,10 +740,14 @@ class _IncidentsView extends StatelessWidget {
       children: [
         _ActionCard(
           title: 'Crear incidencia operativa',
-          subtitle: 'Registra retrasos, catering, documento, FBO o servicio.',
+          subtitle:
+              assignments.isEmpty
+                  ? 'Necesitas una mision asignada para levantar incidencia.'
+                  : 'Registra retrasos, catering, documento, FBO o servicio.',
           icon: Icons.add_alert_rounded,
           button: 'Nueva incidencia',
-          onPressed: () => onCreate(assignments.first),
+          onPressed:
+              assignments.isEmpty ? () {} : () => onCreate(assignments.first),
         ),
         const SizedBox(height: 14),
         ...incidents.map(

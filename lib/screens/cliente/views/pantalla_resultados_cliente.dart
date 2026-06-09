@@ -122,14 +122,12 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     try {
       final response = await reservation.createFlightRequestForMatch(quote);
+      final createdId = reservation.createdFlightRequestIdFromResponse(
+        response,
+      );
       await reservation.loadClientWorkspaceData(force: true);
+      reservation.rememberCreatedFlightRequest(response);
       if (!mounted) return;
-
-      final createdId =
-          response['flight_request']?['id']?.toString() ??
-          response['data']?['id']?.toString() ??
-          response['data']?['flight_request']?['id']?.toString() ??
-          response['id']?.toString();
 
       reservation.resetForm();
 
@@ -261,6 +259,7 @@ class _QuoteMatchCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         [
+                          if (provider.isNotEmpty) provider,
                           if (cabin.isNotEmpty) cabin,
                           if (capacity.isNotEmpty) '$capacity pasajeros',
                         ].join(' | '),
@@ -278,6 +277,20 @@ class _QuoteMatchCard extends StatelessWidget {
                 if (isSelected) const Icon(Icons.check_circle_rounded),
               ],
             ),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                reason,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF666666),
+                  fontSize: 13,
+                  height: 1.25,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -290,7 +303,7 @@ class _QuoteMatchCard extends StatelessWidget {
                   ),
                 ),
               ],
-            ),            
+            ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -363,48 +376,6 @@ class _MetricBox extends StatelessWidget {
               color: Color(0xFF050505),
               fontSize: 15,
               fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 104,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF666666),
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Color(0xFF111111),
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                height: 1.25,
-              ),
             ),
           ),
         ],

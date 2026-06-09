@@ -26,84 +26,86 @@ Future<void> showWorkflowRecordDetail(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     showDragHandle: true,
     builder: (context) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              record.title,
-              style: const TextStyle(
-                color: Color(0xFF10253A),
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
+      return SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                record.title,
+                style: const TextStyle(
+                  color: Color(0xFF10253A),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              record.subtitle,
-              style: const TextStyle(color: Color(0xFF607080), height: 1.35),
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _DetailChip(label: record.status),
-                _DetailChip(label: record.amount),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    onAdvance();
-                  },
-                  icon: const Icon(Icons.trending_up_rounded),
-                  label: const Text('Avanzar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    await onEdit();
-                  },
-                  icon: const Icon(Icons.edit_rounded),
-                  label: const Text('Editar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    onActivate();
-                  },
-                  icon: const Icon(Icons.check_circle_rounded),
-                  label: const Text('Activar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    onBlock();
-                  },
-                  icon: const Icon(Icons.block_rounded),
-                  label: const Text('Bloquear'),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    onDelete();
-                  },
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('Eliminar'),
-                ),
-              ],
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                record.subtitle,
+                style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _DetailChip(label: record.status),
+                  _DetailChip(label: record.amount),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onAdvance();
+                    },
+                    icon: const Icon(Icons.trending_up_rounded),
+                    label: const Text('Avanzar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await onEdit();
+                    },
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text('Editar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onActivate();
+                    },
+                    icon: const Icon(Icons.check_circle_rounded),
+                    label: const Text('Activar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onBlock();
+                    },
+                    icon: const Icon(Icons.block_rounded),
+                    label: const Text('Bloquear'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onDelete();
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Eliminar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       );
     },
@@ -320,119 +322,120 @@ class _AgendaWorkflowSheetState extends State<_AgendaWorkflowSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Actualizar agenda',
-            style: TextStyle(
-              color: Color(0xFF10253A),
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.aircraft == null
-                ? 'Crea un bloqueo, liberacion o mantenimiento.'
-                : 'Agenda para ${widget.aircraft}.',
-            style: const TextStyle(color: Color(0xFF607080), height: 1.35),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 8,
-            children:
-                ['Bloquear', 'Liberar', 'Mantenimiento'].map((item) {
-                  final selected = item == _action;
-                  return ChoiceChip(
-                    label: Text(item),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _action = item),
-                  );
-                }).toList(),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _date,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2035),
-                    );
-                    if (picked != null) setState(() => _date = picked);
-                  },
-                  icon: const Icon(Icons.event_rounded),
-                  label: Text('${_date.day}/${_date.month}/${_date.year}'),
-                ),
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Actualizar agenda',
+              style: TextStyle(
+                color: Color(0xFF10253A),
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: _start,
-                    );
-                    if (picked != null) setState(() => _start = picked);
-                  },
-                  icon: const Icon(Icons.schedule_rounded),
-                  label: Text(_start.format(context)),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final picked = await showTimePicker(
-                context: context,
-                initialTime: _end,
-              );
-              if (picked != null) setState(() => _end = picked);
-            },
-            icon: const Icon(Icons.timelapse_rounded),
-            label: Text('Fin ${_end.format(context)}'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _noteController,
-            decoration: const InputDecoration(
-              labelText: 'Nota operativa',
-              border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  StaticRecord(
-                    title: '${widget.aircraft ?? 'Aeronave'} | $_action',
-                    subtitle:
-                        '${_noteController.text.trim()} | ${_date.day}/${_date.month}/${_date.year} ${_start.format(context)}-${_end.format(context)}',
-                    status: _action,
-                    amount: _start.format(context),
+            const SizedBox(height: 8),
+            Text(
+              widget.aircraft == null
+                  ? 'Crea un bloqueo, liberacion o mantenimiento.'
+                  : 'Agenda para ${widget.aircraft}.',
+              style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              children:
+                  ['Bloquear', 'Liberar', 'Mantenimiento'].map((item) {
+                    final selected = item == _action;
+                    return ChoiceChip(
+                      label: Text(item),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _action = item),
+                    );
+                  }).toList(),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _date,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked != null) setState(() => _date = picked);
+                    },
+                    icon: const Icon(Icons.event_rounded),
+                    label: Text('${_date.day}/${_date.month}/${_date.year}'),
                   ),
-                );
-              },
-              icon: const Icon(Icons.save_rounded),
-              label: const Text('Guardar agenda'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: _start,
+                      );
+                      if (picked != null) setState(() => _start = picked);
+                    },
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text(_start.format(context)),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: _end,
+                );
+                if (picked != null) setState(() => _end = picked);
+              },
+              icon: const Icon(Icons.timelapse_rounded),
+              label: Text('Fin ${_end.format(context)}'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              decoration: const InputDecoration(
+                labelText: 'Nota operativa',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(
+                    context,
+                    StaticRecord(
+                      title: '${widget.aircraft ?? 'Aeronave'} | $_action',
+                      subtitle:
+                          '${_noteController.text.trim()} | ${_date.day}/${_date.month}/${_date.year} ${_start.format(context)}-${_end.format(context)}',
+                      status: _action,
+                      amount: _start.format(context),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.save_rounded),
+                label: const Text('Guardar agenda'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -473,87 +476,88 @@ class _RequestResponseSheetState extends State<_RequestResponseSheet> {
   Widget build(BuildContext context) {
     final request = widget.request;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Responder solicitud',
-            style: TextStyle(
-              color: Color(0xFF10253A),
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Responder solicitud',
+              style: TextStyle(
+                color: Color(0xFF10253A),
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            request == null
-                ? 'Crea una respuesta comercial para el cliente.'
-                : '${request.title} | ${request.subtitle}',
-            style: const TextStyle(color: Color(0xFF607080), height: 1.35),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 8,
-            children:
-                ['Aceptar', 'Contraofertar', 'Rechazar'].map((item) {
-                  return ChoiceChip(
-                    label: Text(item),
-                    selected: item == _decision,
-                    onSelected: (_) => setState(() => _decision = item),
+            const SizedBox(height: 8),
+            Text(
+              request == null
+                  ? 'Crea una respuesta comercial para el cliente.'
+                  : '${request.title} | ${request.subtitle}',
+              style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              children:
+                  ['Aceptar', 'Contraofertar', 'Rechazar'].map((item) {
+                    return ChoiceChip(
+                      label: Text(item),
+                      selected: item == _decision,
+                      onSelected: (_) => setState(() => _decision = item),
+                    );
+                  }).toList(),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _amountController,
+              decoration: const InputDecoration(
+                labelText: 'Precio / oferta',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Mensaje al cliente',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  final status =
+                      _decision == 'Aceptar'
+                          ? 'Confirmado'
+                          : _decision == 'Rechazar'
+                          ? 'Rechazado'
+                          : 'Contraoferta';
+                  Navigator.pop(
+                    context,
+                    StaticRecord(
+                      title: request?.title ?? 'Nueva respuesta',
+                      subtitle: '${_noteController.text.trim()} | $_decision',
+                      status: status,
+                      amount: _amountController.text.trim(),
+                    ),
                   );
-                }).toList(),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _amountController,
-            decoration: const InputDecoration(
-              labelText: 'Precio / oferta',
-              border: OutlineInputBorder(),
+                },
+                icon: const Icon(Icons.send_rounded),
+                label: const Text('Enviar respuesta'),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _noteController,
-            minLines: 2,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Mensaje al cliente',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () {
-                final status =
-                    _decision == 'Aceptar'
-                        ? 'Confirmado'
-                        : _decision == 'Rechazar'
-                        ? 'Rechazado'
-                        : 'Contraoferta';
-                Navigator.pop(
-                  context,
-                  StaticRecord(
-                    title: request?.title ?? 'Nueva respuesta',
-                    subtitle: '${_noteController.text.trim()} | $_decision',
-                    status: status,
-                    amount: _amountController.text.trim(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.send_rounded),
-              label: const Text('Enviar respuesta'),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -574,105 +578,108 @@ class _PhotoUploadWorkflowSheetState extends State<_PhotoUploadWorkflowSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Cargar imagenes',
-            style: TextStyle(
-              color: Color(0xFF10253A),
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.aircraft == null
-                ? 'Agrega imagenes de cabina, exterior y amenidades.'
-                : 'Aeronave: ${widget.aircraft!.title}',
-            style: const TextStyle(color: Color(0xFF607080), height: 1.35),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed:
-                      () => setState(() => _photos = (_photos + 1).clamp(0, 6)),
-                  icon: const Icon(Icons.photo_library_rounded),
-                  label: const Text('Galeria'),
-                ),
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Cargar imagenes',
+              style: TextStyle(
+                color: Color(0xFF10253A),
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      () => setState(() => _photos = (_photos + 1).clamp(0, 6)),
-                  icon: const Icon(Icons.photo_camera_rounded),
-                  label: const Text('Camara'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.aircraft == null
+                  ? 'Agrega imagenes de cabina, exterior y amenidades.'
+                  : 'Aeronave: ${widget.aircraft!.title}',
+              style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed:
+                        () =>
+                            setState(() => _photos = (_photos + 1).clamp(0, 6)),
+                    icon: const Icon(Icons.photo_library_rounded),
+                    label: const Text('Galeria'),
+                  ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        () =>
+                            setState(() => _photos = (_photos + 1).clamp(0, 6)),
+                    icon: const Icon(Icons.photo_camera_rounded),
+                    label: const Text('Camara'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 6,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 6,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              itemBuilder: (_, index) {
+                final active = index < _photos;
+                return Container(
+                  decoration: BoxDecoration(
+                    color:
+                        active
+                            ? const Color(0xFF10253A)
+                            : const Color(0xFFF4F6F9),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE4EAF0)),
+                  ),
+                  child: Icon(
+                    active ? Icons.image_rounded : Icons.add_photo_alternate,
+                    color:
+                        active
+                            ? const Color(0xFFE2BD79)
+                            : const Color(0xFF607080),
+                  ),
+                );
+              },
             ),
-            itemBuilder: (_, index) {
-              final active = index < _photos;
-              return Container(
-                decoration: BoxDecoration(
-                  color:
-                      active
-                          ? const Color(0xFF10253A)
-                          : const Color(0xFFF4F6F9),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE4EAF0)),
-                ),
-                child: Icon(
-                  active ? Icons.image_rounded : Icons.add_photo_alternate,
-                  color:
-                      active
-                          ? const Color(0xFFE2BD79)
-                          : const Color(0xFF607080),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed:
-                  _photos == 0
-                      ? null
-                      : () {
-                        Navigator.pop(
-                          context,
-                          StaticRecord(
-                            title:
-                                '${widget.aircraft?.title ?? 'Aeronave'} | fotos',
-                            subtitle:
-                                'Galeria local actualizada con $_photos imagenes visibles.',
-                            status: 'Activo',
-                            amount: '$_photos fotos',
-                          ),
-                        );
-                      },
-              icon: const Icon(Icons.cloud_upload_rounded),
-              label: const Text('Guardar imagenes'),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    _photos == 0
+                        ? null
+                        : () {
+                          Navigator.pop(
+                            context,
+                            StaticRecord(
+                              title:
+                                  '${widget.aircraft?.title ?? 'Aeronave'} | fotos',
+                              subtitle:
+                                  'Galeria local actualizada con $_photos imagenes visibles.',
+                              status: 'Activo',
+                              amount: '$_photos fotos',
+                            ),
+                          );
+                        },
+                icon: const Icon(Icons.cloud_upload_rounded),
+                label: const Text('Guardar imagenes'),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -962,105 +969,106 @@ class _WorkflowRecordFormState extends State<_WorkflowRecordForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              style: const TextStyle(
-                color: Color(0xFF10253A),
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  color: Color(0xFF10253A),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Nombre / titulo',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre / titulo',
+                  border: OutlineInputBorder(),
+                ),
+                validator:
+                    (value) =>
+                        value == null || value.trim().isEmpty
+                            ? 'Campo obligatorio'
+                            : null,
               ),
-              validator:
-                  (value) =>
-                      value == null || value.trim().isEmpty
-                          ? 'Campo obligatorio'
-                          : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _subtitleController,
-              decoration: const InputDecoration(
-                labelText: 'Detalle',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _subtitleController,
+                decoration: const InputDecoration(
+                  labelText: 'Detalle',
+                  border: OutlineInputBorder(),
+                ),
+                minLines: 2,
+                maxLines: 3,
+                validator:
+                    (value) =>
+                        value == null || value.trim().isEmpty
+                            ? 'Campo obligatorio'
+                            : null,
               ),
-              minLines: 2,
-              maxLines: 3,
-              validator:
-                  (value) =>
-                      value == null || value.trim().isEmpty
-                          ? 'Campo obligatorio'
-                          : null,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _statusController,
-                    decoration: const InputDecoration(
-                      labelText: 'Estatus',
-                      border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _statusController,
+                      decoration: const InputDecoration(
+                        labelText: 'Estatus',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextFormField(
-                    controller: _amountController,
-                    decoration: const InputDecoration(
-                      labelText: 'Importe / valor',
-                      border: OutlineInputBorder(),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _amountController,
+                      decoration: const InputDecoration(
+                        labelText: 'Importe / valor',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  if (!_formKey.currentState!.validate()) return;
-                  Navigator.pop(
-                    context,
-                    StaticRecord(
-                      title: _titleController.text.trim(),
-                      subtitle: _subtitleController.text.trim(),
-                      status:
-                          _statusController.text.trim().isEmpty
-                              ? 'Pendiente'
-                              : _statusController.text.trim(),
-                      amount:
-                          _amountController.text.trim().isEmpty
-                              ? 'Nuevo'
-                              : _amountController.text.trim(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('Guardar'),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    if (!_formKey.currentState!.validate()) return;
+                    Navigator.pop(
+                      context,
+                      StaticRecord(
+                        title: _titleController.text.trim(),
+                        subtitle: _subtitleController.text.trim(),
+                        status:
+                            _statusController.text.trim().isEmpty
+                                ? 'Pendiente'
+                                : _statusController.text.trim(),
+                        amount:
+                            _amountController.text.trim().isEmpty
+                                ? 'Nuevo'
+                                : _amountController.text.trim(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('Guardar'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -101,7 +101,11 @@ class _ClientMobileWorkspaceScreenState
         return ClientContractScreen(
           request: activeRequest ?? const {},
           showBackButton: false,
-          onConfirm: () {
+          onConfirm: () async {
+            await context.read<ReservationProvider>().loadClientWorkspaceData(
+              force: true,
+            );
+            if (!mounted) return;
             setState(() {
               _tripsStage = _TripsStage.payment;
             });
@@ -111,7 +115,11 @@ class _ClientMobileWorkspaceScreenState
         return ClientPaymentScreen(
           request: activeRequest ?? const {},
           showBackButton: false,
-          onPaymentComplete: () {
+          onPaymentComplete: () async {
+            await context.read<ReservationProvider>().loadClientWorkspaceData(
+              force: true,
+            );
+            if (!mounted) return;
             setState(() {
               _tripsStage = _TripsStage.confirmation;
             });
@@ -157,7 +165,14 @@ class _ClientMobileWorkspaceScreenState
     }
 
     for (final request in requests) {
-      if (request['id']?.toString() == requestId) {
+      final id = request['id']?.toString();
+      final flightRequestId = request['flight_request_id']?.toString();
+      final reservationId = request['reservation_id']?.toString();
+      final requestRecordId = request['request_id']?.toString();
+      if (id == requestId ||
+          flightRequestId == requestId ||
+          reservationId == requestId ||
+          requestRecordId == requestId) {
         return request;
       }
     }

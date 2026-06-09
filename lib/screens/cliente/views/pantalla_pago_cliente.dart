@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/cliente_api.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientPaymentScreen extends StatefulWidget {
@@ -26,6 +27,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
   final TextEditingController _cvcController = TextEditingController();
   final TextEditingController _wireReferenceController =
       TextEditingController();
+  bool _submitting = false;
+  String _inlineMessage = '';
+  Map<String, dynamic>? _wireInstructions;
 
   @override
   void initState() {
@@ -260,6 +264,43 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                       style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
                     ),
                   ),
+                  if (_wireInstructions != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4FAF6),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFD9EFE1)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Referencia generada',
+                            style: TextStyle(
+                              color: Color(0xFF1F5F3C),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(_wireInstructionText(_wireInstructions!)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+                if (_inlineMessage.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    _inlineMessage,
+                    style: const TextStyle(
+                      color: Color(0xFF625D55),
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -292,16 +333,26 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
           ),
           const SizedBox(height: 22),
           FilledButton(
-            onPressed: _canSubmit ? widget.onPaymentComplete : null,
+            onPressed: _canSubmit && !_submitting ? _submitPayment : null,
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(56),
               backgroundColor: const Color(0xFF10253A),
             ),
-            child: Text(
-              _paymentMethod == 'card'
-                  ? 'Pagar ahora'
-                  : 'Registrar transferencia',
-            ),
+            child:
+                _submitting
+                    ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                    : Text(
+                      _paymentMethod == 'card'
+                          ? 'Pagar ahora'
+                          : 'Generar referencia bancaria',
+                    ),
           ),
         ],
       ),
@@ -316,6 +367,85 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
           _cvcController.text.trim().isNotEmpty;
     }
     return _wireReferenceController.text.trim().isNotEmpty;
+  }
+
+  Future<void> _submitPayment() async {
+    final flightRequestId = _entityId(widget.request);
+    if (flightRequestId.isEmpty) {
+      setState(() {
+        _inlineMessage = 'No encontramos la reserva para iniciar el pago.';
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _inlineMessage =
+          _paymentMethod == 'wire'
+              ? 'Generando referencia bancaria...'
+              : 'Creando intento de pago seguro...';
+    });
+
+    try {
+      if (_paymentMethod == 'wire') {
+        final payload = await ApiClient.instance.createClientWireIntent(
+          flightRequestId: flightRequestId,
+          paymentPayload: {
+            'contact_email': _emailController.text.trim(),
+            'payment_method': 'wire',
+            'reference_note': _wireReferenceController.text.trim(),
+          },
+        );
+        final instructions = _extractWireInstructions(payload);
+        if (!mounted) return;
+        setState(() {
+          _wireInstructions = instructions;
+          _inlineMessage =
+              'Transferencia preparada. El pago queda pendiente hasta validar el comprobante.';
+        });
+        return;
+      }
+
+      final intent = await ApiClient.instance.createClientPaymentIntent(
+        flightRequestId: flightRequestId,
+        paymentPayload: {'contact_email': _emailController.text.trim()},
+      );
+
+      final status = _paymentStatus(intent);
+      if (status == 'succeeded' || status == 'paid') {
+        await ApiClient.instance.confirmClientPayment(
+          reservationId: flightRequestId,
+          paymentPayload: {
+            'reservation_id': flightRequestId,
+            'flight_request_id': flightRequestId,
+            'payment_intent_id': _paymentIntentId(intent),
+            'brand': _cardBrand(),
+            'status': 'payment_confirmed',
+            'workflow_status': 'pago confirmado',
+            'payment_status': 'paid',
+          },
+        );
+        if (!mounted) return;
+        widget.onPaymentComplete();
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'El backend preparo el PaymentIntent. Falta integrar Stripe nativo para confirmar la tarjeta en movil.';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _inlineMessage = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _inlineMessage = 'No fue posible procesar el pago: $error',
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   String _routeLabel(Map<String, dynamic> request) {
@@ -333,6 +463,85 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
         request['estimated_total']?.toString() ??
         request['final_price']?.toString() ??
         'Monto por confirmar';
+  }
+
+  String _entityId(Map<String, dynamic> request) {
+    return request['flight_request_id']?.toString().trim().isNotEmpty == true
+        ? request['flight_request_id'].toString().trim()
+        : request['id']?.toString().trim().isNotEmpty == true
+        ? request['id'].toString().trim()
+        : request['reservation_id']?.toString().trim() ?? '';
+  }
+
+  Map<String, dynamic> _extractWireInstructions(Map<String, dynamic> payload) {
+    final direct = payload['wire_instructions'] ?? payload['instructions'];
+    if (direct is Map) return Map<String, dynamic>.from(direct);
+
+    final data = payload['data'];
+    if (data is Map) return Map<String, dynamic>.from(data);
+
+    return {
+      if (payload['reference'] != null) 'reference': payload['reference'],
+      if (payload['payment_reference'] != null)
+        'reference': payload['payment_reference'],
+      if (payload['amount'] != null) 'amount': payload['amount'],
+    };
+  }
+
+  String _wireInstructionText(Map<String, dynamic> instructions) {
+    final reference =
+        instructions['reference']?.toString() ??
+        instructions['payment_reference']?.toString() ??
+        'Pendiente';
+    final amount =
+        instructions['amount']?.toString() ?? _amountLabel(widget.request);
+    final bank =
+        instructions['bank']?.toString() ??
+        instructions['bank_name']?.toString();
+
+    return [
+      if (bank != null && bank.isNotEmpty) 'Banco: $bank',
+      'Referencia: $reference',
+      'Importe: $amount',
+    ].join('\n');
+  }
+
+  String _paymentStatus(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    final paymentIntent =
+        payload['payment_intent'] ??
+        (data is Map ? data['payment_intent'] : null);
+
+    return (payload['status'] ??
+            payload['payment_status'] ??
+            (paymentIntent is Map ? paymentIntent['status'] : null) ??
+            (data is Map ? data['status'] : null) ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  String _paymentIntentId(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    final paymentIntent =
+        payload['payment_intent'] ??
+        (data is Map ? data['payment_intent'] : null);
+
+    return (payload['payment_intent_id'] ??
+            payload['id'] ??
+            (paymentIntent is Map ? paymentIntent['id'] : null) ??
+            (data is Map ? data['payment_intent_id'] : null) ??
+            '')
+        .toString();
+  }
+
+  String _cardBrand() {
+    final digits = _cardController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('4')) return 'visa';
+    if (digits.startsWith('5')) return 'mastercard';
+    if (digits.startsWith('3')) return 'amex';
+    return 'card';
   }
 }
 

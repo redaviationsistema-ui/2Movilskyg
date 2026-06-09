@@ -382,7 +382,11 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       final payload = {
         'reservation_id': reservationId,
         'flight_request_id': reservationId,
+        'booking_id': reservationId,
+        'status': 'pending_payment',
+        'workflow_status': 'pago pendiente',
         'contract_status': 'signed',
+        'payment_status': 'pending',
         'signed_at': DateTime.now().toIso8601String(),
         'signature': {
           'type': 'drawn',

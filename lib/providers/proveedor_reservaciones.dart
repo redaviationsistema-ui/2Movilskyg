@@ -55,6 +55,7 @@ class ReservationProvider extends ChangeNotifier {
   List<Map<String, dynamic>> quoteMatches = [];
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? selectedQuoteMatch;
+  Map<String, dynamic>? _lastCreatedFlightRequestPayload;
 
   String? name;
   String? email;
@@ -290,7 +291,11 @@ class ReservationProvider extends ChangeNotifier {
       dashboardData = Map<String, dynamic>.from(dashboardResponse);
 
       final requests = await _api.getClientFlightRequests();
-      flightRequests = requests;
+      final historyReservations = await _api.getReservations();
+      flightRequests = _mergeFlightHistoryRows([
+        ...requests,
+        ...historyReservations,
+      ]);
 
       final originHint =
           routes.first.fromAirport?.iata ??
@@ -422,11 +427,53 @@ class ReservationProvider extends ChangeNotifier {
       throw StateError('Faltan datos base para crear la solicitud.');
     }
 
-    final response = await _api.createFlightRequestPayload(
-      _buildBackendFlightRequestPayload(quote: quote),
-    );
+    final payload = _buildBackendFlightRequestPayload(quote: quote);
+    _lastCreatedFlightRequestPayload = payload;
+
+    final response = await _api.createFlightRequestPayload(payload);
+    rememberCreatedFlightRequest(response);
 
     return response;
+  }
+
+  String? createdFlightRequestIdFromResponse(Map<String, dynamic> response) {
+    return _resolveEntityId(_createdFlightRequestRecord(response)) ??
+        _resolveEntityId(response['flight_request']) ??
+        _resolveEntityId(_nestedMap(response['data'])['flight_request']) ??
+        _resolveEntityId(response['reservation']) ??
+        _resolveEntityId(response['trip']) ??
+        _resolveEntityId(response['data']) ??
+        _resolveEntityId(response);
+  }
+
+  void rememberCreatedFlightRequest(Map<String, dynamic> response) {
+    final createdRecord = _createdFlightRequestRecord(response);
+    final createdId =
+        _resolveEntityId(createdRecord) ??
+        createdFlightRequestIdFromResponse(response);
+
+    if (createdRecord == null && createdId == null) return;
+
+    final payload =
+        _lastCreatedFlightRequestPayload ?? const <String, dynamic>{};
+    final request = <String, dynamic>{
+      ...payload,
+      if (createdRecord != null) ...createdRecord,
+      if (createdId != null) 'id': createdId,
+      if (createdId != null) 'flight_request_id': createdId,
+      'summary_only': false,
+    };
+    final requestId = _resolveEntityId(request);
+    if (requestId == null || requestId.isEmpty) return;
+
+    flightRequests = [
+      request,
+      ...flightRequests.where((item) {
+        final itemId = _resolveEntityId(item);
+        return itemId == null || itemId != requestId;
+      }),
+    ];
+    notifyListeners();
   }
 
   Map<String, dynamic> _buildBackendFlightRequestPayload({
@@ -1549,6 +1596,160 @@ class ReservationProvider extends ChangeNotifier {
               route['date'] != null;
         })
         .toList();
+  }
+
+  Map<String, dynamic>? _createdFlightRequestRecord(
+    Map<String, dynamic> response,
+  ) {
+    final data = _nestedMap(response['data']);
+    final candidates = [
+      response['flight_request'],
+      data['flight_request'],
+      data['request'],
+      response['reservation'],
+      response['trip'],
+      data,
+      response,
+    ];
+
+    for (final candidate in candidates) {
+      if (candidate is! Map) continue;
+      final record = Map<String, dynamic>.from(candidate);
+      if (_looksLikeFlightRequestRecord(record)) return record;
+    }
+
+    return null;
+  }
+
+  List<Map<String, dynamic>> _mergeFlightHistoryRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    final merged = <Map<String, dynamic>>[];
+    final seen = <String>{};
+
+    for (final raw in rows) {
+      final normalized = _normalizeFlightHistoryRow(raw);
+      final id =
+          _resolveEntityId(normalized) ??
+          [
+            normalized['origin'],
+            normalized['destination'],
+            normalized['departure_datetime'],
+            normalized['created_at'],
+          ].whereType<Object>().join('|');
+
+      if (id.isNotEmpty && !seen.add(id)) continue;
+      merged.add(normalized);
+    }
+
+    return merged;
+  }
+
+  Map<String, dynamic> _normalizeFlightHistoryRow(Map<String, dynamic> raw) {
+    final row = Map<String, dynamic>.from(raw);
+    final aircraft = _nestedMap(
+      row['assigned_aircraft'] ?? row['aircraft_data'] ?? row['aircraft'],
+    );
+    final provider = _nestedMap(
+      row['provider'] ?? row['assigned_provider'] ?? row['operator'],
+    );
+    final firstLeg = _firstLeg(row);
+
+    final id =
+        _resolveEntityId(row) ??
+        _resolveEntityId(row['reservation']) ??
+        _resolveEntityId(row['flight_request']);
+    final origin =
+        row['origin'] ??
+        row['from'] ??
+        row['departure_airport'] ??
+        firstLeg['origin'] ??
+        firstLeg['from'];
+    final destination =
+        row['destination'] ??
+        row['to'] ??
+        row['arrival_airport'] ??
+        firstLeg['destination'] ??
+        firstLeg['to'];
+    final departure =
+        row['departure_datetime'] ??
+        row['start_datetime'] ??
+        row['departure_at'] ??
+        row['scheduled_at'] ??
+        row['date'] ??
+        firstLeg['departure_datetime'] ??
+        firstLeg['date'];
+
+    return {
+      ...row,
+      if (id != null) 'id': id,
+      if (id != null && row['flight_request_id'] == null)
+        'flight_request_id': row['request_id'] ?? id,
+      if (id != null && row['reservation_id'] == null)
+        'reservation_id': row['booking_id'] ?? id,
+      if (origin != null) 'origin': origin,
+      if (destination != null) 'destination': destination,
+      if (departure != null) 'departure_datetime': departure,
+      if (row['status'] == null)
+        'status':
+            row['workflow_status'] ??
+            row['reservation_status'] ??
+            row['flight_status'],
+      if (row['assigned_aircraft_model'] == null)
+        'assigned_aircraft_model':
+            row['aircraft_model'] ??
+            aircraft['model'] ??
+            aircraft['name'] ??
+            aircraft['registration'],
+      if (row['assigned_aircraft_id'] == null)
+        'assigned_aircraft_id': aircraft['id'] ?? row['aircraft_id'],
+      if (row['provider_name'] == null)
+        'provider_name':
+            provider['name'] ??
+            provider['company_name'] ??
+            row['operator_name'],
+      if (row['image_url'] == null && row['imageUrl'] == null)
+        'image_url': _primaryImage(row) ?? _primaryImage(aircraft) ?? '',
+    };
+  }
+
+  Map<String, dynamic> _firstLeg(Map<String, dynamic> row) {
+    final legs = row['legs'] ?? row['segments'] ?? row['routes'];
+    if (legs is List && legs.isNotEmpty && legs.first is Map) {
+      return Map<String, dynamic>.from(legs.first as Map);
+    }
+    return const {};
+  }
+
+  bool _looksLikeFlightRequestRecord(Map<String, dynamic> record) {
+    return _resolveEntityId(record) != null ||
+        record.containsKey('origin') ||
+        record.containsKey('destination') ||
+        record.containsKey('departure_datetime') ||
+        record.containsKey('flight_request_id') ||
+        record.containsKey('reservation_id');
+  }
+
+  String? _resolveEntityId(dynamic value) {
+    if (value == null) return null;
+    if (value is String || value is num) {
+      final text = value.toString().trim();
+      return text.isEmpty ? null : text;
+    }
+    if (value is Map) {
+      final record = Map<String, dynamic>.from(value);
+      for (final key in const [
+        'id',
+        'reservation_id',
+        'flight_request_id',
+        'request_id',
+        'booking_id',
+      ]) {
+        final id = _resolveEntityId(record[key]);
+        if (id != null) return id;
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> _nestedMap(dynamic value) {

@@ -59,6 +59,16 @@ class ApiClient {
 
   String get baseUrl => _backendCandidates[_activeBackendIndex];
 
+  String get backendOrigin {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) return '';
+    return Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+    ).toString();
+  }
+
   List<String> get _backendCandidates {
     final candidates = <String>[];
 
@@ -292,31 +302,39 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> getReservations() async {
     final data = await getFirstAvailable(const [
       '/cliente/reservas',
+      '/client/reservations',
       '/client/flight-requests',
     ], authenticated: true);
-    final raw =
-        data['reservations'] ??
-        data['reservas'] ??
-        data['flight_requests'] ??
-        data['requests'] ??
-        data['data'];
-
-    if (raw is Map && raw['data'] is List) {
-      return _asListOfMaps(raw['data']);
-    }
-
-    return _asListOfMaps(raw);
+    return _listFromPayload(data, const [
+      'reservations',
+      'reservas',
+      'bookings',
+      'flight_requests',
+      'requests',
+      'solicitudes',
+      'items',
+      'data',
+    ]);
   }
 
   Future<List<Map<String, dynamic>>> getClientFlightRequests() async {
     final data = await getFirstAvailable(const [
       '/client/flight-requests',
       '/cliente/solicitudes',
+      '/cliente/reservas',
+      '/client/reservations',
     ], authenticated: true);
 
-    return _asListOfMaps(
-      data['flight_requests'] ?? data['requests'] ?? data['data'],
-    );
+    return _listFromPayload(data, const [
+      'flight_requests',
+      'requests',
+      'solicitudes',
+      'reservations',
+      'reservas',
+      'bookings',
+      'items',
+      'data',
+    ]);
   }
 
   Future<List<Map<String, dynamic>>> getClientAircraft({
@@ -463,6 +481,64 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> createClientPaymentIntent({
+    required String flightRequestId,
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    final body = {
+      'flight_request_id': flightRequestId,
+      'booking_id': flightRequestId,
+      ...paymentPayload,
+    };
+
+    return postFirstAvailable(
+      const [
+        '/cliente/stripe/payment-intent',
+        '/client/stripe/payment-intent',
+        '/stripe/payment-intent',
+      ],
+      authenticated: true,
+      body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> createClientWireIntent({
+    required String flightRequestId,
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    final body = {
+      'flight_request_id': flightRequestId,
+      'booking_id': flightRequestId,
+      ...paymentPayload,
+    };
+
+    return postFirstAvailable(
+      const [
+        '/cliente/stripe/wire-intent',
+        '/client/stripe/wire-intent',
+        '/stripe/wire-intent',
+      ],
+      authenticated: true,
+      body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> confirmClientPayment({
+    required String reservationId,
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    return postFirstAvailable(
+      [
+        '/cliente/reservas/$reservationId/pago/confirmar',
+        '/cliente/reservas/$reservationId/payment/confirm',
+        '/client/reservations/$reservationId/payment/confirm',
+        '/client/reservations/$reservationId/payments/confirm',
+      ],
+      authenticated: true,
+      body: paymentPayload,
+    );
+  }
+
   Future<Map<String, dynamic>> getCrewPortal() {
     return getFirstAvailable(const [
       '/crew/portal',
@@ -477,14 +553,54 @@ class ApiClient {
     required String status,
     String reason = '',
   }) {
+    final payload = _crewAssignmentResponsePayload(status, reason);
     return postFirstAvailable(
       [
+        '/sobrecargo/operations/$assignmentId/respond',
+        '/sobrecargo/assignments/$assignmentId/respond',
+        '/sobrecargo/operations/$assignmentId/assignment-response',
         '/crew/assignments/$assignmentId/respond',
         '/sobrecargo/asignaciones/$assignmentId/responder',
         '/admin/crew-assignments/$assignmentId/respond',
       ],
       authenticated: true,
-      body: {'status': status, if (reason.trim().isNotEmpty) 'reason': reason},
+      body: payload,
+    );
+  }
+
+  Future<Map<String, dynamic>> updateCrewOperationStep({
+    required String assignmentId,
+    required String step,
+    String note = '',
+  }) {
+    final normalizedNote = note.trim();
+    final pathStep = switch (step) {
+      'checkin' => 'checkin',
+      'cabin_ready' => 'cabin-ready',
+      'passengers_ready' => 'passengers-ready',
+      'service_started' => 'start-service',
+      'service_finalized' => 'finalize-service',
+      _ => step,
+    };
+    final fallbackStep = switch (step) {
+      'service_started' => 'service-started',
+      'service_finalized' => 'service-finalized',
+      _ => pathStep,
+    };
+
+    return postFirstAvailable(
+      [
+        '/sobrecargo/operations/$assignmentId/$pathStep',
+        '/sobrecargo/assignments/$assignmentId/$pathStep',
+        '/crew/operations/$assignmentId/$pathStep',
+        '/crew/assignments/$assignmentId/$pathStep',
+        if (fallbackStep != pathStep)
+          '/sobrecargo/operations/$assignmentId/$fallbackStep',
+        if (fallbackStep != pathStep)
+          '/crew/operations/$assignmentId/$fallbackStep',
+      ],
+      authenticated: true,
+      body: {if (normalizedNote.isNotEmpty) 'note': normalizedNote},
     );
   }
 
@@ -504,8 +620,8 @@ class ApiClient {
     required DateTime from,
     required DateTime to,
   }) {
-    return get(
-      '/sobrecargo/availability',
+    return getFirstAvailable(
+      const ['/sobrecargo/availability', '/crew/availability'],
       authenticated: true,
       query: {'from': _apiDate(from), 'to': _apiDate(to)},
     );
@@ -523,8 +639,8 @@ class ApiClient {
     String coverage = '',
   }) {
     final normalizedStatus = statusKey.trim().toUpperCase();
-    return post(
-      '/sobrecargo/availability',
+    return postFirstAvailable(
+      const ['/sobrecargo/availability', '/crew/availability'],
       authenticated: true,
       body: {
         'fecha': _apiDate(date),
@@ -537,6 +653,25 @@ class ApiClient {
         'notes': comment.trim(),
         if (base.trim().isNotEmpty) 'base': base.trim(),
         if (coverage.trim().isNotEmpty) 'coverage': coverage.trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> auditCrewAvailabilityDay({
+    required DateTime date,
+    required String statusKey,
+    String comment = '',
+  }) {
+    final normalizedStatus = statusKey.trim().toUpperCase();
+    return postFirstAvailable(
+      const ['/sobrecargo/availability/audit', '/crew/availability/audit'],
+      authenticated: true,
+      body: {
+        'fecha': _apiDate(date),
+        'status_key': normalizedStatus,
+        'clave': normalizedStatus,
+        'comment': comment.trim(),
+        'comentario': comment.trim(),
       },
     );
   }
@@ -590,6 +725,40 @@ class ApiClient {
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '${value.year}-$month-$day';
+  }
+
+  Map<String, dynamic> _crewAssignmentResponsePayload(
+    String status,
+    String reason,
+  ) {
+    final normalized = status.trim();
+    final lower = normalized.toLowerCase();
+    final response =
+        lower == 'accepted' || lower == 'aceptado' || lower == 'confirmado'
+            ? 'Confirmado'
+            : lower == 'rejected' || lower == 'declined' || lower == 'rechazado'
+            ? 'Rechazado'
+            : lower == 'review_requested' ||
+                lower == 'requested_changes' ||
+                lower == 'solicitar revision'
+            ? 'Solicitar revision'
+            : normalized;
+    final crewStatus = switch (response) {
+      'Confirmado' => 'crew_confirmed',
+      'Rechazado' => 'crew_declined',
+      'Solicitar revision' => 'crew_change_requested',
+      _ => '',
+    };
+    final trimmedReason = reason.trim();
+
+    return {
+      'response': response,
+      'status': crewStatus.isEmpty ? response : crewStatus,
+      'crew_status': crewStatus,
+      if (trimmedReason.isNotEmpty) 'reason': trimmedReason,
+      if (trimmedReason.isNotEmpty) 'reject_reason': trimmedReason,
+      if (trimmedReason.isNotEmpty) 'comment': trimmedReason,
+    };
   }
 
   Future<Map<String, dynamic>> getFirstAvailable(
@@ -863,6 +1032,39 @@ class ApiClient {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
+  }
+
+  List<Map<String, dynamic>> _listFromPayload(
+    Map<String, dynamic> payload,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final list = _deepListOfMaps(payload[key]);
+      if (list.isNotEmpty || payload.containsKey(key)) return list;
+    }
+
+    return _deepListOfMaps(payload);
+  }
+
+  List<Map<String, dynamic>> _deepListOfMaps(dynamic value) {
+    if (value is List) return _asListOfMaps(value);
+    if (value is Map) {
+      final map = Map<String, dynamic>.from(value);
+      for (final key in const [
+        'data',
+        'items',
+        'results',
+        'records',
+        'reservations',
+        'reservas',
+        'flight_requests',
+        'requests',
+      ]) {
+        final list = _deepListOfMaps(map[key]);
+        if (list.isNotEmpty) return list;
+      }
+    }
+    return const [];
   }
 }
 

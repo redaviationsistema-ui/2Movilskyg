@@ -59,17 +59,16 @@ class QuotePreviewScreen extends StatelessWidget {
 
     try {
       final response = await reservation.createFlightRequestForMatch(quote);
+      final createdId = reservation.createdFlightRequestIdFromResponse(
+        response,
+      );
       await reservation.loadClientWorkspaceData(force: true);
+      reservation.rememberCreatedFlightRequest(response);
 
       if (!context.mounted) return;
 
       Navigator.pop(context);
       if (onReservationCreated != null) {
-        final createdId =
-            response['flight_request']?['id']?.toString() ??
-            response['data']?['id']?.toString() ??
-            response['data']?['flight_request']?['id']?.toString() ??
-            response['id']?.toString();
         reservation.resetForm();
         onReservationCreated!(createdId);
         return;
