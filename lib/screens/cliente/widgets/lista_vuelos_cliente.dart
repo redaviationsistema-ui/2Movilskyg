@@ -126,7 +126,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                     onOpenAircraft: () => _openAircraft(provider, request),
                     onOpenContract: () => _handleOpenContract(request),
                     onOpenPayment: () => _handleOpenPayment(request),
-                    onOpenConcierge: _openConcierge,
+                    onOpenConcierge: () => _openConcierge(request),
                   ),
                 ),
               ),
@@ -196,10 +196,12 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
     return DateTime.tryParse(raw);
   }
 
-  void _openConcierge() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ClientConciergeScreen()));
+  void _openConcierge([Map<String, dynamic>? request]) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClientConciergeScreen(request: request),
+      ),
+    );
   }
 
   void _openAircraft(
@@ -348,7 +350,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                         child: _SheetButton(
                           label: 'Concierge',
                           icon: Icons.support_agent_rounded,
-                          onTap: _openConcierge,
+                          onTap: () => _openConcierge(request),
                           filled: true,
                         ),
                       ),

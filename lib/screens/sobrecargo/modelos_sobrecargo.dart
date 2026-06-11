@@ -385,19 +385,26 @@ class CrewMissionAction {
 }
 
 class CrewIncident {
-  const CrewIncident({
+  CrewIncident({
     required this.title,
     required this.assignment,
     required this.status,
     required this.evidence,
+    this.description = '',
+    this.priority = 'Media',
+    this.comments = const [],
   });
 
   final String title;
   final String assignment;
-  final String status;
-  final String evidence;
+  String status;
+  String evidence;
+  String description;
+  String priority;
+  List<String> comments;
 
   factory CrewIncident.fromJson(Map<String, dynamic> json) {
+    final comments = json['comments'] ?? json['comentarios'] ?? json['notes'];
     return CrewIncident(
       title: json['title']?.toString() ?? 'Incidencia',
       assignment:
@@ -406,29 +413,49 @@ class CrewIncident {
           'Operacion',
       status: json['status']?.toString() ?? 'Abierta',
       evidence: json['evidence']?.toString() ?? 'Sin evidencia',
+      description:
+          json['description']?.toString() ??
+          json['descripcion']?.toString() ??
+          '',
+      priority:
+          json['priority']?.toString() ??
+          json['prioridad']?.toString() ??
+          'Media',
+      comments:
+          comments is List
+              ? comments.map((item) => item.toString()).toList()
+              : const [],
     );
   }
 
-  static const demo = [
+  static final demo = [
     CrewIncident(
       title: 'Catering pendiente',
       assignment: 'RSK-2401',
       status: 'Abierta',
       evidence: 'foto_catering.jpg',
+      description: 'Proveedor de catering pendiente de confirmar entrega.',
+      priority: 'Alta',
     ),
   ];
 }
 
 class CrewDocument {
-  const CrewDocument({
+  CrewDocument({
     required this.title,
     required this.status,
     required this.expiration,
+    this.category = 'Certificacion',
+    this.note = '',
+    this.localPath = '',
   });
 
   final String title;
-  final String status;
-  final String expiration;
+  String status;
+  String expiration;
+  String category;
+  String note;
+  String localPath;
 
   factory CrewDocument.fromJson(Map<String, dynamic> json) {
     return CrewDocument(
@@ -439,19 +466,52 @@ class CrewDocument {
           json['expiration']?.toString() ??
           json['expires_at']?.toString() ??
           'Sin vigencia',
+      category: json['category']?.toString() ?? 'Certificacion',
+      note: json['note']?.toString() ?? json['notes']?.toString() ?? '',
     );
   }
 
-  static const demo = [
+  static final demo = [
     CrewDocument(
       title: 'Licencia sobrecargo',
       status: 'Vigente',
       expiration: '2027-12-31',
+      category: 'Licencia',
     ),
     CrewDocument(
       title: 'Primeros auxilios',
       status: 'Vence pronto',
       expiration: '2026-08-15',
+      category: 'Certificacion',
+    ),
+  ];
+}
+
+class CrewPaymentRecord {
+  const CrewPaymentRecord({
+    required this.concept,
+    required this.assignment,
+    required this.amount,
+    required this.status,
+  });
+
+  final String concept;
+  final String assignment;
+  final String amount;
+  final String status;
+
+  static const demo = [
+    CrewPaymentRecord(
+      concept: 'Servicio completado',
+      assignment: 'RSK-2318',
+      amount: 'USD 220',
+      status: 'Pendiente corte',
+    ),
+    CrewPaymentRecord(
+      concept: 'Bono servicio VIP',
+      assignment: 'RSK-2318',
+      amount: 'USD 40',
+      status: 'Autorizado',
     ),
   ];
 }

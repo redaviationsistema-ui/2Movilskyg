@@ -6,12 +6,18 @@ class _DashboardView extends StatelessWidget {
     required this.incidents,
     required this.documents,
     required this.onScan,
+    required this.onOpenAvailability,
+    required this.onOpenDocuments,
+    required this.onOpenIncidents,
   });
 
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
   final List<CrewDocument> documents;
   final VoidCallback onScan;
+  final VoidCallback onOpenAvailability;
+  final VoidCallback onOpenDocuments;
+  final VoidCallback onOpenIncidents;
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +25,16 @@ class _DashboardView extends StatelessWidget {
         assignments.where((item) => item.status != 'Finalizada').length;
     final expiredDocs =
         documents.where((item) => item.status.contains('Vence')).length;
+    final pendingAssignments =
+        assignments.where((item) => item.canRespondToAssignment).length;
+    final openIncidents =
+        incidents.where((item) => !item.status.contains('Cerr')).length;
+    final readiness = _readinessScore(
+      active: active,
+      expiredDocs: expiredDocs,
+      openIncidents: openIncidents,
+      pendingAssignments: pendingAssignments,
+    );
 
     return Column(
       children: [
@@ -27,6 +43,13 @@ class _DashboardView extends StatelessWidget {
           subtitle:
               'Asignaciones, documentos e incidencias sincronizados para operacion segura.',
           status: active > 0 ? 'Operacion activa' : 'Sin misiones activas',
+        ),
+        const SizedBox(height: 14),
+        _ReadinessCard(
+          score: readiness,
+          pendingAssignments: pendingAssignments,
+          expiredDocs: expiredDocs,
+          openIncidents: openIncidents,
         ),
         const SizedBox(height: 14),
         _MetricGrid(
@@ -42,6 +65,28 @@ class _DashboardView extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _QuickActionChip(
+              icon: Icons.event_available_rounded,
+              label: 'Disponibilidad',
+              onTap: onOpenAvailability,
+            ),
+            _QuickActionChip(
+              icon: Icons.folder_copy_rounded,
+              label: 'Documentos',
+              onTap: onOpenDocuments,
+            ),
+            _QuickActionChip(
+              icon: Icons.report_problem_rounded,
+              label: 'Incidencias',
+              onTap: onOpenIncidents,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         _ActionCard(
           title: 'Briefing operativo',
           subtitle:
@@ -53,6 +98,151 @@ class _DashboardView extends StatelessWidget {
         const SizedBox(height: 14),
         ...assignments.take(2).map((item) => _AssignmentCard(item: item)),
       ],
+    );
+  }
+
+  int _readinessScore({
+    required int active,
+    required int expiredDocs,
+    required int openIncidents,
+    required int pendingAssignments,
+  }) {
+    var score = 100;
+    score -= expiredDocs * 18;
+    score -= openIncidents * 12;
+    score -= pendingAssignments * 10;
+    if (active == 0) score -= 5;
+    return score.clamp(0, 100);
+  }
+}
+
+class _ReadinessCard extends StatelessWidget {
+  const _ReadinessCard({
+    required this.score,
+    required this.pendingAssignments,
+    required this.expiredDocs,
+    required this.openIncidents,
+  });
+
+  final int score;
+  final int pendingAssignments;
+  final int expiredDocs;
+  final int openIncidents;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        score >= 85
+            ? 'Listo para operar'
+            : score >= 65
+            ? 'Atencion requerida'
+            : 'Riesgo operativo';
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _panelDecoration().copyWith(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF07121D), Color(0xFF173B55)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$score%',
+                style: const TextStyle(
+                  color: Color(0xFFE0B86E),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: score / 100,
+              minHeight: 10,
+              backgroundColor: Colors.white24,
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFE0B86E)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DarkAlertPill(label: '$pendingAssignments por confirmar'),
+              _DarkAlertPill(label: '$expiredDocs docs alerta'),
+              _DarkAlertPill(label: '$openIncidents incidencias'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DarkAlertPill extends StatelessWidget {
+  const _DarkAlertPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: Icon(icon, size: 18, color: const Color(0xFF0E2338)),
+      label: Text(label),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w900),
+      onPressed: onTap,
+      backgroundColor: Colors.white,
+      side: const BorderSide(color: Color(0xFFE5EAF0)),
     );
   }
 }
@@ -217,6 +407,8 @@ class _CalendarView extends StatelessWidget {
     required this.blocks,
     required this.onDateSelected,
     required this.onBlock,
+    required this.onAdvance,
+    required this.onAccept,
   });
 
   final DateTime selectedDate;
@@ -224,6 +416,8 @@ class _CalendarView extends StatelessWidget {
   final List<CrewBlock> blocks;
   final ValueChanged<DateTime> onDateSelected;
   final VoidCallback onBlock;
+  final void Function(CrewAssignment, CrewMissionAction) onAdvance;
+  final ValueChanged<CrewAssignment> onAccept;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +468,30 @@ class _CalendarView extends StatelessWidget {
             subtitle: item.reason,
           ),
         ),
-        ...dayItems.map((item) => _AssignmentCard(item: item)),
+        ...dayItems.map((item) {
+          final nextAction = item.nextAction;
+          return _AssignmentCard(
+            item: item,
+            actions:
+                item.canRespondToAssignment
+                    ? [
+                      FilledButton.icon(
+                        onPressed: () => onAccept(item),
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Text('Confirmar'),
+                      ),
+                    ]
+                    : nextAction == null
+                    ? const []
+                    : [
+                      FilledButton.icon(
+                        onPressed: () => onAdvance(item, nextAction),
+                        icon: Icon(nextAction.icon),
+                        label: Text(nextAction.label),
+                      ),
+                    ],
+          );
+        }),
       ],
     );
   }
@@ -666,27 +883,76 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
 }
 
 class _ProfileView extends StatelessWidget {
-  const _ProfileView();
+  const _ProfileView({
+    required this.form,
+    required this.onChanged,
+    required this.onSave,
+  });
+
+  final Map<String, dynamic> form;
+  final void Function(String, dynamic) onChanged;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       children: [
-        _InfoTile(
+        const _InfoTile(
           icon: Icons.person_pin_rounded,
           title: 'Perfil de vuelo',
-          subtitle: 'Base MMTO, cabina ejecutiva, servicio VIP, idiomas ES/EN.',
+          subtitle: 'Edita base, idiomas, experiencia y cobertura operativa.',
         ),
-        _InfoTile(
-          icon: Icons.health_and_safety_rounded,
-          title: 'Certificaciones',
-          subtitle: 'CRM, primeros auxilios, evacuacion, servicio a bordo.',
-        ),
-        _InfoTile(
-          icon: Icons.business_rounded,
-          title: 'Proveedor/contexto operativo',
-          subtitle:
-              'Visible por mision: proveedor, aeronave, FBO y contacto ops.',
+        _FormPanel(
+          title: 'Datos operativos',
+          children: [
+            _TextFormLine(
+              label: 'Nombre',
+              value: form['name']?.toString() ?? '',
+              onChanged: (value) => onChanged('name', value),
+            ),
+            _TextFormLine(
+              label: 'Base',
+              value: form['base']?.toString() ?? '',
+              onChanged: (value) => onChanged('base', value),
+            ),
+            _TextFormLine(
+              label: 'Idiomas',
+              value: form['languages']?.toString() ?? '',
+              onChanged: (value) => onChanged('languages', value),
+            ),
+            _TextFormLine(
+              label: 'Experiencia',
+              value: form['experience']?.toString() ?? '',
+              onChanged: (value) => onChanged('experience', value),
+              maxLines: 3,
+            ),
+            _TextFormLine(
+              label: 'Cobertura',
+              value: form['coverage']?.toString() ?? '',
+              onChanged: (value) => onChanged('coverage', value),
+            ),
+            DropdownButtonFormField<String>(
+              value: form['profileState']?.toString() ?? 'Pendiente',
+              decoration: const InputDecoration(labelText: 'Estado perfil'),
+              items:
+                  const ['Pendiente', 'Validado', 'En revision', 'Rechazado']
+                      .map(
+                        (item) =>
+                            DropdownMenuItem(value: item, child: Text(item)),
+                      )
+                      .toList(),
+              onChanged: (value) => onChanged('profileState', value ?? ''),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onSave,
+                icon: const Icon(Icons.save_rounded),
+                label: const Text('Guardar perfil'),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -694,10 +960,17 @@ class _ProfileView extends StatelessWidget {
 }
 
 class _DocumentsView extends StatelessWidget {
-  const _DocumentsView({required this.documents, required this.onUpload});
+  const _DocumentsView({
+    required this.documents,
+    required this.onUpload,
+    required this.onCreate,
+    required this.onStatusChanged,
+  });
 
   final List<CrewDocument> documents;
   final VoidCallback onUpload;
+  final void Function(CrewDocument, File?) onCreate;
+  final void Function(CrewDocument, String) onStatusChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -711,11 +984,12 @@ class _DocumentsView extends StatelessWidget {
           onPressed: onUpload,
         ),
         const SizedBox(height: 14),
+        _DocumentComposer(onCreate: onCreate),
+        const SizedBox(height: 14),
         ...documents.map(
-          (item) => _InfoTile(
-            icon: Icons.description_rounded,
-            title: item.title,
-            subtitle: '${item.status} | ${item.expiration}',
+          (item) => _DocumentTile(
+            document: item,
+            onStatusChanged: (status) => onStatusChanged(item, status),
           ),
         ),
       ],
@@ -728,11 +1002,19 @@ class _IncidentsView extends StatelessWidget {
     required this.assignments,
     required this.incidents,
     required this.onCreate,
+    required this.onAddEvidence,
+    required this.onAddComment,
+    required this.onMarkAttended,
+    required this.onEscalate,
   });
 
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
   final ValueChanged<CrewAssignment> onCreate;
+  final ValueChanged<CrewIncident> onAddEvidence;
+  final ValueChanged<CrewIncident> onAddComment;
+  final ValueChanged<CrewIncident> onMarkAttended;
+  final ValueChanged<CrewIncident> onEscalate;
 
   @override
   Widget build(BuildContext context) {
@@ -751,10 +1033,12 @@ class _IncidentsView extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         ...incidents.map(
-          (item) => _InfoTile(
-            icon: Icons.report_gmailerrorred_rounded,
-            title: item.title,
-            subtitle: '${item.assignment} | ${item.status} | ${item.evidence}',
+          (item) => _IncidentTile(
+            incident: item,
+            onAddEvidence: () => onAddEvidence(item),
+            onAddComment: () => onAddComment(item),
+            onMarkAttended: () => onMarkAttended(item),
+            onEscalate: () => onEscalate(item),
           ),
         ),
       ],
@@ -763,45 +1047,478 @@ class _IncidentsView extends StatelessWidget {
 }
 
 class _HistoryView extends StatelessWidget {
-  const _HistoryView({required this.assignments});
+  const _HistoryView({required this.assignments, required this.incidents});
 
+  final List<CrewAssignment> assignments;
+  final List<CrewIncident> incidents;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed =
+        assignments.where((item) => item.status == 'Finalizada').toList();
+    return Column(
+      children: [
+        _MetricGrid(
+          metrics: [
+            _Metric('Vuelos completados', '${completed.length}', Icons.flight),
+            _Metric(
+              'Horas estimadas',
+              '${completed.length * 4} h',
+              Icons.timer,
+            ),
+            _Metric(
+              'Rating',
+              completed.isEmpty ? 'Sin dato' : '4.9',
+              Icons.star,
+            ),
+            _Metric('Incidencias', '${incidents.length}', Icons.report),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (completed.isEmpty)
+          const _InfoTile(
+            icon: Icons.history_rounded,
+            title: 'Sin vuelos finalizados',
+            subtitle: 'El historial se generara automaticamente.',
+          )
+        else
+          ...completed.map((item) => _AssignmentCard(item: item)),
+      ],
+    );
+  }
+}
+
+class _PaymentsView extends StatelessWidget {
+  const _PaymentsView({required this.payments, required this.assignments});
+
+  final List<CrewPaymentRecord> payments;
   final List<CrewAssignment> assignments;
 
   @override
   Widget build(BuildContext context) {
+    final completed =
+        assignments.where((item) => item.status == 'Finalizada').length;
     return Column(
-      children:
-          assignments
-              .where((item) => item.status == 'Finalizada')
-              .map((item) => _AssignmentCard(item: item))
-              .toList(),
+      children: [
+        _MetricGrid(
+          metrics: [
+            _Metric('Servicios', '$completed', Icons.room_service_rounded),
+            const _Metric('Bonos', 'USD 40', Icons.add_card_rounded),
+            const _Metric('Penalizaciones', 'USD 0', Icons.gpp_maybe_rounded),
+            const _Metric('Corte mensual', 'USD 260', Icons.payments_rounded),
+          ],
+        ),
+        const SizedBox(height: 14),
+        ...payments.map(
+          (item) => _InfoTile(
+            icon: Icons.receipt_long_rounded,
+            title: item.concept,
+            subtitle: '${item.assignment} | ${item.amount} | ${item.status}',
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _SettingsView extends StatelessWidget {
-  const _SettingsView();
+  const _SettingsView({
+    required this.form,
+    required this.onChanged,
+    required this.onSave,
+  });
+
+  final Map<String, dynamic> form;
+  final void Function(String, dynamic) onChanged;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       children: [
-        _InfoTile(
-          icon: Icons.notifications_active_rounded,
-          title: 'Notificaciones',
-          subtitle: 'Nueva mision, cambio de horario, briefing e incidencia.',
-        ),
-        _InfoTile(
-          icon: Icons.sync_rounded,
-          title: 'Sincronizacion admin',
-          subtitle: 'Asignaciones y respuestas usan canal en vivo y API.',
-        ),
-        _InfoTile(
-          icon: Icons.security_rounded,
-          title: 'Validacion movil',
-          subtitle: 'Camara, archivos, OCR, rostro y QR habilitados.',
+        _FormPanel(
+          title: 'Preferencias del portal',
+          children: [
+            SwitchListTile(
+              value: form['notifyAssignments'] == true,
+              onChanged: (value) => onChanged('notifyAssignments', value),
+              title: const Text('Notificar nuevas asignaciones'),
+            ),
+            SwitchListTile(
+              value: form['notifyIncidents'] == true,
+              onChanged: (value) => onChanged('notifyIncidents', value),
+              title: const Text('Notificar incidencias'),
+            ),
+            SwitchListTile(
+              value: form['notifyScheduleChanges'] == true,
+              onChanged: (value) => onChanged('notifyScheduleChanges', value),
+              title: const Text('Cambios de agenda'),
+            ),
+            _TextFormLine(
+              label: 'Cobertura personal',
+              value: form['personalCoverage']?.toString() ?? '',
+              onChanged: (value) => onChanged('personalCoverage', value),
+            ),
+            DropdownButtonFormField<String>(
+              value: form['escalationMode']?.toString() ?? 'Admin primero',
+              decoration: const InputDecoration(labelText: 'Escalamiento'),
+              items:
+                  const [
+                        'Admin primero',
+                        'Admin y operador',
+                        'Solo admin en criticas',
+                      ]
+                      .map(
+                        (item) =>
+                            DropdownMenuItem(value: item, child: Text(item)),
+                      )
+                      .toList(),
+              onChanged: (value) => onChanged('escalationMode', value ?? ''),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onSave,
+                icon: const Icon(Icons.save_rounded),
+                label: const Text('Guardar configuracion'),
+              ),
+            ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _FormPanel extends StatelessWidget {
+  const _FormPanel({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0E2338),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _TextFormLine extends StatelessWidget {
+  const _TextFormLine({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.maxLines = 1,
+  });
+
+  final String label;
+  final String value;
+  final ValueChanged<String> onChanged;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        initialValue: value,
+        maxLines: maxLines,
+        decoration: InputDecoration(labelText: label),
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class _DocumentComposer extends StatefulWidget {
+  const _DocumentComposer({required this.onCreate});
+
+  final void Function(CrewDocument, File?) onCreate;
+
+  @override
+  State<_DocumentComposer> createState() => _DocumentComposerState();
+}
+
+class _DocumentComposerState extends State<_DocumentComposer> {
+  final _name = TextEditingController();
+  final _expiration = TextEditingController();
+  final _note = TextEditingController();
+  String _category = 'Certificacion';
+  File? _file;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _expiration.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _FormPanel(
+      title: 'Alta documental',
+      children: [
+        TextField(
+          controller: _name,
+          decoration: const InputDecoration(labelText: 'Nombre'),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _category,
+          decoration: const InputDecoration(labelText: 'Categoria'),
+          items:
+              const ['Certificacion', 'Identidad', 'Idioma', 'Experiencia']
+                  .map(
+                    (item) => DropdownMenuItem(value: item, child: Text(item)),
+                  )
+                  .toList(),
+          onChanged: (value) => setState(() => _category = value ?? _category),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _expiration,
+          decoration: const InputDecoration(
+            labelText: 'Vencimiento',
+            hintText: '2027-12-31',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _note,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Nota'),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _file == null
+                    ? 'Sin archivo adjunto'
+                    : _file!.path.split(Platform.pathSeparator).last,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _pickFile,
+              icon: const Icon(Icons.attach_file_rounded),
+              label: const Text('Adjuntar'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _submit,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Agregar documento'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+    final path = result?.files.single.path;
+    if (path == null) return;
+    setState(() => _file = File(path));
+  }
+
+  void _submit() {
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+    widget.onCreate(
+      CrewDocument(
+        title: name,
+        status: 'Pendiente',
+        expiration:
+            _expiration.text.trim().isEmpty
+                ? 'Sin vigencia'
+                : _expiration.text.trim(),
+        category: _category,
+        note: _note.text.trim(),
+        localPath: _file?.path ?? '',
+      ),
+      _file,
+    );
+    _name.clear();
+    _expiration.clear();
+    _note.clear();
+    setState(() => _file = null);
+  }
+}
+
+class _DocumentTile extends StatelessWidget {
+  const _DocumentTile({required this.document, required this.onStatusChanged});
+
+  final CrewDocument document;
+  final ValueChanged<String> onStatusChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const statusOptions = [
+      'Pendiente',
+      'En revision',
+      'Aprobado',
+      'Rechazado',
+      'Vence pronto',
+      'Vigente',
+    ];
+    final selectedStatus =
+        statusOptions.contains(document.status) ? document.status : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            document.title,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${document.category} | Vence: ${document.expiration}',
+            style: const TextStyle(color: Color(0xFF5F6975)),
+          ),
+          if (document.note.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(document.note),
+          ],
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: selectedStatus,
+            decoration: const InputDecoration(labelText: 'Estado'),
+            items:
+                statusOptions
+                    .map(
+                      (item) =>
+                          DropdownMenuItem(value: item, child: Text(item)),
+                    )
+                    .toList(),
+            onChanged: (value) {
+              if (value != null) onStatusChanged(value);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IncidentTile extends StatelessWidget {
+  const _IncidentTile({
+    required this.incident,
+    required this.onAddEvidence,
+    required this.onAddComment,
+    required this.onMarkAttended,
+    required this.onEscalate,
+  });
+
+  final CrewIncident incident;
+  final VoidCallback onAddEvidence;
+  final VoidCallback onAddComment;
+  final VoidCallback onMarkAttended;
+  final VoidCallback onEscalate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  incident.title,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              _StatusPill(incident.status),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${incident.assignment} | Prioridad ${incident.priority} | ${incident.evidence}',
+            style: const TextStyle(color: Color(0xFF5F6975)),
+          ),
+          if (incident.description.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(incident.description),
+          ],
+          if (incident.comments.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...incident.comments
+                .take(2)
+                .map(
+                  (comment) => Text(
+                    'Comentario: $comment',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onAddEvidence,
+                icon: const Icon(Icons.attach_file_rounded),
+                label: const Text('Evidencia'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onAddComment,
+                icon: const Icon(Icons.comment_rounded),
+                label: const Text('Comentar'),
+              ),
+              FilledButton.icon(
+                onPressed: onMarkAttended,
+                icon: const Icon(Icons.task_alt_rounded),
+                label: const Text('Atendida'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onEscalate,
+                icon: const Icon(Icons.priority_high_rounded),
+                label: const Text('Escalar'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

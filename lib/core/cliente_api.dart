@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -481,6 +482,59 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> sendClientContractForSignature({
+    required String reservationId,
+    required Map<String, dynamic> contractPayload,
+  }) {
+    return postFirstAvailable(
+      [
+        '/cliente/reservas/$reservationId/contrato/enviar',
+        '/cliente/reservas/$reservationId/contrato/docusign',
+        '/client/reservations/$reservationId/contract/send',
+        '/client/reservations/$reservationId/contract/docusign',
+        '/contracts/send',
+      ],
+      authenticated: true,
+      body: {
+        'reservation_id': reservationId,
+        'flight_request_id': reservationId,
+        'booking_id': reservationId,
+        ...contractPayload,
+      },
+    );
+  }
+
+  Future<Uint8List> downloadClientContractPdf(String reservationId) {
+    return downloadFirstAvailable([
+      '/cliente/reservas/$reservationId/contrato/pdf',
+      '/cliente/reservas/$reservationId/contrato/download',
+      '/cliente/reservas/$reservationId/contrato/descargar',
+      '/client/reservations/$reservationId/contract/pdf',
+      '/client/reservations/$reservationId/contract/download',
+      '/client/flight-requests/$reservationId/contract/pdf',
+    ], authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> requestConcierge({
+    required String message,
+    String? reservationId,
+    String? flightRequestId,
+    String category = 'general',
+  }) {
+    return postFirstAvailable(
+      const ['/client/concierge/request', '/cliente/concierge/request'],
+      authenticated: true,
+      body: {
+        'message': message.trim(),
+        'category': category,
+        if (reservationId != null && reservationId.trim().isNotEmpty)
+          'reservation_id': reservationId.trim(),
+        if (flightRequestId != null && flightRequestId.trim().isNotEmpty)
+          'flight_request_id': flightRequestId.trim(),
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> createClientPaymentIntent({
     required String flightRequestId,
     required Map<String, dynamic> paymentPayload,
@@ -823,6 +877,80 @@ class ApiClient {
 
     throw lastError ??
         const ApiException('No fue posible completar la solicitud.');
+  }
+
+  Future<Uint8List> downloadFirstAvailable(
+    List<String> paths, {
+    bool authenticated = false,
+    Map<String, String>? query,
+  }) async {
+    ApiException? lastError;
+
+    for (final path in paths) {
+      try {
+        return await download(path, authenticated: authenticated, query: query);
+      } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
+        lastError = error;
+      }
+    }
+
+    throw lastError ??
+        const ApiException('No fue posible descargar el documento.');
+  }
+
+  Future<Uint8List> download(
+    String path, {
+    bool authenticated = false,
+    Map<String, String>? query,
+  }) async {
+    Object? lastError;
+
+    for (var index = 0; index < _backendCandidates.length; index++) {
+      final candidate = _backendCandidates[index];
+
+      try {
+        final response = await _send(
+          candidate,
+          path,
+          method: 'GET',
+          authenticated: authenticated,
+          query: query,
+        );
+        _activeBackendIndex = index;
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          Map<String, dynamic> decoded = const {};
+          try {
+            decoded =
+                response.body.isEmpty
+                    ? const {}
+                    : jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (_) {
+            decoded = const {};
+          }
+          throw ApiException(
+            decoded['message']?.toString() ??
+                'Error HTTP ${response.statusCode} en $candidate',
+            statusCode: response.statusCode,
+            payload: decoded,
+          );
+        }
+
+        return response.bodyBytes;
+      } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
+        lastError = error;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError is ApiException) throw lastError;
+    throw ApiException(
+      'No fue posible descargar desde el backend configurado.',
+      cause: lastError,
+    );
   }
 
   Future<Map<String, dynamic>> get(

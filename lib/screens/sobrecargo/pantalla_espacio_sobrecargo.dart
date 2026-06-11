@@ -75,6 +75,12 @@ class CrewWorkspaceScreen extends StatelessWidget {
           screen: CrewPortalScreen(initialTab: CrewPortalTab.history),
         ),
         RoleWorkspaceItem(
+          label: 'Pagos',
+          shortLabel: 'Pagos',
+          icon: Icons.payments_rounded,
+          screen: CrewPortalScreen(initialTab: CrewPortalTab.payments),
+        ),
+        RoleWorkspaceItem(
           label: 'Ajustes',
           shortLabel: 'Config',
           icon: Icons.settings_rounded,
@@ -94,6 +100,7 @@ enum CrewPortalTab {
   documents,
   incidents,
   history,
+  payments,
   settings,
 }
 
@@ -112,6 +119,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
   final List<CrewAssignment> _assignments = [...CrewAssignment.demo];
   final List<CrewIncident> _incidents = [...CrewIncident.demo];
   final List<CrewDocument> _documents = [...CrewDocument.demo];
+  final List<CrewPaymentRecord> _payments = [...CrewPaymentRecord.demo];
   final List<CrewBlock> _blocks = [];
   final List<CrewAvailabilityRecord> _availability = [];
   List<CrewAvailabilityStatus> _availabilityStatuses = [
@@ -123,6 +131,21 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
   bool _availabilityLoading = false;
   String _syncMessage = 'Portal listo con datos locales.';
   DateTime _selectedDate = DateTime.now();
+  final Map<String, dynamic> _profileForm = {
+    'name': '',
+    'base': 'MMTO',
+    'languages': 'ES/EN',
+    'experience': 'Cabina ejecutiva y servicio VIP',
+    'coverage': 'Nacional',
+    'profileState': 'Pendiente',
+  };
+  final Map<String, dynamic> _configForm = {
+    'notifyAssignments': true,
+    'notifyIncidents': true,
+    'notifyScheduleChanges': true,
+    'personalCoverage': 'Nacional',
+    'escalationMode': 'Admin primero',
+  };
 
   @override
   void initState() {
@@ -329,6 +352,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
         return 'Incidencias';
       case CrewPortalTab.history:
         return 'Historial de servicio';
+      case CrewPortalTab.payments:
+        return 'Pagos y comisiones';
       case CrewPortalTab.settings:
         return 'Ajustes';
     }
@@ -342,6 +367,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
           incidents: _incidents,
           documents: _documents,
           onScan: _scanOperationCode,
+          onOpenAvailability: () => _openLocalTab(CrewPortalTab.availability),
+          onOpenDocuments: () => _openLocalTab(CrewPortalTab.documents),
+          onOpenIncidents: () => _openLocalTab(CrewPortalTab.incidents),
         );
       case CrewPortalTab.missions:
         return _MissionList(
@@ -358,6 +386,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
           blocks: _blocks,
           onDateSelected: (date) => setState(() => _selectedDate = date),
           onBlock: _createAvailabilityBlock,
+          onAdvance: _advanceAssignmentStep,
+          onAccept: (item) => _respondAssignment(item, 'Confirmado'),
         );
       case CrewPortalTab.availability:
         return _AvailabilityView(
@@ -372,20 +402,45 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
           onRequestChange: _requestAvailabilityChange,
         );
       case CrewPortalTab.profile:
-        return const _ProfileView();
+        return _ProfileView(
+          form: _profileForm,
+          onChanged: _updateProfileField,
+          onSave: _saveProfile,
+        );
       case CrewPortalTab.documents:
-        return _DocumentsView(documents: _documents, onUpload: _uploadDocument);
+        return _DocumentsView(
+          documents: _documents,
+          onUpload: _uploadDocument,
+          onCreate: _createDocumentDetailed,
+          onStatusChanged: _updateDocumentStatus,
+        );
       case CrewPortalTab.incidents:
         return _IncidentsView(
           assignments: _assignments,
           incidents: _incidents,
           onCreate: _createIncident,
+          onAddEvidence: _addIncidentEvidence,
+          onAddComment: _addIncidentComment,
+          onMarkAttended: _markIncidentAttended,
+          onEscalate: _escalateIncident,
         );
       case CrewPortalTab.history:
-        return _HistoryView(assignments: _assignments);
+        return _HistoryView(assignments: _assignments, incidents: _incidents);
+      case CrewPortalTab.payments:
+        return _PaymentsView(payments: _payments, assignments: _assignments);
       case CrewPortalTab.settings:
-        return const _SettingsView();
+        return _SettingsView(
+          form: _configForm,
+          onChanged: _updateConfigField,
+          onSave: _saveConfig,
+        );
     }
+  }
+
+  void _openLocalTab(CrewPortalTab tab) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CrewPortalScreen(initialTab: tab)),
+    );
   }
 
   Future<void> _respondAssignment(CrewAssignment item, String status) async {
@@ -574,6 +629,106 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
     await _saveAvailability(date, 'BLOQUEO_SOLICITADO', reason.trim());
   }
 
+  void _updateProfileField(String key, dynamic value) {
+    setState(() => _profileForm[key] = value);
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _syncMessage = 'Guardando perfil de vuelo...');
+    try {
+      await _api.post(
+        '/sobrecargo/profile',
+        body: {
+          'name': _profileForm['name'],
+          'base': _profileForm['base'],
+          'languages': _profileForm['languages'],
+          'experience': _profileForm['experience'],
+          'coverage': _profileForm['coverage'],
+          'profile_state': _profileForm['profileState'],
+        },
+        authenticated: true,
+      );
+      setState(() => _syncMessage = 'Perfil actualizado.');
+    } catch (_) {
+      setState(() => _syncMessage = 'Perfil guardado localmente.');
+    }
+  }
+
+  void _updateConfigField(String key, dynamic value) {
+    setState(() => _configForm[key] = value);
+  }
+
+  Future<void> _saveConfig() async {
+    setState(() => _syncMessage = 'Guardando preferencias...');
+    try {
+      await _api.post(
+        '/sobrecargo/profile',
+        body: {
+          'preferences': {
+            'notify_assignments': _configForm['notifyAssignments'] == true,
+            'notify_incidents': _configForm['notifyIncidents'] == true,
+            'notify_schedule_changes':
+                _configForm['notifyScheduleChanges'] == true,
+            'personal_coverage': _configForm['personalCoverage'],
+            'escalation_mode': _configForm['escalationMode'],
+          },
+        },
+        authenticated: true,
+      );
+      setState(() => _syncMessage = 'Preferencias sincronizadas.');
+    } catch (_) {
+      setState(() => _syncMessage = 'Preferencias guardadas localmente.');
+    }
+  }
+
+  Future<void> _createDocumentDetailed(
+    CrewDocument document,
+    File? file,
+  ) async {
+    setState(() {
+      _documents.insert(0, document);
+      _syncMessage = 'Sincronizando documento...';
+    });
+    try {
+      if (file != null) {
+        await _api.postMultipart(
+          '/sobrecargo/documents',
+          authenticated: true,
+          fields: {
+            'name': document.title,
+            'category': document.category,
+            'expires_at': document.expiration,
+            'note': document.note,
+            'status': document.status,
+          },
+          files: {'document': file},
+        );
+      } else {
+        await _api.post(
+          '/sobrecargo/documents',
+          authenticated: true,
+          body: {
+            'name': document.title,
+            'category': document.category,
+            'expires_at': document.expiration,
+            'note': document.note,
+            'status': document.status,
+          },
+        );
+      }
+      setState(() => _syncMessage = 'Documento enviado a admin.');
+    } catch (_) {
+      setState(() => _syncMessage = 'Documento guardado localmente.');
+    }
+  }
+
+  void _updateDocumentStatus(CrewDocument document, String status) {
+    setState(() {
+      document.status = status;
+      _syncMessage = 'Estado documental actualizado localmente.';
+    });
+  }
+
   Future<void> _uploadDocument() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -586,8 +741,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
         0,
         CrewDocument(
           title: result!.files.single.name,
-          status: 'Pendiente admin',
+          status: 'Pendiente',
           expiration: 'Por validar',
+          category: 'Certificacion',
+          localPath: path,
         ),
       );
       _syncMessage = 'Documento agregado para revision.';
@@ -630,6 +787,61 @@ class _CrewPortalScreenState extends State<CrewPortalScreen> {
       setState(() => _syncMessage = 'Incidencia enviada a admin.');
     } catch (_) {
       setState(() => _syncMessage = 'Incidencia guardada localmente.');
+    }
+  }
+
+  Future<void> _addIncidentEvidence(CrewIncident incident) async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+    );
+    if (picked == null) return;
+    setState(() {
+      incident.evidence = picked.path.split(Platform.pathSeparator).last;
+      _syncMessage = 'Evidencia agregada a incidencia.';
+    });
+  }
+
+  Future<void> _addIncidentComment(CrewIncident incident) async {
+    final comment = await _TextDialog.show(
+      context,
+      title: 'Agregar comentario',
+      label: 'Comentario',
+      initial: 'Actualizacion operativa',
+    );
+    if (comment == null || comment.trim().isEmpty) return;
+    setState(() {
+      incident.comments = [comment.trim(), ...incident.comments];
+      _syncMessage = 'Comentario agregado.';
+    });
+  }
+
+  void _markIncidentAttended(CrewIncident incident) {
+    setState(() {
+      incident.status = 'Atendida';
+      _syncMessage = 'Incidencia marcada como atendida.';
+    });
+  }
+
+  Future<void> _escalateIncident(CrewIncident incident) async {
+    setState(() {
+      incident.status = 'Escalada';
+      incident.priority = 'Alta';
+      _syncMessage = 'Escalando incidencia a admin...';
+    });
+    try {
+      await _api.post(
+        '/sobrecargo/incidents/escalate',
+        authenticated: true,
+        body: {
+          'title': incident.title,
+          'assignment': incident.assignment,
+          'comment': 'Escalada desde app movil de sobrecargo.',
+        },
+      );
+      setState(() => _syncMessage = 'Incidencia escalada.');
+    } catch (_) {
+      setState(() => _syncMessage = 'Incidencia escalada localmente.');
     }
   }
 

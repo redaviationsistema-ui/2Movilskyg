@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:signature/signature.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/cliente_api.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
@@ -41,6 +45,8 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
   bool _accepted = false;
   bool _showContractDetails = false;
   bool _submitting = false;
+  bool _externalSigning = false;
+  bool _downloading = false;
   String _submitMessage = '';
 
   @override
@@ -315,6 +321,60 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
             ),
           ),
           const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _externalSigning || _submitting
+                          ? null
+                          : _openExternalSignature,
+                  icon:
+                      _externalSigning
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Icon(Icons.open_in_new_rounded),
+                  label: const Text('DocuSign'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: kBlack,
+                    side: const BorderSide(color: kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _downloading || _submitting ? null : _downloadContractPdf,
+                  icon:
+                      _downloading
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Icon(Icons.download_rounded),
+                  label: const Text('PDF'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: kBlack,
+                    side: const BorderSide(color: kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           FilledButton(
             onPressed: _canContinue && !_submitting ? _signAndContinue : null,
             style: FilledButton.styleFrom(
@@ -421,6 +481,150 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
         setState(() => _submitting = false);
       }
     }
+  }
+
+  Future<void> _openExternalSignature() async {
+    final request = widget.request;
+    final contractModel = _ContractModel.fromRequest(request);
+    final reservationId = _reservationId(request);
+
+    if (reservationId.isEmpty) {
+      setState(() {
+        _submitMessage =
+            'No se encontro el folio de reserva para preparar DocuSign.';
+      });
+      return;
+    }
+
+    setState(() {
+      _externalSigning = true;
+      _submitMessage = 'Preparando enlace seguro de DocuSign...';
+    });
+
+    try {
+      final payload = await ApiClient.instance.sendClientContractForSignature(
+        reservationId: reservationId,
+        contractPayload: {
+          'contract_snapshot': contractModel.toSnapshot(),
+          'return_context': 'mobile',
+        },
+      );
+      final signingUrl = _extractSigningUrl(payload);
+      if (signingUrl.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio un enlace de firma externo.',
+        );
+      }
+
+      final uri = Uri.parse(signingUrl);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        throw const ApiException('No fue posible abrir DocuSign.');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _submitMessage =
+            'DocuSign abierto. Al volver, actualiza Mis vuelos para ver el estado firmado.';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitMessage = 'No fue posible preparar DocuSign: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _externalSigning = false);
+    }
+  }
+
+  Future<void> _downloadContractPdf() async {
+    final reservationId = _reservationId(widget.request);
+    if (reservationId.isEmpty) {
+      setState(() {
+        _submitMessage =
+            'No se encontro el folio de reserva para descargar el contrato.';
+      });
+      return;
+    }
+
+    setState(() {
+      _downloading = true;
+      _submitMessage = 'Descargando contrato PDF...';
+    });
+
+    try {
+      final bytes = await ApiClient.instance.downloadClientContractPdf(
+        reservationId,
+      );
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/contrato-$reservationId.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      final result = await OpenFilex.open(file.path);
+
+      if (!mounted) return;
+      setState(() {
+        _submitMessage =
+            result.type == ResultType.done
+                ? 'Contrato descargado y abierto.'
+                : 'Contrato descargado en ${file.path}';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitMessage = 'No fue posible descargar el PDF: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  String _reservationId(Map<String, dynamic> request) {
+    return request['id']?.toString() ??
+        request['flight_request_id']?.toString() ??
+        request['reservation_id']?.toString() ??
+        request['booking_id']?.toString() ??
+        '';
+  }
+
+  String _extractSigningUrl(Map<String, dynamic> payload) {
+    final data =
+        payload['data'] is Map
+            ? Map<String, dynamic>.from(payload['data'] as Map)
+            : const <String, dynamic>{};
+    final contract =
+        payload['contract'] is Map
+            ? Map<String, dynamic>.from(payload['contract'] as Map)
+            : const <String, dynamic>{};
+    final candidates = [
+      payload['signing_url'],
+      payload['signingUrl'],
+      payload['recipient_view_url'],
+      payload['recipientViewUrl'],
+      payload['embedded_signing_url'],
+      data['signing_url'],
+      data['recipient_view_url'],
+      contract['signing_url'],
+      contract['recipient_view_url'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+      }
+    }
+
+    return '';
   }
 }
 

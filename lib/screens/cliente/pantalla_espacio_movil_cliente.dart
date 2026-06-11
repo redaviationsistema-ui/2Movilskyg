@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -27,6 +29,28 @@ class _ClientMobileWorkspaceScreenState
   int _searchSession = 0;
   _TripsStage _tripsStage = _TripsStage.list;
   String? _selectedRequestId;
+  Timer? _workspaceSyncTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ReservationProvider>().loadClientWorkspaceData();
+    });
+    _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 35), (_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (!auth.isAuthenticated) return;
+      context.read<ReservationProvider>().loadClientWorkspaceData(force: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _workspaceSyncTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +83,29 @@ class _ClientMobileWorkspaceScreenState
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F1E8),
-      body: IndexedStack(index: _selectedIndex, children: screens),
+      body: Column(
+        children: [
+          _MembershipPortalStatus(
+            access: auth.accessData ?? const <String, dynamic>{},
+            lastSyncAt: reservation.lastWorkspaceSyncAt,
+            isSyncing: reservation.isLoadingWorkspace,
+            onOpenMembership: () {
+              setState(() {
+                _selectedIndex = 3;
+              });
+            },
+            onRefresh: () {
+              context.read<ReservationProvider>().loadClientWorkspaceData(
+                force: true,
+              );
+              context.read<AuthProvider>().loadUserRole();
+            },
+          ),
+          Expanded(
+            child: IndexedStack(index: _selectedIndex, children: screens),
+          ),
+        ],
+      ),
       bottomNavigationBar: ClientMobileBottomNav(
         currentIndex: _selectedIndex,
         onSelect: (index) {
@@ -182,3 +228,100 @@ class _ClientMobileWorkspaceScreenState
 }
 
 enum _TripsStage { list, contract, payment, confirmation }
+
+class _MembershipPortalStatus extends StatelessWidget {
+  const _MembershipPortalStatus({
+    required this.access,
+    required this.lastSyncAt,
+    required this.isSyncing,
+    required this.onOpenMembership,
+    required this.onRefresh,
+  });
+
+  final Map<String, dynamic> access;
+  final DateTime? lastSyncAt;
+  final bool isSyncing;
+  final VoidCallback onOpenMembership;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final subscription = access['subscription'];
+    final plan =
+        subscription is Map
+            ? (subscription['plan_name'] ?? subscription['plan'])?.toString()
+            : access['plan_name']?.toString();
+    final hasAccess = access['has_access'] == true;
+    final status = _statusLabel(access);
+    final syncLabel =
+        isSyncing
+            ? 'Sincronizando'
+            : lastSyncAt == null
+            ? 'Sin sync'
+            : '${lastSyncAt!.hour.toString().padLeft(2, '0')}:${lastSyncAt!.minute.toString().padLeft(2, '0')}';
+
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        decoration: const BoxDecoration(
+          color: Color(0xFF050505),
+          border: Border(bottom: BorderSide(color: Color(0x22111111))),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasAccess ? Icons.verified_rounded : Icons.workspace_premium,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${plan?.isNotEmpty == true ? plan : 'Membresia cliente'} | $status | Sync $syncLabel',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Actualizar',
+              onPressed: onRefresh,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.sync_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            TextButton(
+              onPressed: onOpenMembership,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text('Plan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _statusLabel(Map<String, dynamic> access) {
+    final subscription = access['subscription'];
+    final raw =
+        subscription is Map
+            ? subscription['status'] ?? access['subscription_status']
+            : access['subscription_status'];
+    final value = raw?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+    if (access['has_access'] == true) return 'Activo';
+    return 'Pendiente';
+  }
+}
