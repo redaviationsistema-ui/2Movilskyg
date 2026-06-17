@@ -270,7 +270,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
 
   Future<void> _submit() async {
     if (_passwordController.text != _passwordConfirmationController.text) {
-      _showMessage('Las contrasenas no coinciden.');
+      _showMessage('Las contraseñas no coinciden.');
       return;
     }
     if (_document == null) {
@@ -339,7 +339,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _passwordVisible = true;
       _passwordConfirmationVisible = true;
     });
-    _showMessage('Contrasena segura generada. Puedes editarla.');
+    _showMessage('Contraseña segura generada. Puedes editarla.');
   }
 
   @override
@@ -491,7 +491,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     return [
       const _SectionLabel(
         icon: Icons.lock_outline_rounded,
-        title: 'Correo / Contrasena',
+        title: 'Correo / Contraseña',
       ),
       _field(_emailController, 'Correo', keyboard: TextInputType.emailAddress),
       Align(
@@ -499,24 +499,24 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         child: TextButton.icon(
           onPressed: _generatePassword,
           icon: const Icon(Icons.password_rounded),
-          label: const Text('Generar contrasena'),
+          label: const Text('Generar contraseña'),
         ),
       ),
       _field(
         _passwordController,
-        'Contrasena',
+        'Contraseña',
         obscure: !_passwordVisible,
         minLength: 8,
       ),
       SwitchListTile.adaptive(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Mostrar contrasena'),
+        title: const Text('Mostrar contraseña'),
         value: _passwordVisible,
         onChanged: (value) => setState(() => _passwordVisible = value),
       ),
       _field(
         _passwordConfirmationController,
-        'Confirmar contrasena',
+        'Confirmar contraseña',
         obscure: !_passwordConfirmationVisible,
         minLength: 8,
       ),
@@ -652,7 +652,7 @@ class _RegistrationProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Perfil / Licencia', 'Correo / Contrasena'];
+    const labels = ['Perfil / Licencia', 'Correo / Contraseña'];
     return Row(
       children: List.generate(labels.length, (index) {
         final active = index <= currentStep;

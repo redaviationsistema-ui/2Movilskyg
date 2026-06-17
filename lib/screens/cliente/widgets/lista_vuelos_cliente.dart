@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../models/aeronave.dart';
+import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../views/pantalla_detalle_aeronave_cliente.dart';
 import '../views/pantalla_concierge_cliente.dart';
@@ -24,6 +26,7 @@ class ClientFlightsList extends StatefulWidget {
     this.showBackButton = true,
     this.onOpenContract,
     this.onOpenPayment,
+    this.onCommercialAccessRequired,
     this.includeUpcomingTab = true,
   });
 
@@ -32,6 +35,7 @@ class ClientFlightsList extends StatefulWidget {
   final bool showBackButton;
   final ValueChanged<Map<String, dynamic>>? onOpenContract;
   final ValueChanged<Map<String, dynamic>>? onOpenPayment;
+  final VoidCallback? onCommercialAccessRequired;
   final bool includeUpcomingTab;
 
   @override
@@ -413,6 +417,15 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
   }
 
   void _handleOpenPayment(Map<String, dynamic> request) {
+    final accessState = resolveCommercialAccessState(
+      context.read<AuthProvider>().accessData,
+    );
+    if (!accessState.canReserve) {
+      _showActionMessage(accessState.reservationBlockedMessage);
+      widget.onCommercialAccessRequired?.call();
+      return;
+    }
+
     if (widget.onOpenPayment != null) {
       widget.onOpenPayment!(request);
       return;

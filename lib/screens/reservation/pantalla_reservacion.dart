@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/acceso_comercial_cliente.dart';
 import '../../models/aeropuerto.dart';
+import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import '../cliente/widgets/widgets_flujo_movil_cliente.dart';
 import 'pantalla_vista_previa_cotizacion.dart';
@@ -127,6 +129,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
   }
 
   Future<void> _handlePreview(ReservationProvider reservation) async {
+    final auth = context.read<AuthProvider>();
+    await auth.refreshCommercialAccessStatus();
+    final accessState = resolveCommercialAccessState(auth.accessData);
+    if (!accessState.canQuote) {
+      _showMessage(accessState.quoteBlockedMessage);
+      return;
+    }
+
     final route = reservation.routes.first;
     if (route.fromAirport == null ||
         route.toAirport == null ||
@@ -151,11 +161,21 @@ class _ReservationScreenState extends State<ReservationScreen> {
       return;
     }
 
+    final previousRemaining = accessState.remainingFreeQuotes;
+    await auth.refreshCommercialAccessStatus();
+    final refreshedState = resolveCommercialAccessState(auth.accessData);
+    if (!refreshedState.hasPaidAccess &&
+        previousRemaining > 0 &&
+        refreshedState.remainingFreeQuotes >= previousRemaining) {
+      auth.consumeTrialQuote();
+    }
+
     if (widget.onQuoteReady != null) {
       widget.onQuoteReady!();
       return;
     }
 
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const QuotePreviewScreen()),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/cliente_api.dart';
+import '../../../providers/proveedor_autenticacion.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientPaymentScreen extends StatefulWidget {
@@ -8,11 +11,13 @@ class ClientPaymentScreen extends StatefulWidget {
     super.key,
     required this.request,
     required this.onPaymentComplete,
+    this.commercialAccessMode = false,
     this.showBackButton = true,
   });
 
   final Map<String, dynamic> request;
   final VoidCallback onPaymentComplete;
+  final bool commercialAccessMode;
   final bool showBackButton;
 
   @override
@@ -62,12 +67,21 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final amount = _amountLabel(widget.request);
-    final route = _routeLabel(widget.request);
+    final amount =
+        widget.commercialAccessMode
+            ? 'USD \$115 / mes'
+            : _amountLabel(widget.request);
+    final route =
+        widget.commercialAccessMode
+            ? 'Activa el acceso comercial para reservar, firmar contrato y pagar vuelos.'
+            : _routeLabel(widget.request);
 
     return ClientExperienceShell(
       title: 'Pago',
-      subtitle: 'Checkout seguro dentro del mismo flujo del portal cliente.',
+      subtitle:
+          widget.commercialAccessMode
+              ? 'Activa tu acceso comercial dentro del mismo flujo premium.'
+              : 'Checkout seguro dentro del mismo flujo del portal cliente.',
       showBackButton: widget.showBackButton,
       trailing: const StatusBadge(
         label: 'Checkout seguro',
@@ -137,9 +151,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
-                  style: TextStyle(
+                Text(
+                  widget.commercialAccessMode
+                      ? 'Revisa el correo de contacto y abre Stripe Checkout para activar o renovar tu acceso comercial.'
+                      : 'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
                     height: 1.35,
@@ -153,7 +169,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   children: const [
                     _TrustChip(label: 'Pago protegido'),
                     _TrustChip(label: 'Concierge financiero'),
-                    _TrustChip(label: 'Reserva priorizada'),
+                    _TrustChip(label: 'Acceso premium'),
                   ],
                 ),
               ],
@@ -169,26 +185,35 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _PaymentMethodCard(
-                      label: 'Tarjeta corporativa',
-                      note: 'Checkout seguro integrado',
-                      icon: Icons.credit_card_rounded,
-                      selected: _paymentMethod == 'card',
-                      onTap: () => setState(() => _paymentMethod = 'card'),
-                    ),
-                    _PaymentMethodCard(
-                      label: 'Transferencia / wire',
-                      note: 'Validacion manual del comprobante',
-                      icon: Icons.account_balance_rounded,
-                      selected: _paymentMethod == 'wire',
-                      onTap: () => setState(() => _paymentMethod = 'wire'),
-                    ),
-                  ],
-                ),
+                if (!widget.commercialAccessMode)
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _PaymentMethodCard(
+                        label: 'Tarjeta corporativa',
+                        note: 'Checkout seguro integrado',
+                        icon: Icons.credit_card_rounded,
+                        selected: _paymentMethod == 'card',
+                        onTap: () => setState(() => _paymentMethod = 'card'),
+                      ),
+                      _PaymentMethodCard(
+                        label: 'Transferencia / wire',
+                        note: 'Validacion manual del comprobante',
+                        icon: Icons.account_balance_rounded,
+                        selected: _paymentMethod == 'wire',
+                        onTap: () => setState(() => _paymentMethod = 'wire'),
+                      ),
+                    ],
+                  )
+                else
+                  const _PaymentMethodCard(
+                    label: 'Stripe Checkout',
+                    note: 'Activa o renueva tu acceso comercial',
+                    icon: Icons.workspace_premium_rounded,
+                    selected: true,
+                    onTap: null,
+                  ),
                 const SizedBox(height: 18),
                 _InputField(
                   controller: _emailController,
@@ -197,7 +222,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 14),
-                if (_paymentMethod == 'card') ...[
+                if (!widget.commercialAccessMode && _paymentMethod == 'card') ...[
                   _InputField(
                     controller: _cardController,
                     label: 'Numero de tarjeta',
@@ -244,7 +269,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                       ),
                     ],
                   ),
-                ] else ...[
+                ] else if (!widget.commercialAccessMode) ...[
                   _InputField(
                     controller: _wireReferenceController,
                     label: 'Referencia bancaria',
@@ -323,7 +348,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                 _PaymentRow(
                   label: 'Metodo seleccionado',
                   value:
-                      _paymentMethod == 'card'
+                      widget.commercialAccessMode
+                          ? 'Stripe Checkout'
+                          : _paymentMethod == 'card'
                           ? 'Tarjeta corporativa'
                           : 'Transferencia / wire',
                 ),
@@ -349,7 +376,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                       ),
                     )
                     : Text(
-                      _paymentMethod == 'card'
+                      widget.commercialAccessMode
+                          ? 'Activar acceso comercial'
+                          : _paymentMethod == 'card'
                           ? 'Pagar ahora'
                           : 'Generar referencia bancaria',
                     ),
@@ -361,6 +390,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
 
   bool get _canSubmit {
     if (_emailController.text.trim().isEmpty) return false;
+    if (widget.commercialAccessMode) return true;
     if (_paymentMethod == 'card') {
       return _cardController.text.trim().length >= 19 &&
           _expiryController.text.trim().isNotEmpty &&
@@ -370,6 +400,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
   }
 
   Future<void> _submitPayment() async {
+    if (widget.commercialAccessMode) {
+      await _submitCommercialAccessPayment();
+      return;
+    }
+
     final flightRequestId = _entityId(widget.request);
     if (flightRequestId.isEmpty) {
       setState(() {
@@ -442,6 +477,71 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
       if (!mounted) return;
       setState(
         () => _inlineMessage = 'No fue posible procesar el pago: $error',
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitCommercialAccessPayment() async {
+    setState(() {
+      _submitting = true;
+      _inlineMessage = 'Preparando Stripe Checkout...';
+    });
+
+    try {
+      final payload = await ApiClient.instance.createClientAccessCheckout(
+        paymentPayload: {
+          'contact_email': _emailController.text.trim(),
+        },
+      );
+
+      final redirectUrl = (payload['management_url'] ??
+              payload['checkout_url'] ??
+              payload['managementUrl'] ??
+              payload['checkoutUrl'] ??
+              ((payload['data'] is Map)
+                  ? (payload['data']['management_url'] ??
+                      payload['data']['checkout_url'] ??
+                      payload['data']['managementUrl'] ??
+                      payload['data']['checkoutUrl'])
+                  : null) ??
+              '')
+          .toString()
+          .trim();
+
+      if (redirectUrl.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio la URL de Stripe para activar el acceso comercial.',
+        );
+      }
+
+      final opened = await launchUrl(
+        Uri.parse(redirectUrl),
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened) {
+        throw const ApiException('No fue posible abrir Stripe Checkout.');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'Stripe Checkout abierto. Cuando regreses, actualizaremos tu acceso comercial.';
+      });
+
+      await context.read<AuthProvider>().refreshCommercialAccessStatus();
+      if (!mounted) return;
+      widget.onPaymentComplete();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _inlineMessage = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _inlineMessage =
+            'No fue posible iniciar el acceso comercial: $error',
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -558,7 +658,7 @@ class _PaymentMethodCard extends StatelessWidget {
   final String note;
   final IconData icon;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

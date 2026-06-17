@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class RegistrationOcrResult {
@@ -17,6 +18,10 @@ class RegistrationOcrResult {
 class RegistrationOcrService {
   RegistrationOcrService._();
 
+  static Map<String, String> parseIneText(String rawText) {
+    return _parseIne(rawText);
+  }
+
   static Future<RegistrationOcrResult> scanIne(List<File> images) async {
     final scanner = MobileScannerController(
       formats: const [
@@ -27,6 +32,8 @@ class RegistrationOcrService {
       ],
     );
     final barcodeParts = <String>[];
+    final textParts = <String>[];
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
     try {
       for (var index = 0; index < images.length; index++) {
@@ -40,16 +47,40 @@ class RegistrationOcrService {
         } catch (_) {
           // El OCR sigue funcionando aunque el documento no exponga codigo.
         }
+
+        try {
+          final recognized = await textRecognizer.processImage(
+            InputImage.fromFilePath(source.path),
+          );
+          final text = recognized.text.trim();
+          if (text.isNotEmpty) {
+            textParts.add(text);
+          }
+        } catch (_) {
+          // Si el OCR de texto falla, aun podemos usar barcode o backend.
+        }
       }
     } finally {
+      await textRecognizer.close();
       await scanner.dispose();
     }
 
-    final rawText = barcodeParts.join('\n\n');
+    final rawText = [
+      if (barcodeParts.isNotEmpty) barcodeParts.join('\n\n'),
+      if (textParts.isNotEmpty) textParts.join('\n\n'),
+    ].join('\n\n');
+
     return RegistrationOcrResult(
       rawText: rawText,
       fields: _parseIne(rawText),
-      method: barcodeParts.isNotEmpty ? 'codigo' : 'sin_datos',
+      method:
+          barcodeParts.isNotEmpty && textParts.isNotEmpty
+              ? 'codigo_y_texto'
+              : barcodeParts.isNotEmpty
+              ? 'codigo'
+              : textParts.isNotEmpty
+              ? 'texto'
+              : 'sin_datos',
     );
   }
 
@@ -73,13 +104,15 @@ class RegistrationOcrService {
         ).firstMatch(normalized)?.group(1) ??
         '';
 
+    final fallbackName = _extractNameFallback(rawText);
+
     return {
       'raw': rawText,
       'curp': curp,
       'document_number': electorKey.isNotEmpty ? electorKey : curp,
       'cic': cic,
       'ocr': ocr,
-      'name': name.isNotEmpty ? name : mrz['name'] ?? '',
+      'name': name.isNotEmpty ? name : (mrz['name'] ?? fallbackName),
       'birth_date': birthDate.isNotEmpty ? birthDate : mrz['birth_date'] ?? '',
       'document_expiration':
           expiration.isNotEmpty ? expiration : mrz['document_expiration'] ?? '',
@@ -200,7 +233,17 @@ class RegistrationOcrService {
     if (yearRange != null) return '${yearRange.group(2)}-12-31';
 
     final singleYear = RegExp(r'VIGENCIA[:\s-]*(20\d{2})').firstMatch(text);
-    return singleYear == null ? '' : '${singleYear.group(1)}-12-31';
+    if (singleYear != null) return '${singleYear.group(1)}-12-31';
+
+    final standaloneDateMatches = RegExp(
+      r'\b(20\d{2})[-/](\d{2})[-/](\d{2})\b',
+    ).allMatches(text).toList();
+    if (standaloneDateMatches.isNotEmpty) {
+      final match = standaloneDateMatches.last;
+      return '${match.group(1)}-${match.group(2)}-${match.group(3)}';
+    }
+
+    return '';
   }
 
   static String _extractName(String rawText) {
@@ -227,6 +270,31 @@ class RegistrationOcrService {
         .join(' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  static String _extractNameFallback(String rawText) {
+    final lines =
+        rawText
+            .split(RegExp(r'\r?\n'))
+            .map((line) => line.trim().toUpperCase())
+            .where((line) => line.isNotEmpty)
+            .toList();
+
+    final nameCandidates =
+        lines.where((line) {
+          if (line.length < 6) return false;
+          if (RegExp(r'\d').hasMatch(line)) return false;
+          if (!RegExp(r'^[A-ZÁÉÍÓÚÑ ]+$').hasMatch(line)) return false;
+          if (RegExp(
+            r'CURP|CLAVE|DOMICILIO|SEXO|VIGENCIA|FECHA|INSTITUTO|ESTADO|MUNICIPIO|COLONIA|LOCALIDAD',
+          ).hasMatch(line)) {
+            return false;
+          }
+          return true;
+        }).toList();
+
+    if (nameCandidates.isEmpty) return '';
+    return nameCandidates.take(3).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   static Map<String, String> _parseMrz(String rawText) {

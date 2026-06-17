@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/acceso_comercial_cliente.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import '../reservation/pantalla_reservacion.dart';
@@ -71,6 +72,7 @@ class _ClientMobileWorkspaceScreenState
                     userInitial: userInitial,
                     onBackToSearch: _resetSearchFlow,
                     onReservationCreated: _openReservationConfirmation,
+                    onCommercialAccessRequired: _openCommercialAccessPayment,
                   ),
             ),
           );
@@ -89,11 +91,7 @@ class _ClientMobileWorkspaceScreenState
             access: auth.accessData ?? const <String, dynamic>{},
             lastSyncAt: reservation.lastWorkspaceSyncAt,
             isSyncing: reservation.isLoadingWorkspace,
-            onOpenMembership: () {
-              setState(() {
-                _selectedIndex = 3;
-              });
-            },
+            onOpenMembership: () => _handleMembershipTap(auth),
             onRefresh: () {
               context.read<ReservationProvider>().loadClientWorkspaceData(
                 force: true,
@@ -196,8 +194,41 @@ class _ClientMobileWorkspaceScreenState
               _tripsStage = _TripsStage.payment;
             });
           },
+          onCommercialAccessRequired: _openCommercialAccessPayment,
         );
     }
+  }
+
+  void _handleMembershipTap(AuthProvider auth) {
+    final accessState = resolveCommercialAccessState(auth.accessData);
+    if (accessState.requiresPayment) {
+      _openCommercialAccessPayment();
+      return;
+    }
+
+    setState(() {
+      _selectedIndex = 3;
+    });
+  }
+
+  void _openCommercialAccessPayment() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ClientPaymentScreen(
+              request: const {},
+              commercialAccessMode: true,
+              onPaymentComplete: () async {
+                await context.read<AuthProvider>().refreshCommercialAccessStatus();
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                setState(() {
+                  _selectedIndex = 3;
+                });
+              },
+            ),
+      ),
+    );
   }
 
   Map<String, dynamic>? _findRequestById(
@@ -246,12 +277,13 @@ class _MembershipPortalStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final commercialState = resolveCommercialAccessState(access);
     final subscription = access['subscription'];
     final plan =
         subscription is Map
             ? (subscription['plan_name'] ?? subscription['plan'])?.toString()
             : access['plan_name']?.toString();
-    final hasAccess = access['has_access'] == true;
+    final hasAccess = commercialState.hasPaidAccess || commercialState.canReserve;
     final status = _statusLabel(access);
     final syncLabel =
         isSyncing
@@ -314,14 +346,6 @@ class _MembershipPortalStatus extends StatelessWidget {
   }
 
   String _statusLabel(Map<String, dynamic> access) {
-    final subscription = access['subscription'];
-    final raw =
-        subscription is Map
-            ? subscription['status'] ?? access['subscription_status']
-            : access['subscription_status'];
-    final value = raw?.toString().trim() ?? '';
-    if (value.isNotEmpty) return value;
-    if (access['has_access'] == true) return 'Activo';
-    return 'Pendiente';
+    return resolveCommercialAccessState(access).statusLabel;
   }
 }

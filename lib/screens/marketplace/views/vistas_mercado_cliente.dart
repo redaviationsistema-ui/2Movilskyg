@@ -341,7 +341,7 @@ class ClientProfileScreen extends StatelessWidget {
         MarketplaceModule(
           title: 'Seguridad de cuenta',
           description:
-              'Cambio de contrasena, notificaciones y preferencias de privacidad.',
+              'Cambio de contraseña, notificaciones y preferencias de privacidad.',
         ),
       ],
     );

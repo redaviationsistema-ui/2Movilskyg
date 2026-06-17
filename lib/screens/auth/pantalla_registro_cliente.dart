@@ -3,7 +3,10 @@ import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/cliente_api.dart';
@@ -40,7 +43,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   final _passwordConfirmationController = TextEditingController();
 
   File? _ineFront;
-  File? _ineBack;
   File? _selfie;
   int _currentStep = 0;
   bool _scanningDocument = false;
@@ -68,6 +70,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   String _selfieMessage = '';
 
   @override
+  void initState() {
+    super.initState();
+    _recoverLostPickerData();
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
@@ -89,23 +97,42 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   Future<void> _pickIneFront() async {
-    final selected = await _selectDocumentImage('INE frente');
+    final selected = await _selectDocumentImage('INE');
     if (selected == null) return;
+    final optimized = await _optimizeImageForProcessing(selected);
+    if (!mounted) return;
 
     setState(() {
-      _ineFront = selected;
+      _ineFront = optimized;
       _documentScanMessage = 'Escaneando datos de la INE en el dispositivo...';
     });
     await _scanIneLocally();
   }
 
-  Future<void> _pickIneBack() async {
-    final selected = await _selectDocumentImage('INE reverso');
-    if (selected == null) return;
+  Future<void> _recoverLostPickerData() async {
+    final response = await _picker.retrieveLostData();
+    if (!mounted || response.isEmpty) return;
+
+    final recoveredFile = response.file;
+    if (recoveredFile == null) {
+      setState(() {
+        _documentScanMessage =
+            response.exception?.code != null
+                ? 'No se pudo recuperar la foto de la INE.'
+                : _documentScanMessage;
+      });
+      return;
+    }
+
+    final optimized = await _optimizeImageForProcessing(File(recoveredFile.path));
+    if (!mounted) return;
+
     setState(() {
-      _ineBack = selected;
-      _documentScanMessage = 'Combinando frente y reverso de la INE...';
+      _ineFront = optimized;
+      _documentScanMessage =
+          'Se recupero la foto de la INE despues de volver de la camara.';
     });
+
     await _scanIneLocally();
   }
 
@@ -157,23 +184,35 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   Future<void> _scanIneLocally() async {
-    final images = <File>[
-      if (_ineFront != null) _ineFront!,
-      if (_ineBack != null) _ineBack!,
-    ];
+    final images = <File>[if (_ineFront != null) _ineFront!];
     if (images.isEmpty) return;
 
     setState(() => _scanningDocument = true);
     try {
       final result = await RegistrationOcrService.scanIne(images);
       _applyLocalIneResult(result);
+
+      if (!_hasUsefulIneData()) {
+        await _scanIneInBackend(images);
+      }
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _ineScanStatus = 'pending_manual_review';
-        _documentScanMessage =
-            'No se pudo leer la INE localmente. Usa una foto clara o completa los datos manualmente.';
-      });
+      try {
+        await _scanIneInBackend(images);
+      } on ApiException catch (apiError) {
+        if (!mounted) return;
+        setState(() {
+          _ineScanStatus = 'pending_manual_review';
+          _documentScanMessage =
+              '${apiError.message} Usa una foto clara o completa los datos manualmente.';
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _ineScanStatus = 'pending_manual_review';
+          _documentScanMessage =
+              'No se pudo leer la INE. Usa una foto clara o completa los datos manualmente.';
+        });
+      }
     } finally {
       if (mounted) setState(() => _scanningDocument = false);
     }
@@ -211,6 +250,114 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     });
   }
 
+  Future<void> _scanIneInBackend(List<File> images) async {
+    for (final image in images) {
+      final response = await _api.scanRegistrationDocument(
+        document: image,
+        documentType: 'INE',
+      );
+      _applyBackendIneResponse(response);
+      if (_hasUsefulIneData()) return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      if (!_hasUsefulIneData()) {
+        _ineScanStatus = 'partial';
+        _documentScanMessage =
+            'Se intento leer la INE localmente y en backend, pero faltan datos claros. Puedes completar los campos manualmente.';
+      }
+    });
+  }
+
+  void _applyBackendIneResponse(Map<String, dynamic> response) {
+    final data = _map(
+      response['data'] ??
+          response['document'] ??
+          response['result'] ??
+          response,
+    );
+    final rawText =
+        (data['ocr_raw_text'] ??
+                data['raw'] ??
+                data['raw_text'] ??
+                data['texto'] ??
+                data['text'] ??
+                '')
+            .toString()
+            .trim();
+    final parsedRaw =
+        rawText.isEmpty ? const <String, String>{} : RegistrationOcrService.parseIneText(rawText);
+
+    setState(() {
+      if (rawText.isNotEmpty) {
+        _ineScanRaw = rawText;
+      }
+      _setIfPresent(
+        _nameController,
+        data['name'] ??
+            data['holder_name'] ??
+            data['nombre'] ??
+            data['nombre_completo'] ??
+            parsedRaw['name'],
+      );
+      _setIfPresent(
+        _birthDateController,
+        data['birth_date'] ?? data['fecha_nacimiento'] ?? parsedRaw['birth_date'],
+      );
+      _setIfPresent(
+        _nationalityController,
+        data['nationality'] ?? data['nacionalidad'] ?? parsedRaw['nationality'],
+      );
+      _setIfPresent(
+        _documentNumberController,
+        data['document_number'] ??
+            data['numero_documento'] ??
+            data['numero'] ??
+            data['clave_elector'] ??
+            parsedRaw['document_number'],
+      );
+      _setIfPresent(
+        _documentIssueDateController,
+        data['document_issue_date'] ??
+            data['issue_date'] ??
+            data['fecha_emision'],
+      );
+      _setIfPresent(
+        _documentExpirationController,
+        data['document_expiration'] ??
+            data['expiration_date'] ??
+            data['fecha_vencimiento'] ??
+            data['vigencia'] ??
+            parsedRaw['document_expiration'],
+      );
+      _setIfPresent(_ineCurpController, data['curp'] ?? parsedRaw['curp']);
+      _setIfPresent(_ineCicController, data['cic'] ?? parsedRaw['cic']);
+      _setIfPresent(
+        _ineOcrController,
+        data['ocr'] ??
+            data['ocr_number'] ??
+            data['identificador_ocr'] ??
+            parsedRaw['ocr'],
+      );
+      _documentStatusController.text = _documentStatus(
+        _documentExpirationController.text,
+      );
+      _ineScanStatus = _hasUsefulIneData() ? 'scanned' : 'partial';
+      _documentScanMessage =
+          _hasUsefulIneData()
+              ? 'Escaneo de INE completado. Revisa los datos detectados antes de continuar.'
+              : 'Se leyo parcialmente la INE. Completa los campos faltantes manualmente.';
+    });
+  }
+
+  bool _hasUsefulIneData() {
+    return _documentNumberController.text.isNotEmpty ||
+        _ineCurpController.text.isNotEmpty ||
+        _nameController.text.isNotEmpty ||
+        _documentExpirationController.text.isNotEmpty;
+  }
+
   Future<void> _captureSelfie() async {
     final picked = await _picker.pickImage(
       source: ImageSource.camera,
@@ -218,16 +365,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       imageQuality: 88,
     );
     if (picked == null) return;
+    final optimizedSelfie = await _optimizeImageForProcessing(File(picked.path));
+    if (!mounted) return;
 
     setState(() {
-      _selfie = File(picked.path);
+      _selfie = optimizedSelfie;
       _validatingSelfie = true;
       _selfieHasFace = false;
-      _selfieMessage = 'Selfie capturada. Validando rostro en backend...';
+      _selfieMessage = 'Selfie capturada. Validando rostro en ...';
     });
 
     try {
       final result = await _api.validateBiometricSelfie(_selfie!);
+      if (!mounted) return;
       final quality = _map(result['quality']);
       final pose = _map(result['pose']);
       final verified = _asBool(
@@ -287,6 +437,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                 : 'No se detecto un rostro valido. Captura una nueva selfie.';
       });
     } on ApiException catch (error) {
+      if (!mounted) return;
       setState(() {
         _selfieHasFace = false;
         _identityVerificationStatus = 'rejected';
@@ -300,14 +451,43 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
   }
 
+  Future<File> _optimizeImageForProcessing(File source) async {
+    try {
+      final bytes = await source.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return source;
+
+      const maxDimension = 1600;
+      final resized =
+          decoded.width > maxDimension || decoded.height > maxDimension
+              ? img.copyResize(
+                decoded,
+                width: decoded.width >= decoded.height ? maxDimension : null,
+                height: decoded.height > decoded.width ? maxDimension : null,
+                interpolation: img.Interpolation.average,
+              )
+              : decoded;
+
+      final output = img.encodeJpg(resized, quality: 85);
+      final tempDir = await getTemporaryDirectory();
+      final fileName =
+          '${path.basenameWithoutExtension(source.path)}_optimized.jpg';
+      final optimizedFile = File(path.join(tempDir.path, fileName));
+      await optimizedFile.writeAsBytes(output, flush: true);
+      return optimizedFile;
+    } catch (_) {
+      return source;
+    }
+  }
+
   Future<void> _submit() async {
     if (_passwordController.text != _passwordConfirmationController.text) {
-      _showMessage('Las contrasenas no coinciden.');
+      _showMessage('Las contraseñas no coinciden.');
       return;
     }
 
-    if (_ineFront == null || _ineBack == null) {
-      _showMessage('Sube frente y reverso de la INE.');
+    if (_ineFront == null) {
+      _showMessage('Sube la INE.');
       return;
     }
 
@@ -357,7 +537,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       password: _passwordController.text,
       passwordConfirmation: _passwordConfirmationController.text,
       ineFront: _ineFront,
-      ineBack: _ineBack,
+      ineBack: null,
       selfieBiometric: _selfie,
     );
 
@@ -379,8 +559,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   void _continueToAccess() {
     if (!_formKey.currentState!.validate()) return;
-    if (_ineFront == null || _ineBack == null) {
-      _showMessage('Sube frente y reverso de la INE.');
+    if (_ineFront == null) {
+      _showMessage('Sube la INE.');
       return;
     }
     if (_selfie == null || !_selfieHasFace) {
@@ -409,7 +589,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       _passwordVisible = true;
       _passwordConfirmationVisible = true;
     });
-    _showMessage('Contrasena segura generada. Puedes editarla.');
+    _showMessage('Contraseña segura generada. Puedes editarla.');
   }
 
   @override
@@ -520,19 +700,13 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         title: 'Identificacion oficial',
       ),
       _FileButton(
-        title: 'INE frente',
+        title: 'INE',
         value: _ineFront?.path.split(Platform.pathSeparator).last,
         loading: _scanningDocument,
         onTap: _pickIneFront,
       ),
       if (_documentScanMessage.isNotEmpty) _HintText(_documentScanMessage),
-      const SizedBox(height: 10),
-      _FileButton(
-        title: 'INE reverso',
-        value: _ineBack?.path.split(Platform.pathSeparator).last,
-        onTap: _pickIneBack,
-      ),
-      if (_ineFront != null && _ineBack != null) ...[
+      if (_ineFront != null) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: _scanningDocument ? null : _scanIneLocally,
@@ -552,12 +726,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       _field(_documentTypeController, 'Identificacion'),
       _field(_documentNumberController, 'Numero de documento'),
       _field(
-        _documentIssueDateController,
-        'Fecha de emision',
-        hint: 'AAAA-MM-DD',
-        requiredField: false,
-      ),
-      _field(
         _documentExpirationController,
         'Vigencia del documento',
         hint: 'AAAA-MM-DD',
@@ -573,8 +741,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         requiredField: false,
       ),
       _field(_ineCurpController, 'CURP', requiredField: false),
-      _field(_ineCicController, 'CIC', requiredField: false),
-      _field(_ineOcrController, 'OCR', requiredField: false),
       const SizedBox(height: 14),
       const _SectionLabel(
         icon: Icons.verified_user_rounded,
@@ -629,7 +795,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     return [
       const _SectionLabel(
         icon: Icons.lock_outline_rounded,
-        title: 'Correo / Contrasena',
+        title: 'Correo / Contraseña',
       ),
       _field(_emailController, 'Correo', keyboard: TextInputType.emailAddress),
       Align(
@@ -637,24 +803,24 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         child: TextButton.icon(
           onPressed: _generatePassword,
           icon: const Icon(Icons.password_rounded),
-          label: const Text('Generar contrasena'),
+          label: const Text('Generar contraseña'),
         ),
       ),
       _field(
         _passwordController,
-        'Contrasena',
+        'Contraseña',
         obscure: !_passwordVisible,
         minLength: 8,
       ),
       SwitchListTile.adaptive(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Mostrar contrasena'),
+        title: const Text('Mostrar contraseña'),
         value: _passwordVisible,
         onChanged: (value) => setState(() => _passwordVisible = value),
       ),
       _field(
         _passwordConfirmationController,
-        'Confirmar contrasena',
+        'Confirmar contraseña',
         obscure: !_passwordConfirmationVisible,
         minLength: 8,
       ),
@@ -805,7 +971,7 @@ class _RegistrationProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Perfil / Biometria', 'Correo / Contrasena'];
+    const labels = ['Perfil / Biometría', 'Correo / Contraseña'];
     return Row(
       children: List.generate(labels.length, (index) {
         final active = index <= currentStep;

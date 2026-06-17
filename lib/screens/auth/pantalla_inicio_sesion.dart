@@ -16,10 +16,13 @@ class _LoginScreenState extends State<LoginScreen> {
   // final _emailController = TextEditingController();
   // final _passwordController = TextEditingController();
   final _emailController = TextEditingController(
-    text: 'cliente@privateflights.test',
+   // text: 'cliente@privateflights.test',
+   text:'',
   );
 
-  final _passwordController = TextEditingController(text: 'password');
+//  final _passwordController = TextEditingController(text: 'password');
+  final _passwordController = TextEditingController(text: '');
+
   static final RegExp _emailRegex = RegExp(
     r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$',
     caseSensitive: false,
@@ -171,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               controller: _passwordController,
                               obscureText: _obscurePassword,
                               decoration: _inputDecoration(
-                                label: 'Contrasena',
+                                label: 'Contraseña',
                                 icon: Icons.lock_outline_rounded,
                                 suffix: IconButton(
                                   onPressed: () {
@@ -188,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Ingresa tu contrasena.';
+                                  return 'Ingresa tu contraseña.';
                                 }
                                 return null;
                               },

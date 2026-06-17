@@ -1,14 +1,5 @@
 class AppConstants {
   /* ===============================
-     SUPABASE
-  =============================== */
-
-  static const String supabaseUrl = "https://antkusroysbehyliqvti.supabase.co";
-
-  static const String supabaseAnonKey =
-      "sb_publishable_RZWNYqYb0-TL6vYSTBZozg_Qk465M4b";
-
-  /* ===============================
      TAX
   =============================== */
 

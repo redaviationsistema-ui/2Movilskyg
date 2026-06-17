@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:signature/signature.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
+import '../../../providers/proveedor_autenticacion.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 const Color kBg = Color(0xFFF7F7F7);
@@ -410,6 +413,16 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       _drawnSignatureController.isNotEmpty;
 
   Future<void> _signAndContinue() async {
+    final accessState = resolveCommercialAccessState(
+      context.read<AuthProvider>().accessData,
+    );
+    if (!accessState.canReserve) {
+      setState(() {
+        _submitMessage = accessState.reservationBlockedMessage;
+      });
+      return;
+    }
+
     final request = widget.request;
     final contractModel = _ContractModel.fromRequest(request);
     final reservationId =
@@ -484,6 +497,16 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
   }
 
   Future<void> _openExternalSignature() async {
+    final accessState = resolveCommercialAccessState(
+      context.read<AuthProvider>().accessData,
+    );
+    if (!accessState.canReserve) {
+      setState(() {
+        _submitMessage = accessState.reservationBlockedMessage;
+      });
+      return;
+    }
+
     final request = widget.request;
     final contractModel = _ContractModel.fromRequest(request);
     final reservationId = _reservationId(request);

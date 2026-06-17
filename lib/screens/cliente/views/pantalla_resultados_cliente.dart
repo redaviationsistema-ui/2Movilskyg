@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
+import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 
 class ClientResultsScreen extends StatefulWidget {
@@ -12,6 +14,7 @@ class ClientResultsScreen extends StatefulWidget {
     this.userInitial = 'C',
     this.onBackToSearch,
     this.onReservationCreated,
+    this.onCommercialAccessRequired,
   });
 
   final bool showBackButton;
@@ -20,6 +23,7 @@ class ClientResultsScreen extends StatefulWidget {
   final String userInitial;
   final VoidCallback? onBackToSearch;
   final ValueChanged<String?>? onReservationCreated;
+  final VoidCallback? onCommercialAccessRequired;
 
   @override
   State<ClientResultsScreen> createState() => _ClientResultsScreenState();
@@ -114,6 +118,18 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     if (_isCreatingRequest) return;
 
     final reservation = context.read<ReservationProvider>();
+    final auth = context.read<AuthProvider>();
+    final accessState = resolveCommercialAccessState(auth.accessData);
+
+    if (!accessState.canReserve) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(accessState.reservationBlockedMessage)),
+      );
+      widget.onCommercialAccessRequired?.call();
+      return;
+    }
+
     reservation.setSelectedQuoteMatch(quote);
 
     setState(() {
@@ -122,6 +138,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     try {
       final response = await reservation.createFlightRequestForMatch(quote);
+      await auth.refreshCommercialAccessStatus();
       final createdId = reservation.createdFlightRequestIdFromResponse(
         response,
       );

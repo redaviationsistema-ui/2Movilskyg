@@ -593,6 +593,26 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> createClientAccessCheckout({
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    return postFirstAvailable(
+      const [
+        '/client/access-payment/create',
+        '/cliente/access-payment/create',
+      ],
+      authenticated: true,
+      body: paymentPayload,
+    );
+  }
+
+  Future<Map<String, dynamic>> getClientAccessStatus() {
+    return getFirstAvailable(const [
+      '/client/access-status',
+      '/cliente/access-status',
+    ], authenticated: true);
+  }
+
   Future<Map<String, dynamic>> getCrewPortal() {
     return getFirstAvailable(const [
       '/crew/portal',

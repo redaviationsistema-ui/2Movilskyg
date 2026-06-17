@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalCacheService {
   static const _dbName = 'reservation_cache.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   static const airportsTable = 'airports';
   static const aircraftTable = 'aircraft_fleet';
@@ -52,6 +52,7 @@ class LocalCacheService {
             city TEXT,
             crew_overnight_usd REAL,
             minimum_hours REAL,
+            image_url TEXT,
             is_active INTEGER
           )
         ''');
@@ -73,7 +74,26 @@ class LocalCacheService {
           )
         ''');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _ensureAircraftImageUrlColumn(db);
+        }
+      },
+      onOpen: (db) async {
+        await _ensureAircraftImageUrlColumn(db);
+      },
     );
+  }
+
+  Future<void> _ensureAircraftImageUrlColumn(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info($aircraftTable)');
+    final hasImageUrl = columns.any((column) => column['name'] == 'image_url');
+
+    if (!hasImageUrl) {
+      await db.execute(
+        'ALTER TABLE $aircraftTable ADD COLUMN image_url TEXT',
+      );
+    }
   }
 
   Future<void> cacheAirports(List<Map<String, dynamic>> airports) async {
@@ -95,19 +115,34 @@ class LocalCacheService {
 
   Future<void> cacheAircraft(List<Map<String, dynamic>> aircraft) async {
     final db = await database;
-    final batch = db.batch();
+    await _ensureAircraftImageUrlColumn(db);
 
-    batch.delete(aircraftTable);
+    Future<void> writeBatch() async {
+      final batch = db.batch();
 
-    for (final item in aircraft) {
-      batch.insert(
-        aircraftTable,
-        item,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.delete(aircraftTable);
+
+      for (final item in aircraft) {
+        batch.insert(
+          aircraftTable,
+          item,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      await batch.commit(noResult: true);
     }
 
-    await batch.commit(noResult: true);
+    try {
+      await writeBatch();
+    } on DatabaseException catch (error) {
+      if (error.toString().contains('no column named image_url')) {
+        await _ensureAircraftImageUrlColumn(db);
+        await writeBatch();
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> cacheReservations(

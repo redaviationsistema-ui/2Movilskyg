@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../core/acceso_comercial_cliente.dart';
 import '../core/cliente_api.dart';
 
 enum AppUserRole { client, operator, admin, crew, unknown }
@@ -259,6 +260,27 @@ class AuthProvider extends ChangeNotifier {
     } finally {
       isLoading = false;
       notifyListeners();
+    }
+  }
+
+  void syncAccessState(Map<String, dynamic>? source) {
+    _accessData = syncCommercialAccessPayload(_accessData, source);
+    notifyListeners();
+  }
+
+  void consumeTrialQuote() {
+    _accessData = consumeTrialQuoteLocally(_accessData);
+    notifyListeners();
+  }
+
+  Future<void> refreshCommercialAccessStatus() async {
+    if (!_api.hasToken) return;
+
+    try {
+      final response = await _api.getClientAccessStatus();
+      syncAccessState(response);
+    } catch (_) {
+      // El flujo cliente debe seguir mostrando el ultimo snapshot si el backend no responde.
     }
   }
 

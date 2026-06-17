@@ -8,11 +8,13 @@ class ClientHistoryScreen extends StatelessWidget {
     this.showBackButton = true,
     this.onOpenContract,
     this.onOpenPayment,
+    this.onCommercialAccessRequired,
   });
 
   final bool showBackButton;
   final ValueChanged<Map<String, dynamic>>? onOpenContract;
   final ValueChanged<Map<String, dynamic>>? onOpenPayment;
+  final VoidCallback? onCommercialAccessRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +24,7 @@ class ClientHistoryScreen extends StatelessWidget {
       showBackButton: showBackButton,
       onOpenContract: onOpenContract,
       onOpenPayment: onOpenPayment,
+      onCommercialAccessRequired: onCommercialAccessRequired,
       includeUpcomingTab: false,
     );
   }
