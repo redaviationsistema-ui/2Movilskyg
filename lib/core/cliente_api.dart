@@ -504,6 +504,21 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> getClientContractStatus(String contractId) {
+    final normalizedId = contractId.trim();
+    if (normalizedId.isEmpty) {
+      throw const ApiException(
+        'No se encontro el identificador del contrato para consultar estado.',
+      );
+    }
+
+    return getFirstAvailable([
+      '/cliente/contratos/$normalizedId/estado',
+      '/client/contracts/$normalizedId/status',
+      '/contracts/$normalizedId/status',
+    ], authenticated: true);
+  }
+
   Future<Uint8List> downloadClientContractPdf(String reservationId) {
     return downloadFirstAvailable([
       '/cliente/reservas/$reservationId/contrato/pdf',
@@ -597,12 +612,40 @@ class ApiClient {
     required Map<String, dynamic> paymentPayload,
   }) {
     return postFirstAvailable(
-      const [
-        '/client/access-payment/create',
-        '/cliente/access-payment/create',
-      ],
+      const ['/client/access-payment/create', '/cliente/access-payment/create'],
       authenticated: true,
       body: paymentPayload,
+    );
+  }
+
+  Future<Map<String, dynamic>> getClientAccessPaymentSuccess({
+    String? sessionId,
+  }) {
+    final query = <String, String>{
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'session_id': sessionId.trim(),
+    };
+
+    return getFirstAvailable(
+      const [
+        '/client/access-payment/success',
+        '/cliente/access-payment/success',
+      ],
+      authenticated: true,
+      query: query,
+    );
+  }
+
+  Future<Map<String, dynamic>> cancelClientAccessPayment({String? sessionId}) {
+    final query = <String, String>{
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'session_id': sessionId.trim(),
+    };
+
+    return getFirstAvailable(
+      const ['/client/access-payment/cancel', '/cliente/access-payment/cancel'],
+      authenticated: true,
+      query: query,
     );
   }
 

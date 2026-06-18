@@ -9,7 +9,6 @@ import '../models/aeronave.dart';
 import '../models/aeropuerto.dart';
 import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
-import '../utils/calculadora_precio.dart';
 
 class ReservationProvider extends ChangeNotifier {
   final ApiClient _api = ApiClient.instance;
@@ -386,9 +385,6 @@ class ReservationProvider extends ChangeNotifier {
         quoteMatches,
         primaryRoute.fromAirport,
       );
-      if (quoteMatches.isEmpty) {
-        quoteMatches = _buildCatalogFallbackQuotes(catalog);
-      }
 
       selectedQuoteMatch = _pickSelectedQuoteMatch(quoteMatches);
 
@@ -398,7 +394,7 @@ class ReservationProvider extends ChangeNotifier {
 
       if (quoteMatches.isEmpty) {
         quoteError =
-            'No hay operadores activos con match para esta ruta en este momento.';
+            'No fue posible generar una cotizacion real para este itinerario.';
         return false;
       }
 
@@ -778,272 +774,6 @@ class ReservationProvider extends ChangeNotifier {
             .toList();
 
     return _mergeMatchesWithCatalog(normalized, catalog);
-  }
-
-  List<Map<String, dynamic>> _buildCatalogFallbackQuotes(
-    List<Map<String, dynamic>> catalog,
-  ) {
-    if (catalog.isEmpty || routes.isEmpty) return [];
-
-    final primaryRoute = routes.first;
-    final filteredCatalog =
-        catalog
-            .asMap()
-            .entries
-            .map(
-              (entry) => _normalizeCatalogAircraft(
-                Map<String, dynamic>.from(entry.value),
-                entry.key,
-              ),
-            )
-            .where(_isActiveCatalogAircraft)
-            .where((item) {
-              final capacity = _asNumber(item['capacity']);
-              return passengers <= 0 || capacity <= 0 || capacity >= passengers;
-            })
-            .map((item) {
-              final baseMatches = _originMatches(
-                item['source_origin']?.toString() ?? '',
-                primaryRoute.fromAirport,
-              );
-              return {
-                ...item,
-                'queried_base_airport':
-                    primaryRoute.fromAirport?.iata ??
-                    primaryRoute.fromAirport?.name ??
-                    '',
-                'base_airport_match': baseMatches,
-                'match_reason':
-                    baseMatches
-                        ? 'Coincide con base_airport ${item['source_origin']}'
-                        : item['match_reason'] ??
-                            (item['source_origin']?.toString().isNotEmpty ==
-                                    true
-                                ? 'Salida optimizada desde ${item['source_origin']}'
-                                : 'Opcion verificada'),
-              };
-            })
-            .toList();
-
-    final exactBaseMatches =
-        filteredCatalog
-            .where((item) => item['base_airport_match'] == true)
-            .toList();
-    final candidates =
-        primaryRoute.fromAirport != null && exactBaseMatches.isNotEmpty
-            ? exactBaseMatches
-            : filteredCatalog;
-
-    final fallbackQuotes =
-        candidates
-            .map((item) {
-              final aircraft = Aircraft.fromJson({
-                'id': item['aircraft_id'] ?? item['id'],
-                'name': item['aircraft'],
-                'model': item['model'] ?? item['aircraft'],
-                'aircraft_type': item['cabin'],
-                'capacity': _asNumber(item['capacity']).round(),
-                'hourly_rate': _asNumber(
-                  item['hourly_rate'] ?? item['base_price'],
-                ),
-                'speed_kmh': _asNumber(item['speed_kmh'], 650),
-                'base_airport': item['source_origin'],
-                'city': item['source_origin'],
-                'minimum_hours': _asNumber(item['minimum_hours'], 1),
-                'crew_overnight_usd': _asNumber(item['overnight_fee']),
-                'national_expenses_usd': _asNumber(
-                  item['national_expenses_usd'] ?? item['operational_cost'],
-                ),
-                'international_expenses_usd': _asNumber(
-                  item['international_expenses_usd'] ??
-                      item['operational_cost'],
-                ),
-              });
-              final pricing = PriceCalculator.calculate(
-                aircraft: aircraft,
-                route: primaryRoute,
-                startDate: startDate ?? primaryRoute.startDate,
-                endDate: endDate,
-                international: routeType.toUpperCase().contains('INTER'),
-              );
-              final basePrice =
-                  pricing.flightCost > 0
-                      ? pricing.flightCost
-                      : _asNumber(item['base_price'] ?? item['hourly_rate']);
-              final operationalCost =
-                  pricing.operationalCost +
-                  pricing.overnightCost +
-                  _asNumber(item['landing_fees']) +
-                  _asNumber(item['fbo_fees']) +
-                  _asNumber(item['expense_fee']);
-              final total = basePrice + operationalCost;
-
-              if (total <= 0) return null;
-
-              return {
-                ...item,
-                'match_id':
-                    item['match_id'] ?? 'catalog-${item['aircraft_id']}',
-                'matched_option_id':
-                    item['matched_option_id'] ??
-                    'catalog-${item['aircraft_id']}',
-                'base_price': double.parse(basePrice.toStringAsFixed(2)),
-                'final_price': _asMoney(total),
-                'total': double.parse(total.toStringAsFixed(2)),
-                'subtotal': double.parse(basePrice.toStringAsFixed(2)),
-                'priority_type': selectedPriorityType,
-                'priority_multiplier': 1,
-                'priority_price': 0,
-                'operational_cost': double.parse(
-                  operationalCost.toStringAsFixed(2),
-                ),
-                'overnight_fees': double.parse(
-                  pricing.overnightCost.toStringAsFixed(2),
-                ),
-                'time':
-                    item['time']?.toString().trim().isNotEmpty == true
-                        ? item['time']
-                        : _formatDurationFromHours(pricing.flightHours),
-                'estimated_hours': pricing.flightHours,
-                'billable_hours': pricing.hours,
-                'real_flight_hours': pricing.flightHours,
-                'distance_km': pricing.distanceKm,
-                'distance_nm': pricing.distanceNm,
-                'source_table':
-                    item['source_table'] ?? 'catalog_fallback_quote',
-                'pricing_breakdown': {
-                  'source': 'catalog_fallback',
-                  'billable_hours': pricing.hours,
-                  'real_flight_hours': pricing.flightHours,
-                  'base_price': double.parse(basePrice.toStringAsFixed(2)),
-                  'overnight': double.parse(
-                    pricing.overnightCost.toStringAsFixed(2),
-                  ),
-                  'operational': double.parse(
-                    pricing.operationalCost.toStringAsFixed(2),
-                  ),
-                  'subtotal': double.parse(basePrice.toStringAsFixed(2)),
-                  'total': double.parse(total.toStringAsFixed(2)),
-                },
-                'pricing_context': {
-                  'pricing_formula_version': 'mobile-catalog-fallback-v1',
-                  'billable_hours': pricing.hours,
-                  'real_flight_hours': pricing.flightHours,
-                  'base_cost': double.parse(basePrice.toStringAsFixed(2)),
-                  'operational_costs_total': double.parse(
-                    operationalCost.toStringAsFixed(2),
-                  ),
-                  'subtotal_before_multipliers': double.parse(
-                    basePrice.toStringAsFixed(2),
-                  ),
-                  'total': double.parse(total.toStringAsFixed(2)),
-                  'final_price': double.parse(total.toStringAsFixed(2)),
-                  'selected_card_price': double.parse(total.toStringAsFixed(2)),
-                },
-              };
-            })
-            .whereType<Map<String, dynamic>>()
-            .toList();
-
-    fallbackQuotes.sort((first, second) {
-      final firstBase = first['base_airport_match'] == true ? 0 : 1;
-      final secondBase = second['base_airport_match'] == true ? 0 : 1;
-      if (firstBase != secondBase) return firstBase.compareTo(secondBase);
-      return _asNumber(
-        first['base_price'],
-        double.maxFinite,
-      ).compareTo(_asNumber(second['base_price'], double.maxFinite));
-    });
-
-    return fallbackQuotes;
-  }
-
-  Map<String, dynamic> _normalizeCatalogAircraft(
-    Map<String, dynamic> raw,
-    int index,
-  ) {
-    final aircraftName =
-        raw['model'] ??
-        raw['name'] ??
-        raw['aircraft_name'] ??
-        raw['registration'] ??
-        raw['matricula'] ??
-        'Aeronave privada ${index + 1}';
-    final images = _extractImages(raw, raw);
-    final base =
-        raw['source_origin'] ??
-        raw['base_airport'] ??
-        raw['base'] ??
-        raw['base_airport_code'] ??
-        raw['home_base'] ??
-        raw['airport'] ??
-        '';
-
-    return {
-      ...raw,
-      'id': raw['id'] ?? 'aircraft-db-$index',
-      'match_id': raw['match_id'],
-      'matched_option_id': raw['matched_option_id'],
-      'aircraft_id': raw['aircraft_id'] ?? raw['aircraftId'] ?? raw['id'],
-      'provider_id': raw['provider_id'] ?? _nestedMap(raw['provider'])['id'],
-      'aircraft': aircraftName,
-      'cabin':
-          raw['category'] ??
-          raw['aircraft_category'] ??
-          raw['type'] ??
-          raw['cabin'] ??
-          'Cabina verificada',
-      'capacity': raw['capacity'] ?? raw['passenger_capacity'] ?? '',
-      'model':
-          raw['manufacturer'] != null
-              ? [raw['manufacturer'], raw['registration'] ?? raw['matricula']]
-                  .where(
-                    (value) => value != null && value.toString().isNotEmpty,
-                  )
-                  .join(' | ')
-              : raw['registration'] ?? raw['matricula'] ?? raw['model'] ?? '',
-      'registration': raw['registration'] ?? raw['matricula'] ?? '',
-      'hourly_rate': _resolveHourlyRate(raw),
-      'base_price': _asNumber(
-        raw['flight_base'] ??
-            raw['base_price'] ??
-            raw['final_price'] ??
-            raw['price'] ??
-            raw['quoted_price'] ??
-            _resolveHourlyRate(raw),
-      ),
-      'minimum_hours': raw['minimum_hours'] ?? raw['min_hours'] ?? '',
-      'speed_kmh': raw['speed_kmh'] ?? raw['speedKmh'] ?? '',
-      'speed_knots': raw['speed_knots'] ?? raw['speedKnots'] ?? '',
-      'landing_fees': _asNumber(raw['landing_fees'] ?? raw['landing_fee']),
-      'fbo_fees': _asNumber(raw['fbo_fees'] ?? raw['fbo']),
-      'expense_fee': _asNumber(raw['expense_fee'] ?? raw['airport_expenses']),
-      'overnight_fee': _asNumber(raw['overnight_fee']),
-      'status': raw['status'] ?? raw['aircraft_status'] ?? '',
-      'image_url': images.isNotEmpty ? images.first['imageUrl'] : '',
-      'images': images,
-      'source_database':
-          raw['source_database'] ?? raw['database'] ?? 'aircraft',
-      'source_table': raw['source_table'] ?? raw['table'] ?? 'aircraft',
-      'source_origin': base,
-      'match_reason':
-          base.toString().isNotEmpty
-              ? 'Salida optimizada desde $base'
-              : 'Opcion verificada',
-    };
-  }
-
-  bool _isActiveCatalogAircraft(Map<String, dynamic> item) {
-    final status = _normalizeLookup(item['status']).toLowerCase();
-    return const {
-      '',
-      'active',
-      'trial active',
-      'approved',
-      'aprobada',
-      'available',
-      'disponible',
-    }.contains(status);
   }
 
   Map<String, dynamic> _normalizeMatch(
@@ -1653,7 +1383,17 @@ class ReservationProvider extends ChangeNotifier {
     final provider = _nestedMap(
       row['provider'] ?? row['assigned_provider'] ?? row['operator'],
     );
+    final contract = _nestedMap(row['contract']);
+    final frontendState = _nestedMap(
+      row['frontend_state'] ?? contract['frontend_state'],
+    );
     final firstLeg = _firstLeg(row);
+    final contractReady = _contractReadyForPayment(
+      row,
+      contract,
+      frontendState,
+    );
+    final paymentStatus = row['payment_status']?.toString().trim() ?? '';
 
     final id =
         _resolveEntityId(row) ??
@@ -1708,9 +1448,73 @@ class ReservationProvider extends ChangeNotifier {
             provider['name'] ??
             provider['company_name'] ??
             row['operator_name'],
+      if (contractReady && row['contract_status'] == null)
+        'contract_status': 'signed',
+      if (contractReady && paymentStatus.isEmpty) 'payment_status': 'pending',
+      if (contractReady && row['workflow_status'] == null)
+        'workflow_status': 'pago pendiente',
+      if (contractReady && row['status'] == null) 'status': 'payment_pending',
       if (row['image_url'] == null && row['imageUrl'] == null)
         'image_url': _primaryImage(row) ?? _primaryImage(aircraft) ?? '',
     };
+  }
+
+  bool _contractReadyForPayment(
+    Map<String, dynamic> row,
+    Map<String, dynamic> contract,
+    Map<String, dynamic> frontendState,
+  ) {
+    final nestedState = _nestedMap(contract['frontend_state']);
+    final ready =
+        row['ready_for_payment'] == true ||
+        frontendState['ready_for_payment'] == true ||
+        nestedState['ready_for_payment'] == true;
+    final nextAction =
+        _firstText(row, const ['next_action']) ??
+        _firstText(frontendState, const ['next_action']) ??
+        _firstText(nestedState, const ['next_action']) ??
+        '';
+    final status =
+        _firstText(row, const [
+          'docusign_status',
+          'contract_status',
+          'status',
+        ]) ??
+        _firstText(contract, const ['docusign_status', 'status']) ??
+        _firstText(frontendState, const [
+          'ui_status',
+          'docusign_status',
+          'status',
+        ]) ??
+        _firstText(nestedState, const [
+          'ui_status',
+          'docusign_status',
+          'status',
+        ]) ??
+        '';
+    final signedPdf =
+        _firstText(row, const ['signed_pdf_url', 'signedPdfUrl']) ??
+        _firstText(contract, const ['signed_pdf_url', 'signedPdfUrl']) ??
+        _firstText(frontendState, const ['signed_pdf_url', 'signedPdfUrl']) ??
+        _firstText(nestedState, const ['signed_pdf_url', 'signedPdfUrl']) ??
+        '';
+    final normalizedStatus = _normalizeLookup(status);
+    final normalizedNextAction = nextAction.trim().toLowerCase();
+
+    return ready ||
+        normalizedNextAction == 'go_to_payment' ||
+        normalizedNextAction == 'go_to_history' ||
+        normalizedStatus == 'COMPLETED' ||
+        normalizedStatus == 'SIGNED' ||
+        signedPdf.isNotEmpty;
+  }
+
+  String? _firstText(Map<String, dynamic> payload, List<String> keys) {
+    for (final key in keys) {
+      final value = payload[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return null;
   }
 
   Map<String, dynamic> _firstLeg(Map<String, dynamic> row) {
@@ -1899,18 +1703,6 @@ class ReservationProvider extends ChangeNotifier {
     return candidates.any(
       (candidate) => base.contains(candidate) || candidate.contains(base),
     );
-  }
-
-  String _formatDurationFromHours(double hours) {
-    if (hours <= 0 || hours.isNaN || hours.isInfinite) return '';
-
-    final totalMinutes = (hours * 60).round();
-    final wholeHours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-
-    if (wholeHours > 0 && minutes > 0) return '$wholeHours h $minutes m';
-    if (wholeHours > 0) return '$wholeHours h';
-    return '$minutes m';
   }
 
   String _timeStringForRoute(RouteModel route) {

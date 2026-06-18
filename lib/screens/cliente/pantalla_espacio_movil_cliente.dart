@@ -26,7 +26,8 @@ class ClientMobileWorkspaceScreen extends StatefulWidget {
 }
 
 class _ClientMobileWorkspaceScreenState
-    extends State<ClientMobileWorkspaceScreen> {
+    extends State<ClientMobileWorkspaceScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   int _searchSession = 0;
   _TripsStage _tripsStage = _TripsStage.list;
@@ -36,6 +37,7 @@ class _ClientMobileWorkspaceScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<ReservationProvider>().loadClientWorkspaceData();
@@ -50,8 +52,20 @@ class _ClientMobileWorkspaceScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _workspaceSyncTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+    unawaited(auth.refreshCommercialAccessStatus());
+    unawaited(
+      context.read<ReservationProvider>().loadClientWorkspaceData(force: true),
+    );
   }
 
   @override
@@ -203,7 +217,7 @@ class _ClientMobileWorkspaceScreenState
   void _handleMembershipTap(AuthProvider auth) {
     final accessState = resolveCommercialAccessState(auth.accessData);
     if (accessState.requiresPayment) {
-      _openCommercialAccessPayment();
+      _openCommercialAccessPayment(openMembershipAfter: true);
       return;
     }
 
@@ -212,7 +226,7 @@ class _ClientMobileWorkspaceScreenState
     });
   }
 
-  void _openCommercialAccessPayment() {
+  void _openCommercialAccessPayment({bool openMembershipAfter = false}) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
@@ -225,9 +239,15 @@ class _ClientMobileWorkspaceScreenState
                     .refreshCommercialAccessStatus();
                 if (!mounted) return;
                 Navigator.of(context).pop();
-                setState(() {
-                  _selectedIndex = 3;
-                });
+                await context
+                    .read<ReservationProvider>()
+                    .loadClientWorkspaceData(force: true);
+                if (!mounted) return;
+                if (openMembershipAfter) {
+                  setState(() {
+                    _selectedIndex = 3;
+                  });
+                }
               },
             ),
       ),

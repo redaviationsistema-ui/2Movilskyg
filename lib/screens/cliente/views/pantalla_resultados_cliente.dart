@@ -35,8 +35,12 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
   @override
   Widget build(BuildContext context) {
     final reservation = context.watch<ReservationProvider>();
+    final auth = context.watch<AuthProvider>();
+    final accessState = resolveCommercialAccessState(auth.accessData);
     final matches = reservation.quoteMatches;
     final selected = reservation.selectedQuoteMatch;
+    final createActionLabel =
+        accessState.canReserve ? 'Crear solicitud' : 'Activar acceso comercial';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -103,6 +107,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                             reservation.setSelectedQuoteMatch(match);
                           },
                           onCreateRequest: () => _createRequest(match),
+                          actionLabel: createActionLabel,
                         ),
                       ),
                     ),
@@ -198,6 +203,7 @@ class _QuoteMatchCard extends StatelessWidget {
     required this.isBusy,
     required this.onSelect,
     required this.onCreateRequest,
+    required this.actionLabel,
   });
 
   final Map<String, dynamic> quote;
@@ -205,6 +211,7 @@ class _QuoteMatchCard extends StatelessWidget {
   final bool isBusy;
   final VoidCallback onSelect;
   final VoidCallback onCreateRequest;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +356,7 @@ class _QuoteMatchCard extends StatelessWidget {
                         )
                         : const Icon(Icons.send_rounded, size: 18),
                 label: Text(
-                  isBusy ? 'Creando solicitud...' : 'Crear solicitud',
+                  isBusy ? 'Creando solicitud...' : actionLabel,
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               ),

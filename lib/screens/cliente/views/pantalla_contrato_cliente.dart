@@ -38,7 +38,8 @@ class ClientContractScreen extends StatefulWidget {
   State<ClientContractScreen> createState() => _ClientContractScreenState();
 }
 
-class _ClientContractScreenState extends State<ClientContractScreen> {
+class _ClientContractScreenState extends State<ClientContractScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _signatureController = TextEditingController();
   final SignatureController _drawnSignatureController = SignatureController(
     penStrokeWidth: 2.6,
@@ -50,20 +51,31 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
   bool _submitting = false;
   bool _externalSigning = false;
   bool _downloading = false;
+  bool _waitingForExternalSignatureReturn = false;
   String _submitMessage = '';
+  String _externalContractId = '';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _signatureController.addListener(_handleSignatureChange);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _signatureController.removeListener(_handleSignatureChange);
     _signatureController.dispose();
     _drawnSignatureController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (!_waitingForExternalSignatureReturn) return;
+    _validateExternalSignatureAfterReturn();
   }
 
   void _handleSignatureChange() {
@@ -80,327 +92,157 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       subtitle: 'Documento completo previo al checkout y liberacion operativa.',
       showBackButton: widget.showBackButton,
       trailing: const StatusBadge(label: 'Contrato', color: kBlack),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+      child: Column(
         children: [
-          const Text(
-            'Contrato',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: kBlack,
-              height: 1,
-              letterSpacing: -1.1,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            contractModel.routeLabel,
-            style: const TextStyle(
-              color: Color(0xFF625D55),
-              fontSize: 14,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _ContractHeroCard(model: contractModel),
-          const SizedBox(height: 14),
-          const _SectionBadge(
-            title: 'Seccion 1',
-            subtitle:
-                'Resumen visible para revisar la reserva antes de firmar.',
-          ),
-          const SizedBox(height: 12),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
               children: [
-                const Text(
-                  'Resumen de la reserva',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 14),
-                _ContractRow(label: 'Codigo', value: contractModel.code),
-                _ContractRow(
-                  label: 'Cliente',
-                  value: contractModel.customerName,
-                ),
-                _ContractRow(
-                  label: 'Representante',
-                  value: contractModel.representativeName,
-                ),
-                _ContractRow(label: 'Ruta', value: contractModel.routeLabel),
-                _ContractRow(
-                  label: 'Salida',
-                  value: contractModel.departureLabel,
-                ),
-                _ContractRow(
-                  label: 'Aeronave',
-                  value: contractModel.aircraftLabel,
-                ),
-                _ContractRow(
-                  label: 'Categoria',
-                  value: contractModel.categoryLabel,
-                ),
-                _ContractRow(
-                  label: 'Servicio',
-                  value: contractModel.serviceTier,
-                ),
-                _ContractRow(
-                  label: 'Pasajeros',
-                  value: contractModel.passengerLabel,
-                ),
-                _ContractRow(
-                  label: 'Operador',
-                  value: contractModel.operatorLabel,
-                ),
-                _ContractRow(
-                  label: 'Importe total',
-                  value: contractModel.finalPriceLabel,
-                ),
-                _ContractRow(
-                  label: 'Deposito',
-                  value: contractModel.depositLabel,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Itinerario operativo',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 14),
-                ...contractModel.legs.map(
-                  (leg) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _LegRow(leg: leg),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Datos bancarios del prestador del servicio',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
+                _DocumentCover(model: contractModel),
                 const SizedBox(height: 12),
-                ..._bankAccounts.map(
-                  (account) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _BankCard(account: account),
+                _ContractProgressRail(
+                  isAccepted: _accepted,
+                  canSignLocally: _canContinue,
+                  waitingForDocuSign: _waitingForExternalSignatureReturn,
+                ),
+                const SizedBox(height: 16),
+                _ContractHeroCard(model: contractModel),
+                const SizedBox(height: 16),
+                _DocumentSection(
+                  icon: Icons.assignment_rounded,
+                  title: 'Resumen de la reserva',
+                  subtitle: 'Datos comerciales principales antes de firmar.',
+                  child: _ContractSummaryGrid(model: contractModel),
+                ),
+                const SizedBox(height: 16),
+                _DocumentSection(
+                  icon: Icons.route_rounded,
+                  title: 'Itinerario operativo',
+                  subtitle: 'Tramos que forman parte del Anexo A.',
+                  child: Column(
+                    children:
+                        contractModel.legs
+                            .map(
+                              (leg) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _LegRow(leg: leg),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          _ContractLegalSection(
-            isExpanded: _showContractDetails,
-            onToggle:
-                () => setState(() {
-                  _showContractDetails = !_showContractDetails;
-                }),
-            children: [
-              ..._definitions(contractModel).map(
-                (section) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: _ContractSectionCard(section: section),
-                ),
-              ),
-              ..._clauses(contractModel).map(
-                (section) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: _ContractSectionCard(section: section),
-                ),
-              ),
-            ],
-          ),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Aceptacion y firma',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'La firma electronica tiene la misma validez que una firma autografa para efectos del flujo comercial y operativo dentro de Red Aviation.',
-                  style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _signatureController,
-                  decoration: InputDecoration(
-                    labelText: 'Nombre completo para firma electronica',
-                    hintText: contractModel.customerName,
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                const SizedBox(height: 16),
+                _DocumentSection(
+                  icon: Icons.account_balance_rounded,
+                  title: 'Datos bancarios',
+                  subtitle: 'Cuentas del prestador del servicio.',
+                  child: Column(
+                    children:
+                        _bankAccounts
+                            .map(
+                              (account) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _BankCard(account: account),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  height: 190,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: kBorder),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Signature(
-                      controller: _drawnSignatureController,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
+                const SizedBox(height: 18),
+                _ContractLegalSection(
+                  isExpanded: _showContractDetails,
+                  onToggle:
+                      () => setState(() {
+                        _showContractDetails = !_showContractDetails;
+                      }),
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Dibuja tu firma dentro del recuadro.',
-                        style: TextStyle(
-                          color: Color(0xFF625D55),
-                          fontWeight: FontWeight.w700,
-                        ),
+                    ..._definitions(contractModel).map(
+                      (section) => Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _ContractSectionCard(section: section),
                       ),
                     ),
-                    TextButton.icon(
-                      onPressed:
-                          _submitting
-                              ? null
-                              : () {
-                                _drawnSignatureController.clear();
-                                setState(() {});
-                              },
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Limpiar'),
+                    ..._clauses(contractModel).map(
+                      (section) => Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _ContractSectionCard(section: section),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _accepted,
-                  onChanged: (value) {
-                    setState(() {
-                      _accepted = value ?? false;
-                    });
-                  },
-                  title: const Text(
-                    'Acepto los terminos del contrato y autorizo continuar al checkout.',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontWeight: FontWeight.w700,
-                    ),
+                _SignaturePanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionTitleRow(
+                        icon: Icons.draw_rounded,
+                        title: 'Aceptacion y firma',
+                        subtitle:
+                            'Firma local o DocuSign para liberar el checkout.',
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'La firma electronica tiene la misma validez que una firma autografa para efectos del flujo comercial y operativo dentro de Red Aviation.',
+                        style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
+                      ),
+                      const SizedBox(height: 14),
+                      _DocuSignFlowCard(
+                        isLoading: _externalSigning,
+                        isWaitingForReturn: _waitingForExternalSignatureReturn,
+                        onOpen:
+                            _externalSigning || _submitting
+                                ? null
+                                : _openExternalSignature,
+                      ),
+                      const SizedBox(height: 14),
+                      _LocalSignatureCard(
+                        customerName: contractModel.customerName,
+                        signatureController: _signatureController,
+                        drawnSignatureController: _drawnSignatureController,
+                        isSubmitting: _submitting,
+                        onClear: () {
+                          _drawnSignatureController.clear();
+                          setState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: _accepted,
+                        onChanged: (value) {
+                          setState(() {
+                            _accepted = value ?? false;
+                          });
+                        },
+                        title: const Text(
+                          'Acepto los terminos del contrato y autorizo continuar al checkout.',
+                          style: TextStyle(
+                            color: Color(0xFF111111),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: kBlack,
+                      ),
+                      if (_submitMessage.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        _InlineContractMessage(message: _submitMessage),
+                      ],
+                    ],
                   ),
-                  controlAffinity: ListTileControlAffinity.leading,
                 ),
-                if (_submitMessage.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    _submitMessage,
-                    style: const TextStyle(
-                      color: Color(0xFF625D55),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 18),
               ],
             ),
           ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      _externalSigning || _submitting
-                          ? null
-                          : _openExternalSignature,
-                  icon:
-                      _externalSigning
-                          ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.open_in_new_rounded),
-                  label: const Text('DocuSign'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    foregroundColor: kBlack,
-                    side: const BorderSide(color: kBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      _downloading || _submitting ? null : _downloadContractPdf,
-                  icon:
-                      _downloading
-                          ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.download_rounded),
-                  label: const Text('PDF'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    foregroundColor: kBlack,
-                    side: const BorderSide(color: kBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _canContinue && !_submitting ? _signAndContinue : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(56),
-              backgroundColor: kBlack,
-              foregroundColor: kWhite,
-              disabledBackgroundColor: const Color(0xFFE5E5E5),
-              disabledForegroundColor: const Color(0xFF999999),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            child:
-                _submitting
-                    ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                    : const Text('Firmar y continuar'),
+          _ContractActionBar(
+            canSign: _canContinue && !_submitting,
+            isSigning: _submitting,
+            isDownloading: _downloading,
+            onDownload:
+                _downloading || _submitting ? null : _downloadContractPdf,
+            onSign: _canContinue && !_submitting ? _signAndContinue : null,
           ),
         ],
       ),
@@ -469,9 +311,9 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
         'contract_snapshot': contractModel.toSnapshot(),
       };
 
-      await ApiClient.instance.signClientContract(
+      await _markContractReadyForPayment(
         reservationId: reservationId,
-        contractPayload: payload,
+        payload: payload,
       );
 
       if (!mounted) return;
@@ -525,14 +367,16 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
     });
 
     try {
+      final contractSnapshot = contractModel.toSnapshot();
       final payload = await ApiClient.instance.sendClientContractForSignature(
         reservationId: reservationId,
         contractPayload: {
-          'contract_snapshot': contractModel.toSnapshot(),
+          'contract_snapshot': contractSnapshot,
           'return_context': 'mobile',
         },
       );
       final signingUrl = _extractSigningUrl(payload);
+      _externalContractId = _extractContractId(payload);
       if (signingUrl.isEmpty) {
         throw const ApiException(
           'El backend no devolvio un enlace de firma externo.',
@@ -547,8 +391,9 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
 
       if (!mounted) return;
       setState(() {
+        _waitingForExternalSignatureReturn = true;
         _submitMessage =
-            'DocuSign abierto. Al volver, actualiza Mis vuelos para ver el estado firmado.';
+            'DocuSign abierto. Al volver a la app validaremos la firma automaticamente.';
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -563,6 +408,98 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
     } finally {
       if (mounted) setState(() => _externalSigning = false);
     }
+  }
+
+  Future<void> _validateExternalSignatureAfterReturn() async {
+    if (_externalSigning || _submitting) return;
+
+    final reservationId = _reservationId(widget.request);
+    if (reservationId.isEmpty) return;
+
+    setState(() {
+      _externalSigning = true;
+      _submitMessage = 'Validando firma de DocuSign...';
+    });
+
+    try {
+      Map<String, dynamic>? statusPayload;
+      for (var attempt = 0; attempt < 4; attempt++) {
+        if (_externalContractId.isNotEmpty) {
+          try {
+            statusPayload = await ApiClient.instance.getClientContractStatus(
+              _externalContractId,
+            );
+          } catch (_) {
+            statusPayload = null;
+          }
+        }
+
+        if (_contractReadyForPayment(statusPayload)) break;
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+
+      if (!_contractReadyForPayment(statusPayload)) {
+        if (!mounted) return;
+        setState(() {
+          _submitMessage =
+              'DocuSign regreso a la app, pero el backend aun no confirma la firma. Actualiza Mis vuelos en unos segundos.';
+        });
+        return;
+      }
+
+      final contractModel = _ContractModel.fromRequest(widget.request);
+      final payload = {
+        'reservation_id': reservationId,
+        'flight_request_id':
+            widget.request['flight_request_id']?.toString() ?? reservationId,
+        'booking_id': reservationId,
+        'status': 'pending_payment',
+        'workflow_status': 'pago pendiente',
+        'contract_status': 'signed',
+        'payment_status': 'pending',
+        'signed_at': DateTime.now().toIso8601String(),
+        'docusign_status': _firstText(statusPayload, const [
+          'docusign_status',
+          'envelope_status',
+          'status',
+        ]),
+        'signed_pdf_url': _firstText(statusPayload, const [
+          'signed_pdf_url',
+          'signedPdfUrl',
+        ]),
+        'contract_snapshot': contractModel.toSnapshot(),
+      };
+
+      await _markContractReadyForPayment(
+        reservationId: reservationId,
+        payload: payload,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _waitingForExternalSignatureReturn = false;
+        _submitMessage = 'Contrato firmado. Preparando pago...';
+      });
+      widget.onConfirm();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitMessage =
+            'No fue posible validar automaticamente la firma: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _externalSigning = false);
+    }
+  }
+
+  Future<void> _markContractReadyForPayment({
+    required String reservationId,
+    required Map<String, dynamic> payload,
+  }) {
+    return ApiClient.instance.signClientContract(
+      reservationId: reservationId,
+      contractPayload: payload,
+    );
   }
 
   Future<void> _downloadContractPdf() async {
@@ -649,6 +586,99 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
 
     return '';
   }
+
+  String _extractContractId(Map<String, dynamic> payload) {
+    return _firstText(payload, const [
+      'contract_id',
+      'contractId',
+      'id',
+      'docusign_contract_id',
+    ]);
+  }
+
+  bool _contractReadyForPayment(Map<String, dynamic>? payload) {
+    if (payload == null || payload.isEmpty) return false;
+    final state = _nestedMap(payload['frontend_state']);
+    final contract = _nestedMap(payload['contract']);
+    final data = _nestedMap(payload['data']);
+    final nestedState = _nestedMap(contract['frontend_state']);
+
+    final ready =
+        state['ready_for_payment'] == true ||
+        nestedState['ready_for_payment'] == true ||
+        data['ready_for_payment'] == true;
+    final nextAction = _firstNonEmpty([
+      _firstText(payload, const ['next_action']),
+      _firstText(state, const ['next_action']),
+      _firstText(nestedState, const ['next_action']),
+    ]);
+    final status = _firstNonEmpty([
+      _firstText(payload, const [
+        'docusign_status',
+        'envelope_status',
+        'status',
+        'contract_status',
+      ]),
+      _firstText(contract, const ['docusign_status', 'status']),
+      _firstText(state, const ['ui_status', 'docusign_status', 'status']),
+      _firstText(nestedState, const ['ui_status', 'docusign_status', 'status']),
+    ]);
+    final signedPdf = _firstNonEmpty([
+      _firstText(payload, const ['signed_pdf_url', 'signedPdfUrl']),
+      _firstText(contract, const ['signed_pdf_url', 'signedPdfUrl']),
+      _firstText(state, const ['signed_pdf_url', 'signedPdfUrl']),
+      _firstText(nestedState, const ['signed_pdf_url', 'signedPdfUrl']),
+    ]);
+
+    final normalizedStatus = status.toLowerCase();
+    return ready ||
+        nextAction == 'go_to_payment' ||
+        nextAction == 'go_to_history' ||
+        normalizedStatus == 'completed' ||
+        normalizedStatus == 'signed' ||
+        signedPdf.isNotEmpty;
+  }
+
+  Map<String, dynamic> _nestedMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
+  String _firstText(Map<String, dynamic>? payload, List<String> keys) {
+    if (payload == null) return '';
+    for (final key in keys) {
+      final value = payload[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+
+    final data = payload['data'];
+    if (data is Map) {
+      final value = _firstText(Map<String, dynamic>.from(data), keys);
+      if (value.isNotEmpty) return value;
+    }
+
+    final contract = payload['contract'];
+    if (contract is Map) {
+      final value = _firstText(Map<String, dynamic>.from(contract), keys);
+      if (value.isNotEmpty) return value;
+    }
+
+    final frontendState = payload['frontend_state'];
+    if (frontendState is Map) {
+      final value = _firstText(Map<String, dynamic>.from(frontendState), keys);
+      if (value.isNotEmpty) return value;
+    }
+
+    return '';
+  }
+
+  String _firstNonEmpty(List<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
 }
 
 class _SectionBadge extends StatelessWidget {
@@ -692,6 +722,848 @@ class _SectionBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DocumentCover extends StatelessWidget {
+  const _DocumentCover({required this.model});
+
+  final _ContractModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE4D8C5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: kBlack,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.description_rounded,
+                  color: kWhite,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Contrato de servicio',
+                      style: TextStyle(
+                        color: kBlack,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      model.code,
+                      style: const TextStyle(
+                        color: kMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            model.routeLabel,
+            style: const TextStyle(
+              color: Color(0xFF332A20),
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            model.departureLabel,
+            style: const TextStyle(
+              color: Color(0xFF766B5D),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContractProgressRail extends StatelessWidget {
+  const _ContractProgressRail({
+    required this.isAccepted,
+    required this.canSignLocally,
+    required this.waitingForDocuSign,
+  });
+
+  final bool isAccepted;
+  final bool canSignLocally;
+  final bool waitingForDocuSign;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      _ProgressStepData(
+        label: 'Revisar',
+        icon: Icons.fact_check_rounded,
+        state: _ProgressStepState.done,
+      ),
+      _ProgressStepData(
+        label: waitingForDocuSign ? 'DocuSign' : 'Firmar',
+        icon: waitingForDocuSign ? Icons.verified_user_rounded : Icons.draw,
+        state:
+            waitingForDocuSign || canSignLocally
+                ? _ProgressStepState.active
+                : isAccepted
+                ? _ProgressStepState.active
+                : _ProgressStepState.todo,
+      ),
+      _ProgressStepData(
+        label: 'Pagar',
+        icon: Icons.payment_rounded,
+        state: _ProgressStepState.todo,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8E1D5)),
+      ),
+      child: Row(
+        children:
+            steps.asMap().entries.expand<Widget>((entry) {
+              final isLast = entry.key == steps.length - 1;
+              return [
+                Expanded(child: _ProgressStep(data: entry.value)),
+                if (!isLast)
+                  Container(
+                    width: 22,
+                    height: 1.5,
+                    color: const Color(0xFFE2D8C9),
+                  ),
+              ];
+            }).toList(),
+      ),
+    );
+  }
+}
+
+class _ProgressStep extends StatelessWidget {
+  const _ProgressStep({required this.data});
+
+  final _ProgressStepData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = data.state != _ProgressStepState.todo;
+    final done = data.state == _ProgressStepState.done;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color:
+                done
+                    ? const Color(0xFF102E20)
+                    : active
+                    ? kBlack
+                    : const Color(0xFFF1ECE3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            done ? Icons.check_rounded : data.icon,
+            color: active ? kWhite : const Color(0xFF8C7B63),
+            size: 18,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          data.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: active ? kBlack : const Color(0xFF8C7B63),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProgressStepData {
+  const _ProgressStepData({
+    required this.label,
+    required this.icon,
+    required this.state,
+  });
+
+  final String label;
+  final IconData icon;
+  final _ProgressStepState state;
+}
+
+enum _ProgressStepState { todo, active, done }
+
+class _DocumentSection extends StatelessWidget {
+  const _DocumentSection({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassInfoCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionTitleRow(icon: icon, title: title, subtitle: subtitle),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitleRow extends StatelessWidget {
+  const _SectionTitleRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E8D3),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: const Color(0xFFE2D1B3)),
+          ),
+          child: Icon(icon, color: const Color(0xFF8B6A24), size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  color: kBlack,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Color(0xFF6F6557),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SignaturePanel extends StatelessWidget {
+  const _SignaturePanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF6),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE1D4BD)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _DocuSignFlowCard extends StatelessWidget {
+  const _DocuSignFlowCard({
+    required this.isLoading,
+    required this.isWaitingForReturn,
+    required this.onOpen,
+  });
+
+  final bool isLoading;
+  final bool isWaitingForReturn;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        isWaitingForReturn
+            ? 'Validar regreso de DocuSign'
+            : 'Firmar con DocuSign';
+    final caption =
+        isWaitingForReturn
+            ? 'Al volver a la app se consulta el estado real del contrato.'
+            : 'Se abre la firma externa y el pago queda bloqueado hasta confirmar completed.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kBlack,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF242424)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: kWhite.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: kWhite.withValues(alpha: 0.16)),
+                ),
+                child: const Icon(
+                  Icons.verified_user_rounded,
+                  color: kWhite,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'DocuSign',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      caption,
+                      style: const TextStyle(
+                        color: Color(0xFFCFCFCF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DocuSignStep(label: 'Generar'),
+              _DocuSignStep(label: 'Firmar'),
+              _DocuSignStep(label: 'Habilitar pago'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: onOpen,
+            icon:
+                isLoading
+                    ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kBlack,
+                      ),
+                    )
+                    : const Icon(Icons.open_in_new_rounded, size: 18),
+            label: Text(label),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+              backgroundColor: const Color(0xFFE0B86E),
+              foregroundColor: kBlack,
+              disabledBackgroundColor: const Color(0xFFBFBFBF),
+              disabledForegroundColor: const Color(0xFF4A4A4A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DocuSignStep extends StatelessWidget {
+  const _DocuSignStep({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: kWhite.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: kWhite.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.check_circle_rounded, color: kWhite, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: kWhite,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalSignatureCard extends StatelessWidget {
+  const _LocalSignatureCard({
+    required this.customerName,
+    required this.signatureController,
+    required this.drawnSignatureController,
+    required this.isSubmitting,
+    required this.onClear,
+  });
+
+  final String customerName;
+  final TextEditingController signatureController;
+  final SignatureController drawnSignatureController;
+  final bool isSubmitting;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8DDCB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3E8D3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.gesture_rounded,
+                  color: Color(0xFF8B6A24),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Firma local',
+                      style: TextStyle(
+                        color: kBlack,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Alternativa directa dentro de la app.',
+                      style: TextStyle(
+                        color: Color(0xFF6F6557),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: signatureController,
+            decoration: InputDecoration(
+              labelText: 'Nombre completo para firma electronica',
+              hintText: customerName,
+              filled: true,
+              fillColor: const Color(0xFFFAF8F3),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE1D4BD)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE1D4BD)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: kBlack, width: 1.2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 190,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEFCF8),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD9D0BF)),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Signature(
+                controller: drawnSignatureController,
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Dibuja tu firma dentro del recuadro.',
+                  style: TextStyle(
+                    color: Color(0xFF625D55),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: isSubmitting ? null : onClear,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Limpiar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineContractMessage extends StatelessWidget {
+  const _InlineContractMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F0E4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE3D4BC)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: Color(0xFF5F5446),
+          fontWeight: FontWeight.w800,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContractActionBar extends StatelessWidget {
+  const _ContractActionBar({
+    required this.canSign,
+    required this.isSigning,
+    required this.isDownloading,
+    required this.onDownload,
+    required this.onSign,
+  });
+
+  final bool canSign;
+  final bool isSigning;
+  final bool isDownloading;
+  final VoidCallback? onDownload;
+  final VoidCallback? onSign;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        decoration: const BoxDecoration(
+          color: kWhite,
+          border: Border(top: BorderSide(color: Color(0xFFE7DFD2))),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 18,
+              offset: Offset(0, -8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 54,
+              height: 54,
+              child: OutlinedButton(
+                onPressed: onDownload,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: kBlack,
+                  side: const BorderSide(color: Color(0xFFDCD2C3)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child:
+                    isDownloading
+                        ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.download_rounded),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: onSign,
+                icon:
+                    isSigning
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: kWhite,
+                          ),
+                        )
+                        : const Icon(Icons.check_rounded),
+                label: Text(
+                  isSigning
+                      ? 'Firmando...'
+                      : canSign
+                      ? 'Firmar y continuar'
+                      : 'Completa firma local',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  backgroundColor: kBlack,
+                  foregroundColor: kWhite,
+                  disabledBackgroundColor: const Color(0xFFE5E1DA),
+                  disabledForegroundColor: const Color(0xFF8A8174),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContractSummaryGrid extends StatelessWidget {
+  const _ContractSummaryGrid({required this.model});
+
+  final _ContractModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _SummaryItem('Cliente', model.customerName, Icons.person_rounded),
+      _SummaryItem(
+        'Representante',
+        model.representativeName,
+        Icons.badge_rounded,
+      ),
+      _SummaryItem('Aeronave', model.aircraftLabel, Icons.flight_rounded),
+      _SummaryItem(
+        'Categoria',
+        model.categoryLabel,
+        Icons.airline_seat_recline_extra,
+      ),
+      _SummaryItem('Servicio', model.serviceTier, Icons.workspace_premium),
+      _SummaryItem('Pasajeros', model.passengerLabel, Icons.groups_rounded),
+      _SummaryItem('Operador', model.operatorLabel, Icons.verified_rounded),
+      _SummaryItem('Total', model.finalPriceLabel, Icons.payments_rounded),
+      _SummaryItem('Deposito', model.depositLabel, Icons.receipt_long_rounded),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth > 430 ? 2 : 1;
+        return GridView.builder(
+          itemCount: items.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: 86,
+          ),
+          itemBuilder: (context, index) => _SummaryTile(item: items[index]),
+        );
+      },
+    );
+  }
+}
+
+class _SummaryTile extends StatelessWidget {
+  const _SummaryTile({required this.item});
+
+  final _SummaryItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9F6F0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7DDCD)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(item.icon, size: 18, color: const Color(0xFF8B6A24)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF8C7B63),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Expanded(
+                  child: Text(
+                    item.value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: kBlack,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      height: 1.22,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryItem {
+  const _SummaryItem(this.label, this.value, this.icon);
+
+  final String label;
+  final String value;
+  final IconData icon;
 }
 
 class _ContractLegalSection extends StatelessWidget {
@@ -890,48 +1762,6 @@ class _DarkMetric extends StatelessWidget {
               color: kWhite,
               fontSize: 14,
               fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ContractRow extends StatelessWidget {
-  const _ContractRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 118,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: kMuted,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: kBlack,
-                fontWeight: FontWeight.w900,
-                fontSize: 14,
-                height: 1.25,
-              ),
             ),
           ),
         ],

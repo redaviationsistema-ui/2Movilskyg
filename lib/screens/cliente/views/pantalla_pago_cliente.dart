@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
@@ -24,7 +28,8 @@ class ClientPaymentScreen extends StatefulWidget {
   State<ClientPaymentScreen> createState() => _ClientPaymentScreenState();
 }
 
-class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
+class _ClientPaymentScreenState extends State<ClientPaymentScreen>
+    with WidgetsBindingObserver {
   String _paymentMethod = 'card';
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _cardController = TextEditingController();
@@ -33,12 +38,15 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
   final TextEditingController _wireReferenceController =
       TextEditingController();
   bool _submitting = false;
+  bool _waitingForCommercialAccessReturn = false;
   String _inlineMessage = '';
+  String _accessCheckoutSessionId = '';
   Map<String, dynamic>? _wireInstructions;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _emailController.addListener(_refresh);
     _cardController.addListener(_refresh);
     _expiryController.addListener(_refresh);
@@ -48,6 +56,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _emailController.removeListener(_refresh);
     _cardController.removeListener(_refresh);
     _expiryController.removeListener(_refresh);
@@ -59,6 +68,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
     _cvcController.dispose();
     _wireReferenceController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (!_waitingForCommercialAccessReturn || !widget.commercialAccessMode) {
+      return;
+    }
+
+    unawaited(_validateCommercialAccessAfterCheckout());
   }
 
   void _refresh() {
@@ -394,9 +413,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
     if (_emailController.text.trim().isEmpty) return false;
     if (widget.commercialAccessMode) return true;
     if (_paymentMethod == 'card') {
-      return _cardController.text.trim().length >= 19 &&
-          _expiryController.text.trim().isNotEmpty &&
-          _cvcController.text.trim().isNotEmpty;
+      return true;
     }
     return _wireReferenceController.text.trim().isNotEmpty;
   }
@@ -448,7 +465,29 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
         paymentPayload: {'contact_email': _emailController.text.trim()},
       );
 
-      final status = _paymentStatus(intent);
+      var status = _paymentStatus(intent);
+      final clientSecret = _clientSecret(intent);
+      final publishableKey = _publishableKey(intent);
+
+      if (status != 'succeeded' &&
+          status != 'paid' &&
+          clientSecret.isNotEmpty) {
+        if (publishableKey.isNotEmpty) {
+          Stripe.publishableKey = publishableKey;
+          await Stripe.instance.applySettings();
+        }
+
+        await Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: SetupPaymentSheetParameters(
+            merchantDisplayName: 'Sky Group',
+            paymentIntentClientSecret: clientSecret,
+            billingDetails: BillingDetails(email: _emailController.text.trim()),
+          ),
+        );
+        await Stripe.instance.presentPaymentSheet();
+        status = 'succeeded';
+      }
+
       if (status == 'succeeded' || status == 'paid') {
         await ApiClient.instance.confirmClientPayment(
           reservationId: flightRequestId,
@@ -470,7 +509,15 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
       if (!mounted) return;
       setState(() {
         _inlineMessage =
-            'El backend preparo el PaymentIntent. Falta integrar Stripe nativo para confirmar la tarjeta en movil.';
+            clientSecret.isEmpty
+                ? 'El backend preparo el pago, pero no devolvio client_secret para abrir Stripe en movil.'
+                : 'Stripe recibio el pago. Esperando confirmacion final.';
+      });
+    } on StripeException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            error.error.localizedMessage ?? 'Stripe no pudo confirmar el pago.';
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -495,6 +542,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
       final payload = await ApiClient.instance.createClientAccessCheckout(
         paymentPayload: {'contact_email': _emailController.text.trim()},
       );
+      _accessCheckoutSessionId = _firstText(payload, const [
+        'session_id',
+        'checkout_session_id',
+        'checkoutSessionId',
+      ]);
 
       final redirectUrl =
           (payload['management_url'] ??
@@ -528,13 +580,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
 
       if (!mounted) return;
       setState(() {
+        _waitingForCommercialAccessReturn = true;
         _inlineMessage =
-            'Stripe Checkout abierto. Cuando regreses, actualizaremos tu acceso comercial.';
+            'Stripe Checkout abierto. Cuando regreses a la app validaremos tu acceso comercial.';
       });
-
-      await context.read<AuthProvider>().refreshCommercialAccessStatus();
-      if (!mounted) return;
-      widget.onPaymentComplete();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _inlineMessage = error.message);
@@ -545,6 +594,65 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
             _inlineMessage =
                 'No fue posible iniciar el acceso comercial: $error',
       );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _validateCommercialAccessAfterCheckout() async {
+    if (_submitting) return;
+
+    final auth = context.read<AuthProvider>();
+
+    setState(() {
+      _submitting = true;
+      _inlineMessage = 'Validando acceso comercial...';
+    });
+
+    try {
+      Map<String, dynamic>? successPayload;
+      for (var attempt = 0; attempt < 4; attempt++) {
+        successPayload = await ApiClient.instance
+            .getClientAccessPaymentSuccess(
+              sessionId:
+                  _accessCheckoutSessionId.isEmpty
+                      ? null
+                      : _accessCheckoutSessionId,
+            )
+            .catchError((_) => <String, dynamic>{});
+
+        if (_accessIsActive(successPayload)) break;
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+
+      if (!mounted) return;
+      if (successPayload != null && successPayload.isNotEmpty) {
+        auth.syncAccessState(successPayload);
+      }
+      await auth.refreshCommercialAccessStatus();
+      final accessState = resolveCommercialAccessState(auth.accessData);
+
+      if (!mounted) return;
+
+      if (accessState.canReserve || accessState.hasPaidAccess) {
+        setState(() {
+          _waitingForCommercialAccessReturn = false;
+          _inlineMessage = 'Acceso comercial activado.';
+        });
+        widget.onPaymentComplete();
+        return;
+      }
+
+      setState(() {
+        _inlineMessage =
+            'Stripe regreso a la app, pero el backend aun no confirma el acceso. Toca de nuevo cuando Stripe termine de validar.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'No fue posible validar automaticamente el acceso comercial: $error';
+      });
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -638,12 +746,83 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
         .toString();
   }
 
+  String _clientSecret(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    final paymentIntent =
+        payload['payment_intent'] ??
+        (data is Map ? data['payment_intent'] : null);
+
+    return (payload['client_secret'] ??
+            payload['payment_intent_client_secret'] ??
+            (paymentIntent is Map ? paymentIntent['client_secret'] : null) ??
+            (data is Map ? data['client_secret'] : null) ??
+            '')
+        .toString()
+        .trim();
+  }
+
+  String _publishableKey(Map<String, dynamic> payload) {
+    final data = payload['data'];
+
+    return (payload['publishable_key'] ??
+            payload['stripe_publishable_key'] ??
+            (data is Map ? data['publishable_key'] : null) ??
+            (data is Map ? data['stripe_publishable_key'] : null) ??
+            '')
+        .toString()
+        .trim();
+  }
+
   String _cardBrand() {
     final digits = _cardController.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.startsWith('4')) return 'visa';
     if (digits.startsWith('5')) return 'mastercard';
     if (digits.startsWith('3')) return 'amex';
     return 'card';
+  }
+
+  bool _accessIsActive(Map<String, dynamic>? payload) {
+    if (payload == null || payload.isEmpty) return false;
+    final state = resolveCommercialAccessState(payload);
+    if (state.hasPaidAccess || state.canReserve) return true;
+
+    final access = payload['access'];
+    if (access is Map) {
+      final nestedState = resolveCommercialAccessState(
+        Map<String, dynamic>.from(access),
+      );
+      return nestedState.hasPaidAccess || nestedState.canReserve;
+    }
+
+    final payment = payload['payment'];
+    if (payment is Map) {
+      final status = payment['status']?.toString().trim().toLowerCase() ?? '';
+      return const {
+        'paid',
+        'succeeded',
+        'success',
+        'complete',
+        'completed',
+        'pagado',
+        'payment_confirmed',
+      }.contains(status);
+    }
+
+    return false;
+  }
+
+  String _firstText(Map<String, dynamic> payload, List<String> keys) {
+    for (final key in keys) {
+      final value = payload[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+
+    final data = payload['data'];
+    if (data is Map) {
+      return _firstText(Map<String, dynamic>.from(data), keys);
+    }
+
+    return '';
   }
 }
 
