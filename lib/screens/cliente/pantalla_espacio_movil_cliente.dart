@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/acceso_comercial_cliente.dart';
@@ -219,7 +220,9 @@ class _ClientMobileWorkspaceScreenState
               request: const {},
               commercialAccessMode: true,
               onPaymentComplete: () async {
-                await context.read<AuthProvider>().refreshCommercialAccessStatus();
+                await context
+                    .read<AuthProvider>()
+                    .refreshCommercialAccessStatus();
                 if (!mounted) return;
                 Navigator.of(context).pop();
                 setState(() {
@@ -279,56 +282,77 @@ class _MembershipPortalStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     final commercialState = resolveCommercialAccessState(access);
     final subscription = access['subscription'];
-    final plan =
-        subscription is Map
-            ? (subscription['plan_name'] ?? subscription['plan'])?.toString()
-            : access['plan_name']?.toString();
-    final hasAccess = commercialState.hasPaidAccess || commercialState.canReserve;
-    final status = _statusLabel(access);
-    final syncLabel =
-        isSyncing
-            ? 'Sincronizando'
-            : lastSyncAt == null
-            ? 'Sin sync'
-            : '${lastSyncAt!.hour.toString().padLeft(2, '0')}:${lastSyncAt!.minute.toString().padLeft(2, '0')}';
+    final hasAccess =
+        commercialState.hasPaidAccess || commercialState.canReserve;
+    final expiryLabel = _expiryLabel(subscription, commercialState);
 
     return SafeArea(
       bottom: false,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
         decoration: const BoxDecoration(
           color: Color(0xFF050505),
           border: Border(bottom: BorderSide(color: Color(0x22111111))),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(
-              hasAccess ? Icons.verified_rounded : Icons.workspace_premium,
-              color: Colors.white,
-              size: 18,
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: const Color(0x14FFFFFF),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0x26FFFFFF)),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                hasAccess ? Icons.verified_rounded : Icons.workspace_premium,
+                color: Colors.white,
+                size: 17,
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                '${plan?.isNotEmpty == true ? plan : 'Membresia cliente'} | $status | Sync $syncLabel',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hasAccess ? 'Membresia activa' : 'Acceso comercial',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    expiryLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFD8D8D8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
             IconButton(
               tooltip: 'Actualizar',
               onPressed: onRefresh,
               visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               icon: const Icon(
                 Icons.sync_rounded,
                 color: Colors.white,
-                size: 18,
+                size: 17,
               ),
             ),
             TextButton(
@@ -336,8 +360,24 @@ class _MembershipPortalStatus extends StatelessWidget {
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
                 visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                backgroundColor: const Color(0x14FFFFFF),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  side: const BorderSide(color: Color(0x22FFFFFF)),
+                ),
               ),
-              child: const Text('Plan'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Ver plan',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                ],
+              ),
             ),
           ],
         ),
@@ -345,7 +385,31 @@ class _MembershipPortalStatus extends StatelessWidget {
     );
   }
 
-  String _statusLabel(Map<String, dynamic> access) {
-    return resolveCommercialAccessState(access).statusLabel;
+  String _expiryLabel(
+    dynamic subscription,
+    CommercialAccessState commercialState,
+  ) {
+    final rawDate =
+        subscription is Map
+            ? subscription['current_period_end'] ??
+                subscription['expires_at'] ??
+                subscription['renewal_date']
+            : null;
+    final parsed =
+        rawDate == null ? null : DateTime.tryParse(rawDate.toString());
+    if (parsed != null) {
+      return 'Vence el ${DateFormat('dd MMM yyyy', 'es_MX').format(parsed).toLowerCase()}';
+    }
+    if (commercialState.expiresAtLabel.isNotEmpty) {
+      return 'Vence el ${commercialState.expiresAtLabel}';
+    }
+    return hasAccessLabel(commercialState);
+  }
+
+  String hasAccessLabel(CommercialAccessState state) {
+    if (state.hasPaidAccess || state.canReserve) {
+      return 'Membresia disponible';
+    }
+    return state.statusLabel;
   }
 }

@@ -9,6 +9,7 @@ import '../../models/aeropuerto.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import '../cliente/widgets/widgets_flujo_movil_cliente.dart';
+import '../subscription/pantalla_centro_membresia.dart';
 import 'pantalla_vista_previa_cotizacion.dart';
 import 'widgets/hoja_selector_aeropuerto.dart';
 import 'widgets/contenido_pantalla_reservacion.dart';
@@ -64,12 +65,16 @@ class _ReservationScreenState extends State<ReservationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     final reservation = context.watch<ReservationProvider>();
     final primaryRoute = reservation.routes.first;
     final suggestedAirports = _suggestedAirports(reservation);
+    final commercialState = resolveCommercialAccessState(auth.accessData);
 
     return ClientMobileScreenShell(
       userInitial: widget.userInitial,
+      welcomeTitle: 'Bienvenido, ${auth.displayName}',
+      welcomeSubtitle: 'Cotiza, reserva y administra tus vuelos privados',
       child: ReservationScreenContent(
         reservation: reservation,
         primaryRoute: primaryRoute,
@@ -79,9 +84,13 @@ class _ReservationScreenState extends State<ReservationScreen> {
         departureTime: _departureTime,
         returnDate: _returnDate,
         returnTime: _returnTime,
+        hasActiveMembership:
+            commercialState.hasPaidAccess || commercialState.canReserve,
+        remainingFreeQuotes: commercialState.remainingFreeQuotes,
         onTodayTrip: () => _applyTodayPreset(reservation),
         onRoundTrip: () => _applyRoundTripPreset(reservation),
         onMultiCity: () => _applyMultiCityPreset(reservation),
+        onOpenMembership: _openMembershipCenter,
         onTripTypeChanged: (value) {
           setState(() {
             _tripType = value;
@@ -124,6 +133,17 @@ class _ReservationScreenState extends State<ReservationScreen> {
         onApplySuggestedDestination:
             (airport) => _applySuggestedDestination(reservation, airport),
         onPreview: () => _handlePreview(reservation),
+      ),
+    );
+  }
+
+  void _openMembershipCenter() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => const MembershipCenterScreen(
+              audience: MembershipAudience.client,
+            ),
       ),
     );
   }

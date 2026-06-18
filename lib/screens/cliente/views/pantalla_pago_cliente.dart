@@ -88,31 +88,31 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
         color: Color(0xFF2D6A4F),
       ),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
         children: [
           const Text(
             'Configura tu pago',
             style: TextStyle(
-              fontSize: 30,
+              fontSize: 28,
               fontWeight: FontWeight.w900,
               color: Color(0xFF111111),
               height: 0.98,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Text(
             route,
             style: const TextStyle(
               color: Color(0xFF625D55),
-              fontSize: 16,
+              fontSize: 14,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(24),
               gradient: const LinearGradient(
                 colors: [
                   Color(0xFF08121C),
@@ -151,18 +151,19 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
                   widget.commercialAccessMode
                       ? 'Revisa el correo de contacto y abre Stripe Checkout para activar o renovar tu acceso comercial.'
                       : 'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 18,
                     height: 1.35,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
@@ -175,7 +176,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           GlassInfoCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +223,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 14),
-                if (!widget.commercialAccessMode && _paymentMethod == 'card') ...[
+                if (!widget.commercialAccessMode &&
+                    _paymentMethod == 'card') ...[
                   _InputField(
                     controller: _cardController,
                     label: 'Numero de tarjeta',
@@ -491,24 +493,23 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
 
     try {
       final payload = await ApiClient.instance.createClientAccessCheckout(
-        paymentPayload: {
-          'contact_email': _emailController.text.trim(),
-        },
+        paymentPayload: {'contact_email': _emailController.text.trim()},
       );
 
-      final redirectUrl = (payload['management_url'] ??
-              payload['checkout_url'] ??
-              payload['managementUrl'] ??
-              payload['checkoutUrl'] ??
-              ((payload['data'] is Map)
-                  ? (payload['data']['management_url'] ??
-                      payload['data']['checkout_url'] ??
-                      payload['data']['managementUrl'] ??
-                      payload['data']['checkoutUrl'])
-                  : null) ??
-              '')
-          .toString()
-          .trim();
+      final redirectUrl =
+          (payload['management_url'] ??
+                  payload['checkout_url'] ??
+                  payload['managementUrl'] ??
+                  payload['checkoutUrl'] ??
+                  ((payload['data'] is Map)
+                      ? (payload['data']['management_url'] ??
+                          payload['data']['checkout_url'] ??
+                          payload['data']['managementUrl'] ??
+                          payload['data']['checkoutUrl'])
+                      : null) ??
+                  '')
+              .toString()
+              .trim();
 
       if (redirectUrl.isEmpty) {
         throw const ApiException(
@@ -540,8 +541,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(
-        () => _inlineMessage =
-            'No fue posible iniciar el acceso comercial: $error',
+        () =>
+            _inlineMessage =
+                'No fue posible iniciar el acceso comercial: $error',
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -666,8 +668,8 @@ class _PaymentMethodCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: Ink(
-        width: 200,
-        padding: const EdgeInsets.all(16),
+        width: 180,
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFF10253A) : const Color(0xFFFFFEFC),
           borderRadius: BorderRadius.circular(18),
@@ -682,7 +684,7 @@ class _PaymentMethodCard extends StatelessWidget {
               icon,
               color: selected ? Colors.white : const Color(0xFF10253A),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
@@ -690,7 +692,7 @@ class _PaymentMethodCard extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               note,
               style: TextStyle(
@@ -698,6 +700,7 @@ class _PaymentMethodCard extends StatelessWidget {
                     selected
                         ? Colors.white.withValues(alpha: 0.85)
                         : const Color(0xFF625D55),
+                fontSize: 12,
                 height: 1.3,
               ),
             ),
@@ -748,7 +751,7 @@ class _TrustChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),

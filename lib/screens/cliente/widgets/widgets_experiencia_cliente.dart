@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+const Color _clientInk = Color(0xFF10253A);
+const Color _clientMuted = Color(0xFF607080);
+const Color _clientStroke = Color(0xFFE4EAF0);
+const Color _clientAccent = Color(0xFFE0B86E);
+
 class ClientExperienceShell extends StatelessWidget {
   const ClientExperienceShell({
     super.key,
@@ -20,12 +25,17 @@ class ClientExperienceShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F6F9),
+      backgroundColor: const Color(0xFFF5F7FA),
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
-            Padding(
+            Container(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF5F7FA),
+                border: Border(bottom: BorderSide(color: Color(0xFFE9EEF4))),
+              ),
               child: Row(
                 children: [
                   if (showBackButton)
@@ -76,7 +86,7 @@ class ClientHeroCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
           colors: [Color(0xFF08121C), Color(0xFF12304A), Color(0xFF1C5170)],
           begin: Alignment.topLeft,
@@ -85,8 +95,8 @@ class ClientHeroCard extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Color(0x1F0E2238),
-            blurRadius: 28,
-            offset: Offset(0, 16),
+            blurRadius: 24,
+            offset: Offset(0, 14),
           ),
         ],
       ),
@@ -114,7 +124,7 @@ class ClientHeroCard extends StatelessWidget {
               fontSize: 28,
               fontWeight: FontWeight.w800,
               color: Colors.white,
-              height: 1.05,
+              height: 1.02,
             ),
           ),
           const SizedBox(height: 12),
@@ -142,11 +152,11 @@ class ClientHeroCard extends StatelessWidget {
               FilledButton(
                 onPressed: primaryAction,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE0B86E),
+                  backgroundColor: _clientAccent,
                   foregroundColor: const Color(0xFF111111),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
-                    vertical: 14,
+                    vertical: 13,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -196,7 +206,7 @@ class ClientSectionTitle extends StatelessWidget {
           width: 48,
           height: 4,
           decoration: BoxDecoration(
-            color: const Color(0xFFE0B86E),
+            color: _clientAccent,
             borderRadius: BorderRadius.circular(999),
           ),
         ),
@@ -206,13 +216,13 @@ class ClientSectionTitle extends StatelessWidget {
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF10253A),
+            color: _clientInk,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+          style: const TextStyle(color: _clientMuted, height: 1.35),
         ),
       ],
     );
@@ -241,16 +251,16 @@ class ActionShortcutCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Ink(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE3EAF1)),
+          border: Border.all(color: _clientStroke),
           boxShadow: const [
             BoxShadow(
               color: Color(0x120E2238),
-              blurRadius: 18,
-              offset: Offset(0, 10),
+              blurRadius: 16,
+              offset: Offset(0, 8),
             ),
           ],
         ),
@@ -272,13 +282,13 @@ class ActionShortcutCard extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF10253A),
+                color: _clientInk,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
-              style: const TextStyle(color: Color(0xFF607080), height: 1.35),
+              style: const TextStyle(color: _clientMuted, height: 1.35),
             ),
           ],
         ),
@@ -303,13 +313,13 @@ class GlassInfoCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE4EAF0)),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _clientStroke),
         boxShadow: const [
           BoxShadow(
             color: Color(0x100E2238),
-            blurRadius: 22,
-            offset: Offset(0, 12),
+            blurRadius: 18,
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -327,14 +337,19 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.10)),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w700),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -404,8 +419,9 @@ class PricePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F8FB),
+        color: const Color(0xFFF6F8FB),
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7EDF4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,6 +477,7 @@ class _HeroMetricChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,14 +516,21 @@ class _RoundActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: Ink(
-        width: 48,
-        height: 48,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE4EAF0)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _clientStroke),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0D0E2238),
+              blurRadius: 14,
+              offset: Offset(0, 6),
+            ),
+          ],
         ),
-        child: Icon(icon, color: const Color(0xFF10253A)),
+        child: Icon(icon, color: _clientInk, size: 20),
       ),
     );
   }

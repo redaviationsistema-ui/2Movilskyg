@@ -13,20 +13,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  // final _emailController = TextEditingController();
-  // final _passwordController = TextEditingController();
-  final _emailController = TextEditingController(
-   // text: 'cliente@privateflights.test',
-   text:'',
-  );
-
-//  final _passwordController = TextEditingController(text: 'password');
+  final _emailController = TextEditingController(text: '');
   final _passwordController = TextEditingController(text: '');
 
   static final RegExp _emailRegex = RegExp(
     r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$',
     caseSensitive: false,
   );
+
   bool _obscurePassword = true;
 
   @override
@@ -45,10 +39,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showPasswordRecoveryMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'La recuperacion de contrasena aun no esta disponible en la app.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final theme = Theme.of(context);
+    final isBusy = auth.isLoading;
 
     return Scaffold(
       body: Container(
@@ -80,14 +85,17 @@ class _LoginScreenState extends State<LoginScreen> {
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 18,
+                  ),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 470),
+                    constraints: const BoxConstraints(maxWidth: 430),
                     child: Container(
-                      padding: const EdgeInsets.all(28),
+                      padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
                       decoration: BoxDecoration(
                         color: const Color(0xEEF8FBFF),
-                        borderRadius: BorderRadius.circular(34),
+                        borderRadius: BorderRadius.circular(30),
                         border: Border.all(color: const Color(0x26FFFFFF)),
                         boxShadow: const [
                           BoxShadow(
@@ -102,60 +110,69 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 68,
-                                  height: 68,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(22),
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFFFFFFFF),
-                                        Color(0xFFE8F1F8),
+                            Center(
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 86,
+                                    height: 86,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(26),
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFFFFFFF),
+                                          Color(0xFFE8F1F8),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x19000000),
+                                          blurRadius: 18,
+                                          offset: Offset(0, 10),
+                                        ),
                                       ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
                                     ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x19000000),
-                                        blurRadius: 18,
-                                        offset: Offset(0, 10),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Image.asset(
+                                        'assets/logo.png',
+                                        filterQuality: FilterQuality.high,
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(11),
-                                    child: Image.asset('assets/logo.png'),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Inicio de sesión',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: const Color(0xFF0E2338),
+                                        ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Red Sky',
-                                        style: theme.textTheme.headlineSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                              color: const Color(0xFF0E2338),
-                                            ),
-                                      ),
-                                    ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Bienvenidos',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: const Color(0xFF5E7082),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 26),
+                            const _FieldLabel(text: 'Correo electronico'),
                             TextFormField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.username],
+                              style: const TextStyle(fontSize: 15),
                               decoration: _inputDecoration(
-                                label: 'Correo',
                                 hint: 'tu@empresa.com',
                                 icon: Icons.alternate_email_rounded,
                               ),
@@ -169,12 +186,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 18),
+                            const _FieldLabel(text: 'Contrasena'),
                             TextFormField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.password],
+                              style: const TextStyle(fontSize: 15),
+                              onFieldSubmitted: (_) {
+                                if (!isBusy) _submit();
+                              },
                               decoration: _inputDecoration(
-                                label: 'Contraseña',
+                                hint: 'Ingresa tu contrasena',
                                 icon: Icons.lock_outline_rounded,
                                 suffix: IconButton(
                                   onPressed: () {
@@ -191,10 +215,33 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Ingresa tu contraseña.';
+                                  return 'Ingresa tu contrasena.';
                                 }
                                 return null;
                               },
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _showPasswordRecoveryMessage,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF0E2338),
+                                  disabledForegroundColor: const Color(
+                                    0xFF0E2338,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 4,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text(
+                                  'Olvide mi contrasena',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
                             ),
                             if (auth.errorMessage != null) ...[
                               const SizedBox(height: 16),
@@ -217,33 +264,51 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 22),
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton(
-                                onPressed: auth.isLoading ? null : _submit,
+                                onPressed: isBusy ? null : _submit,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: const Color(0xFF0E2338),
+                                  disabledBackgroundColor: const Color(
+                                    0xFF8EA0B1,
+                                  ),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
-                                    vertical: 19,
+                                    vertical: 17,
                                   ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                 ),
                                 child:
-                                    auth.isLoading
-                                        ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
+                                    isBusy
+                                        ? const Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            SizedBox(width: 12),
+                                            Text(
+                                              'Iniciando sesion...',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ],
                                         )
                                         : const Text(
-                                          'Ingresar',
+                                          'Iniciar sesion',
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w900,
@@ -251,41 +316,49 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed:
-                                    auth.isLoading
-                                        ? null
-                                        : () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (_) =>
-                                                      const RegisterRoleSelectionScreen(),
-                                            ),
-                                          );
-                                        },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF0E2338),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 17,
+                            const SizedBox(height: 14),
+                            Center(
+                              child: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 4,
+                                children: [
+                                  Text(
+                                    'No tienes cuenta?',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: const Color(0xFF5E7082),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                  side: const BorderSide(
-                                    color: Color(0xFF0E2338),
+                                  TextButton(
+                                    onPressed:
+                                        isBusy
+                                            ? null
+                                            : () {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder:
+                                                      (_) =>
+                                                          const RegisterRoleSelectionScreen(),
+                                                ),
+                                              );
+                                            },
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: const Color(0xFFC4912E),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 4,
+                                      ),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text(
+                                      'Crear cuenta',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Crear cuenta',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
+                                ],
                               ),
                             ),
                           ],
@@ -303,7 +376,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   InputDecoration _inputDecoration({
-    required String label,
     required IconData icon,
     String? hint,
     Widget? suffix,
@@ -311,13 +383,13 @@ class _LoginScreenState extends State<LoginScreen> {
     const borderColor = Color(0xFFD7E0E8);
 
     return InputDecoration(
-      labelText: label,
       hintText: hint,
+      hintStyle: const TextStyle(color: Color(0xFF7E8D9C), fontSize: 14),
       suffixIcon: suffix,
-      prefixIcon: Icon(icon),
+      prefixIcon: Icon(icon, color: const Color(0xFF5E7082)),
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
         borderSide: const BorderSide(color: borderColor),
@@ -329,6 +401,34 @@ class _LoginScreenState extends State<LoginScreen> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
         borderSide: const BorderSide(color: Color(0xFF0E2338), width: 1.3),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: const BorderSide(color: Color(0xFFD45A4F)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: const BorderSide(color: Color(0xFFD45A4F), width: 1.3),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 8),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: const Color(0xFF0E2338),
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }

@@ -19,11 +19,8 @@ class LocalCacheService {
   }
 
   Future<Database> _openDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final fullPath = path.join(dbPath, _dbName);
-
     return openDatabase(
-      fullPath,
+      await _databasePath(),
       version: _dbVersion,
       onCreate: (db, version) async {
         await db.execute('''
@@ -85,83 +82,119 @@ class LocalCacheService {
     );
   }
 
+  Future<String> _databasePath() async {
+    final dbPath = await getDatabasesPath();
+    return path.join(dbPath, _dbName);
+  }
+
+  bool _isReadonlyDatabaseError(Object error) {
+    return error is DatabaseException &&
+        error.toString().toLowerCase().contains('readonly database');
+  }
+
+  Future<void> _resetDatabase() async {
+    final db = _database;
+    _database = null;
+    if (db != null && db.isOpen) {
+      await db.close();
+    }
+
+    final dbPath = await _databasePath();
+    await deleteDatabase(dbPath);
+  }
+
+  Future<T> _withWriteRecovery<T>(
+    Future<T> Function(Database db) action,
+  ) async {
+    try {
+      final db = await database;
+      return await action(db);
+    } on DatabaseException catch (error) {
+      if (!_isReadonlyDatabaseError(error)) rethrow;
+      await _resetDatabase();
+      final db = await database;
+      return action(db);
+    }
+  }
+
   Future<void> _ensureAircraftImageUrlColumn(Database db) async {
     final columns = await db.rawQuery('PRAGMA table_info($aircraftTable)');
     final hasImageUrl = columns.any((column) => column['name'] == 'image_url');
 
     if (!hasImageUrl) {
-      await db.execute(
-        'ALTER TABLE $aircraftTable ADD COLUMN image_url TEXT',
-      );
+      await db.execute('ALTER TABLE $aircraftTable ADD COLUMN image_url TEXT');
     }
   }
 
   Future<void> cacheAirports(List<Map<String, dynamic>> airports) async {
-    final db = await database;
-    final batch = db.batch();
+    await _withWriteRecovery((db) async {
+      final batch = db.batch();
 
-    batch.delete(airportsTable);
+      batch.delete(airportsTable);
 
-    for (final airport in airports) {
-      batch.insert(
-        airportsTable,
-        airport,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
+      for (final airport in airports) {
+        batch.insert(
+          airportsTable,
+          airport,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
 
-    await batch.commit(noResult: true);
+      await batch.commit(noResult: true);
+    });
   }
 
   Future<void> cacheAircraft(List<Map<String, dynamic>> aircraft) async {
-    final db = await database;
-    await _ensureAircraftImageUrlColumn(db);
+    await _withWriteRecovery((db) async {
+      await _ensureAircraftImageUrlColumn(db);
 
-    Future<void> writeBatch() async {
+      Future<void> writeBatch() async {
+        final batch = db.batch();
+
+        batch.delete(aircraftTable);
+
+        for (final item in aircraft) {
+          batch.insert(
+            aircraftTable,
+            item,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+
+        await batch.commit(noResult: true);
+      }
+
+      try {
+        await writeBatch();
+      } on DatabaseException catch (error) {
+        if (error.toString().contains('no column named image_url')) {
+          await _ensureAircraftImageUrlColumn(db);
+          await writeBatch();
+          return;
+        }
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> cacheReservations(
+    List<Map<String, dynamic>> reservations,
+  ) async {
+    await _withWriteRecovery((db) async {
       final batch = db.batch();
 
-      batch.delete(aircraftTable);
+      batch.delete(reservationsTable);
 
-      for (final item in aircraft) {
+      for (final item in reservations) {
         batch.insert(
-          aircraftTable,
+          reservationsTable,
           item,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
 
       await batch.commit(noResult: true);
-    }
-
-    try {
-      await writeBatch();
-    } on DatabaseException catch (error) {
-      if (error.toString().contains('no column named image_url')) {
-        await _ensureAircraftImageUrlColumn(db);
-        await writeBatch();
-        return;
-      }
-      rethrow;
-    }
-  }
-
-  Future<void> cacheReservations(
-    List<Map<String, dynamic>> reservations,
-  ) async {
-    final db = await database;
-    final batch = db.batch();
-
-    batch.delete(reservationsTable);
-
-    for (final item in reservations) {
-      batch.insert(
-        reservationsTable,
-        item,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-
-    await batch.commit(noResult: true);
+    });
   }
 
   Future<List<Map<String, dynamic>>> getCachedAirports() async {
@@ -180,11 +213,12 @@ class LocalCacheService {
   }
 
   Future<void> setMetadata(String key, String value) async {
-    final db = await database;
-    await db.insert(metadataTable, {
-      'key': key,
-      'value': value,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _withWriteRecovery((db) async {
+      await db.insert(metadataTable, {
+        'key': key,
+        'value': value,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   Future<String?> getMetadata(String key) async {

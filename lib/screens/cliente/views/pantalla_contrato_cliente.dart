@@ -81,30 +81,30 @@ class _ClientContractScreenState extends State<ClientContractScreen> {
       showBackButton: widget.showBackButton,
       trailing: const StatusBadge(label: 'Contrato', color: kBlack),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
         children: [
           const Text(
             'Contrato',
             style: TextStyle(
-              fontSize: 34,
+              fontSize: 28,
               fontWeight: FontWeight.w900,
               color: kBlack,
               height: 1,
               letterSpacing: -1.1,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Text(
             contractModel.routeLabel,
             style: const TextStyle(
               color: Color(0xFF625D55),
-              fontSize: 16,
+              fontSize: 14,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           _ContractHeroCard(model: contractModel),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           const _SectionBadge(
             title: 'Seccion 1',
             subtitle:
@@ -660,7 +660,7 @@ class _SectionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(18),
@@ -684,6 +684,7 @@ class _SectionBadge extends StatelessWidget {
             style: const TextStyle(
               color: kText,
               fontWeight: FontWeight.w700,
+              fontSize: 13,
               height: 1.35,
             ),
           ),
@@ -766,10 +767,10 @@ class _ContractHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
         color: kBlack,
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1F000000),
@@ -782,27 +783,28 @@ class _ContractHeroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _HeroChip(label: model.code),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
             model.routeLabel,
             style: const TextStyle(
-              fontSize: 30,
+              fontSize: 24,
               fontWeight: FontWeight.w900,
               color: kWhite,
               height: 1,
               letterSpacing: -1,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             model.departureLabel,
             style: const TextStyle(
               color: Color(0xFFBDBDBD),
+              fontSize: 13,
               height: 1.35,
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(

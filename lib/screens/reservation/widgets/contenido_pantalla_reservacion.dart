@@ -19,9 +19,12 @@ class ReservationScreenContent extends StatelessWidget {
     required this.departureTime,
     required this.returnDate,
     required this.returnTime,
+    required this.hasActiveMembership,
+    required this.remainingFreeQuotes,
     required this.onTodayTrip,
     required this.onRoundTrip,
     required this.onMultiCity,
+    required this.onOpenMembership,
     required this.onTripTypeChanged,
     required this.onPickOrigin,
     required this.onPickDestination,
@@ -46,9 +49,12 @@ class ReservationScreenContent extends StatelessWidget {
   final TimeOfDay? departureTime;
   final DateTime? returnDate;
   final TimeOfDay? returnTime;
+  final bool hasActiveMembership;
+  final int remainingFreeQuotes;
   final VoidCallback onTodayTrip;
   final VoidCallback onRoundTrip;
   final VoidCallback onMultiCity;
+  final VoidCallback onOpenMembership;
   final ValueChanged<String> onTripTypeChanged;
   final VoidCallback onPickOrigin;
   final VoidCallback onPickDestination;
@@ -66,11 +72,18 @@ class ReservationScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPrimaryFormReady =
+        primaryRoute.fromAirport != null &&
+        primaryRoute.toAirport != null &&
+        primaryRoute.startDate != null;
+
     return Container(
       color: const Color(0xFFF7F7F7),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 108),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 126),
         children: [
+          const _HeroAccent(),
+          const SizedBox(height: 6),
           const Text(
             'RED AVIATION',
             style: TextStyle(
@@ -80,48 +93,46 @@ class ReservationScreenContent extends StatelessWidget {
               letterSpacing: 2.8,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           const Text(
-            'Reserva un jet privado\nen minutos',
+            'Cotiza tu vuelo privado\nen minutos',
             style: TextStyle(
-              fontSize: 38,
-              height: 1,
+              fontSize: 28,
+              height: 1.04,
               fontWeight: FontWeight.w900,
-              letterSpacing: -1.3,
+              letterSpacing: -1.1,
               color: Color(0xFF050505),
             ),
           ),
-
-          const SizedBox(height: 16),
-          const _MembershipQuoteBanner(),
-          const SizedBox(height: 26),
+          const SizedBox(height: 6),
+          const Text(
+            'Selecciona tu ruta, fecha y pasajeros para ver aeronaves disponibles.',
+            style: TextStyle(
+              color: Color(0xFF6F6F6F),
+              fontSize: 13.5,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      
+          const SizedBox(height: 12),
           ConciergeCard(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const _FormSectionHeader(),
+                const SizedBox(height: 14),
                 SegmentedTripSelector(
                   value: tripType,
                   onChanged: onTripTypeChanged,
                 ),
                 if (tripType == 'Ida y vuelta') ...[
                   const SizedBox(height: 16),
-                  const ModeIntroCard(
-                    eyebrow: 'Viaje redondo',
-                    title:
-                        'Define salida y regreso en un mismo flujo ejecutivo.',
-                    subtitle:
-                        'Ideal para juntas, inspecciones o regreso el mismo dia con control total del itinerario.',
-                    tint: Color(0xFF111111),
-                  ),
+                 
                 ] else if (tripType == 'Multidestino') ...[
                   const SizedBox(height: 16),
-                  const ModeIntroCard(
-                    eyebrow: 'Ruta multi-destino',
-                    title: 'Construye una gira privada tramo por tramo.',
-                    subtitle:
-                        'Perfecto para roadshows, visitas ejecutivas y agendas que combinan varias ciudades.',
-                    tint: Color(0xFF111111),
-                  ),
+               
                 ],
                 const SizedBox(height: 16),
                 if (tripType == 'Multidestino') ...[
@@ -131,6 +142,8 @@ class ReservationScreenContent extends StatelessWidget {
                 ConciergeField(
                   label: 'Origen',
                   value: _airportPrimaryLabel(primaryRoute.fromAirport),
+                  helperText: '¿Desde donde sales?',
+                  leadingIcon: Icons.location_on_outlined,
                   secondaryValue: _airportSecondaryLabel(
                     primaryRoute.fromAirport,
                   ),
@@ -141,6 +154,8 @@ class ReservationScreenContent extends StatelessWidget {
                 ConciergeField(
                   label: 'Destino',
                   value: _airportPrimaryLabel(primaryRoute.toAirport),
+                  helperText: '¿A donde vuelas?',
+                  leadingIcon: Icons.place_outlined,
                   secondaryValue: _airportSecondaryLabel(
                     primaryRoute.toAirport,
                   ),
@@ -154,6 +169,8 @@ class ReservationScreenContent extends StatelessWidget {
                       primaryRoute.startDate == null
                           ? 'Seleccionar fecha'
                           : dateFormat.format(primaryRoute.startDate!),
+                  helperText: 'Elige la fecha de salida',
+                  leadingIcon: Icons.calendar_month_outlined,
                   onTap: onPickPrimaryDate,
                   trailing: const Icon(
                     Icons.calendar_today_outlined,
@@ -166,8 +183,9 @@ class ReservationScreenContent extends StatelessWidget {
                 InlinePreferenceButton(
                   title:
                       departureTime == null
-                          ? 'Agregar hora'
+                          ? 'Seleccionar hora de salida'
                           : 'Hora de salida: ${departureTime!.format(context)}',
+                  icon: Icons.schedule_rounded,
                   onTap: onPickDepartureTime,
                 ),
                 if (tripType == 'Ida y vuelta') ...[
@@ -176,22 +194,25 @@ class ReservationScreenContent extends StatelessWidget {
                     label: 'Fecha de regreso',
                     value:
                         returnDate == null
-                            ? 'dd/mm/aaaa'
+                            ? 'Seleccionar fecha'
                             : dateFormat.format(returnDate!),
+                    helperText: 'Programa tu regreso',
+                    leadingIcon: Icons.event_repeat_outlined,
                     onTap: onPickReturnDate,
                     trailing: const Icon(
                       Icons.calendar_today_outlined,
                       size: 24,
                       color: Color(0xFF111111),
                     ),
-                    placeholder: 'dd/mm/aaaa',
+                    placeholder: 'Seleccionar fecha',
                   ),
                   const SizedBox(height: 8),
                   InlinePreferenceButton(
                     title:
                         returnTime == null
-                            ? 'Agregar hora de regreso'
+                            ? 'Seleccionar hora de regreso'
                             : 'Hora de regreso: ${returnTime!.format(context)}',
+                    icon: Icons.more_time_rounded,
                     onTap: onPickReturnTime,
                   ),
                 ],
@@ -219,10 +240,10 @@ class ReservationScreenContent extends StatelessWidget {
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Agregar tramo'),
                     style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
+                      minimumSize: const Size.fromHeight(48),
                       side: const BorderSide(color: Color(0xFF111111)),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       foregroundColor: const Color(0xFF111111),
                     ),
@@ -233,9 +254,13 @@ class ReservationScreenContent extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed:
-                        reservation.isLoadingQuotePreview ? null : onPreview,
+                        reservation.isLoadingQuotePreview || !isPrimaryFormReady
+                            ? null
+                            : onPreview,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF050505),
+                      disabledBackgroundColor: const Color(0xFFCACACA),
+                      disabledForegroundColor: const Color(0xFF6A6A6A),
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(64),
                       shape: RoundedRectangleBorder(
@@ -246,30 +271,69 @@ class ReservationScreenContent extends StatelessWidget {
                     ),
                     child:
                         reservation.isLoadingQuotePreview
-                            ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
+                            ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                                Flexible(
+                                  child: Text(
+                                    'Consultando disponibilidad...',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             )
-                            : const Text(
-                              'Buscar aeronaves disponibles',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 17,
-                                letterSpacing: -0.2,
-                              ),
+                            : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isPrimaryFormReady
+                                      ? Icons.search_rounded
+                                      : Icons.info_outline_rounded,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    isPrimaryFormReady
+                                        ? 'Ver aeronaves disponibles'
+                                        : 'Completa origen, destino y fecha',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                   ),
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Cotización estimada. Sujeta a disponibilidad, FBO, permisos y operación.',
+                  'Cotizacion estimada, sujeta a disponibilidad y operacion.',
                   style: TextStyle(
                     color: Color(0xFF6F6F6F),
-                    fontSize: 13,
+                    fontSize: 12,
                     height: 1.35,
                     fontWeight: FontWeight.w500,
                   ),
@@ -317,33 +381,65 @@ class ReservationScreenContent extends StatelessWidget {
   }
 }
 
-class _MembershipQuoteBanner extends StatelessWidget {
-  const _MembershipQuoteBanner();
+
+class _HeroAccent extends StatelessWidget {
+  const _HeroAccent();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF050505),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: const Row(
+    return SizedBox(
+      height: 24,
+      child: Stack(
         children: [
-          Icon(Icons.workspace_premium_rounded, color: Colors.white),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Cotizacion gratis disponible. Activa membresia para reservar y operar vuelos confirmados.',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                height: 1.3,
+          Positioned(
+            top: 3,
+            left: 0,
+            child: Container(
+              width: 84,
+              height: 1.5,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDDDDDD),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            left: 26,
+            child: Container(
+              width: 58,
+              height: 1.5,
+              decoration: BoxDecoration(
+                color: const Color(0xFF050505),
+                borderRadius: BorderRadius.circular(99),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FormSectionHeader extends StatelessWidget {
+  const _FormSectionHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: const [
+        Icon(Icons.flight_outlined, color: Color(0xFF111111), size: 18),
+        SizedBox(width: 8),
+        Text(
+          'Datos del vuelo',
+          style: TextStyle(
+            color: Color(0xFF050505),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -385,7 +481,7 @@ class QuickActionRail extends StatelessWidget {
           const SizedBox(width: 12),
           QuickActionCard(
             icon: Icons.travel_explore_rounded,
-            title: 'Multidestino',
+            title: 'Multi',
             subtitle: 'Ruta privada con varias ciudades.',
             tint: const Color(0xFF111111),
             onTap: onMultiCity,
@@ -660,28 +756,63 @@ class InlinePreferenceButton extends StatelessWidget {
   const InlinePreferenceButton({
     super.key,
     required this.title,
+    required this.icon,
     required this.onTap,
   });
 
   final String title;
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          foregroundColor: const Color(0xFF050505),
-          backgroundColor: const Color(0xFFF1F1F1),
-          shape: const StadiumBorder(),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE4E4E4)),
+          color: const Color(0xFFFAFAFA),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
         ),
-        icon: const Icon(Icons.add_rounded, size: 18),
-        label: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F0F0),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 20, color: const Color(0xFF111111)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                  letterSpacing: -0.3,
+                  color: Color(0xFF050505),
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.keyboard_arrow_right_rounded,
+              color: Color(0xFF050505),
+              size: 22,
+            ),
+          ],
         ),
       ),
     );
@@ -816,6 +947,8 @@ class MultiLegCard extends StatelessWidget {
           ConciergeField(
             label: 'Origen',
             value: _airportPrimary(route.fromAirport),
+            helperText: 'Selecciona el punto de partida',
+            leadingIcon: Icons.location_on_outlined,
             secondaryValue: _airportSecondary(route.fromAirport),
             placeholder: 'Seleccionar aeropuerto',
             onTap: onPickOrigin,
@@ -824,6 +957,8 @@ class MultiLegCard extends StatelessWidget {
           ConciergeField(
             label: 'Destino',
             value: _airportPrimary(route.toAirport),
+            helperText: 'Selecciona el siguiente destino',
+            leadingIcon: Icons.place_outlined,
             secondaryValue: _airportSecondary(route.toAirport),
             placeholder: 'Seleccionar aeropuerto',
             onTap: onPickDestination,
@@ -833,15 +968,17 @@ class MultiLegCard extends StatelessWidget {
             label: 'Fecha',
             value:
                 route.startDate == null
-                    ? 'dd/mm/aaaa'
+                    ? 'Seleccionar fecha'
                     : formatDate.format(route.startDate!),
+            helperText: 'Programa la salida de este tramo',
+            leadingIcon: Icons.calendar_month_outlined,
             onTap: onPickDate,
             trailing: const Icon(
               Icons.calendar_today_outlined,
               size: 18,
               color: Color(0xFF111111),
             ),
-            placeholder: 'dd/mm/aaaa',
+            placeholder: 'Seleccionar fecha',
           ),
         ],
       ),

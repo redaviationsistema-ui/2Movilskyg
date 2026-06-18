@@ -62,29 +62,29 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
       child: Container(
         color: kBg,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
           children: [
             const Text(
               'Perfil cliente',
               style: TextStyle(
-                fontSize: 34,
+                fontSize: 28,
                 fontWeight: FontWeight.w900,
                 color: kBlack,
                 height: 1,
                 letterSpacing: -1.1,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             const Text(
               'Expediente, membresia, seguridad y preferencias de viaje.',
               style: TextStyle(
                 color: kMuted,
-                fontSize: 16,
+                fontSize: 14,
                 height: 1.35,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             _AccountHeaderCard(
               initial: initial,
               name: displayName,
@@ -92,18 +92,18 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
               status: statusLabel,
               onRefresh: _refreshProfile,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _MembershipInlineCard(
               status: statusLabel,
               plan: _planLabel(access),
               hasAccess: access['has_access'] == true,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _ProfileTabBar(
               activeTab: _activeTab,
               onSelect: (tab) => setState(() => _activeTab = tab),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             ..._tabContent(
               auth: auth,
               reservation: reservation,
@@ -420,15 +420,15 @@ extension _ProfileTabCopy on _ProfileTab {
   String get label {
     switch (this) {
       case _ProfileTab.dashboard:
-        return 'Dashboard';
+        return 'Resumen';
       case _ProfileTab.travelers:
         return 'Viajeros';
       case _ProfileTab.preferences:
         return 'Preferencias';
       case _ProfileTab.billing:
-        return 'Billing';
+        return 'Pago';
       case _ProfileTab.documents:
-        return 'Docs';
+        return 'Documentos';
       case _ProfileTab.security:
         return 'Seguridad';
       case _ProfileTab.concierge:
@@ -452,7 +452,7 @@ class _ProfileTabBar extends StatelessWidget {
             _ProfileTab.values.map((tab) {
               final active = tab == activeTab;
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: 6),
                 child: ChoiceChip(
                   selected: active,
                   label: Text(tab.label),
@@ -460,9 +460,11 @@ class _ProfileTabBar extends StatelessWidget {
                   selectedColor: kBlack,
                   backgroundColor: kWhite,
                   side: const BorderSide(color: kBorder),
+                  visualDensity: VisualDensity.compact,
                   labelStyle: TextStyle(
                     color: active ? kWhite : kText,
                     fontWeight: FontWeight.w900,
+                    fontSize: 12,
                   ),
                 ),
               );
@@ -486,10 +488,10 @@ class _MembershipInlineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: kBlack,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
         children: [
@@ -508,15 +510,16 @@ class _MembershipInlineCard extends StatelessWidget {
                   plan,
                   style: const TextStyle(
                     color: kWhite,
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   status,
                   style: const TextStyle(
                     color: Color(0xFFD9D9D9),
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -543,10 +546,10 @@ class _MetricWrap extends StatelessWidget {
           metrics.map((metric) {
             return Container(
               width: 155,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: kWhite,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: kBorder),
               ),
               child: Column(
@@ -558,7 +561,7 @@ class _MetricWrap extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: kBlack,
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -587,10 +590,10 @@ class _PreferenceEditorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: kWhite,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: kBorder),
       ),
       child: Column(
@@ -605,7 +608,7 @@ class _PreferenceEditorCard extends StatelessWidget {
               letterSpacing: 1.1,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: reservation.conciergeRequested,
@@ -663,10 +666,10 @@ class _AccountHeaderCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: kWhite,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: kBorder),
         boxShadow: const [
           BoxShadow(
@@ -679,23 +682,23 @@ class _AccountHeaderCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 58,
-            height: 58,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: kBlack,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
             ),
             alignment: Alignment.center,
             child: Text(
               initial,
               style: const TextStyle(
                 color: kWhite,
-                fontSize: 24,
+                fontSize: 21,
                 fontWeight: FontWeight.w900,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -706,13 +709,13 @@ class _AccountHeaderCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: kBlack,
-                    fontSize: 22,
+                    fontSize: 18,
                     height: 1,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.7,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   email,
                   maxLines: 1,
@@ -723,11 +726,11 @@ class _AccountHeaderCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
+                    horizontal: 9,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
                     color: isActive ? kBlack : kSoft,
@@ -752,14 +755,14 @@ class _AccountHeaderCard extends StatelessWidget {
             onTap: onRefresh,
             borderRadius: BorderRadius.circular(999),
             child: Ink(
-              width: 42,
-              height: 42,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
                 color: kSoft,
                 shape: BoxShape.circle,
                 border: Border.all(color: kBorder),
               ),
-              child: const Icon(Icons.refresh_rounded, color: kBlack, size: 21),
+              child: const Icon(Icons.refresh_rounded, color: kBlack, size: 19),
             ),
           ),
         ],
@@ -778,10 +781,10 @@ class _MinimalProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: kWhite,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: kBorder),
       ),
       child: Column(

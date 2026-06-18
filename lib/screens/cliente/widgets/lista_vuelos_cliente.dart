@@ -49,8 +49,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
   void initState() {
     super.initState();
 
-    _activeTab =
-        widget.includeUpcomingTab ? _TripTab.processing : _TripTab.history;
+    _activeTab = _TripTab.processing;
     final provider = context.read<ReservationProvider>();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -69,27 +68,35 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
       title: 'Mis vuelos',
       subtitle: 'Reservas y seguimiento.',
       showBackButton: widget.showBackButton,
-      trailing: StatusBadge(
-        label: '${allRequests.length} vuelos',
-        color: kBlack,
-      ),
       child: RefreshIndicator(
         color: kBlack,
         backgroundColor: kWhite,
         onRefresh: () => provider.loadClientWorkspaceData(force: true),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 22),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 118),
           children: [
-            Text(
-              widget.heading,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                color: kBlack,
-                height: 1.02,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.heading,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: kBlack,
+                      height: 1.02,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                StatusBadge(
+                  label: '${allRequests.length} vuelos',
+                  color: kBlack,
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               widget.description,
               style: const TextStyle(
@@ -99,10 +106,10 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 6,
               children:
                   _availableTabs
                       .map(
@@ -114,7 +121,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                       )
                       .toList(),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             if (provider.isLoadingWorkspace && allRequests.isEmpty)
               const _MinimalLoadingCard()
             else if (filteredRequests.isEmpty)
@@ -122,7 +129,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
             else
               ...filteredRequests.map(
                 (request) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: _MinimalFlightCard(
                     request: request,
                     aircraftFleet: provider.aircraftFleet,
@@ -513,7 +520,7 @@ class _TripTabButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
           color: active ? kBlack : kWhite,
           borderRadius: BorderRadius.circular(999),
@@ -534,7 +541,7 @@ class _TripTabButton extends StatelessWidget {
           style: TextStyle(
             color: active ? kWhite : kText,
             fontWeight: FontWeight.w900,
-            fontSize: 13,
+            fontSize: 12,
             letterSpacing: -0.2,
           ),
         ),
@@ -573,22 +580,22 @@ class _MinimalFlightCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       child: Ink(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [Color(0xFFFFFFFF), Color(0xFFFAF7F1)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFE5E1D8)),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x144D3F1B),
-              blurRadius: 18,
-              offset: Offset(0, 8),
+              color: Color(0x124D3F1B),
+              blurRadius: 14,
+              offset: Offset(0, 6),
             ),
           ],
         ),
@@ -596,44 +603,41 @@ class _MinimalFlightCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _requestCode(request).toUpperCase(),
-                        style: const TextStyle(
-                          color: Color(0xFF8B6A24),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _routeLabel(request),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: kBlack,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          height: 1.02,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    _requestCode(request).toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF8B6A24),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.7,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 _StatusChip(meta: meta),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
+            Text(
+              _routeLabel(request),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: kBlack,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                height: 1.02,
+              ),
+            ),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 _MetaChip(
                   icon: Icons.calendar_month_rounded,
@@ -641,7 +645,8 @@ class _MinimalFlightCard extends StatelessWidget {
                 ),
                 _MetaChip(
                   icon: Icons.groups_rounded,
-                  label: '${_passengerCount(request)} pasajeros',
+                  label:
+                      '${_passengerCount(request)} ${_passengerCount(request) == 1 ? 'pasajero' : 'pasajeros'}',
                 ),
                 _MetaChip(icon: Icons.flight_rounded, label: aircraftName),
                 if (_itinerarySegments(request).length > 1)
@@ -651,11 +656,11 @@ class _MinimalFlightCard extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
-            _ProgressSummary(meta: meta),
             const SizedBox(height: 8),
+            _ProgressSummary(meta: meta),
+            const SizedBox(height: 6),
             _ProgressSteps(meta: meta),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _ExecutiveAircraftPanel(
               imageUrl: imageUrl,
               aircraftName: aircraftName,
@@ -663,38 +668,47 @@ class _MinimalFlightCard extends StatelessWidget {
               category: category,
               onOpenAircraft: onOpenAircraft,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             _NextStepPanel(lines: supportLines),
             _SegmentsPanel(segments: _itinerarySegments(request)),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            const SizedBox(height: 8),
+            Row(
               children: [
-                _CardActionButton(
-                  label: 'Contrato',
-                  icon: Icons.description_outlined,
-                  enabled: meta.contractReady,
-                  onTap: onOpenContract,
+                Expanded(
+                  child: _CardActionButton(
+                    label: 'Contrato',
+                    icon: Icons.description_outlined,
+                    enabled: meta.contractReady,
+                    onTap: onOpenContract,
+                  ),
                 ),
-                _CardActionButton(
-                  label: 'Pago',
-                  icon: Icons.credit_card_rounded,
-                  enabled: meta.paymentReady,
-                  onTap: onOpenPayment,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _CardActionButton(
+                    label: 'Pago',
+                    icon: Icons.credit_card_rounded,
+                    enabled: meta.paymentReady,
+                    onTap: onOpenPayment,
+                  ),
                 ),
-                _CardActionButton(
-                  label: _flightActionLabel(meta),
-                  icon: Icons.flight_takeoff_rounded,
-                  enabled: meta.flightReady,
-                  onTap: onTap,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _CardActionButton(
+                    label: _flightActionLabel(meta),
+                    icon: Icons.flight_takeoff_rounded,
+                    enabled: meta.flightReady,
+                    onTap: onTap,
+                  ),
                 ),
-                _CardActionButton(
-                  label: 'Concierge',
-                  icon: Icons.support_agent_rounded,
-                  enabled: true,
-                  filled: true,
-                  onTap: onOpenConcierge,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _CardActionButton(
+                    label: 'Concierge',
+                    icon: Icons.support_agent_rounded,
+                    enabled: true,
+                    filled: true,
+                    onTap: onOpenConcierge,
+                  ),
                 ),
               ],
             ),
@@ -714,7 +728,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = _toneColors(meta.tone);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: colors.$1,
         borderRadius: BorderRadius.circular(999),
@@ -728,7 +742,7 @@ class _StatusChip extends StatelessWidget {
             meta.label,
             style: TextStyle(
               color: colors.$2,
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -748,7 +762,7 @@ class _MetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (label.trim().isEmpty) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFF1EDE7),
         borderRadius: BorderRadius.circular(999),
@@ -766,7 +780,7 @@ class _MetaChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFF625D55),
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -791,18 +805,18 @@ class _ProgressSummary extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: (meta.progress.clamp(0, 100)) / 100,
-              minHeight: 8,
+              minHeight: 7,
               backgroundColor: const Color(0xFFEBE3D4),
               valueColor: const AlwaysStoppedAnimation<Color>(kBlack),
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Text(
           '${meta.progress}%',
           style: const TextStyle(
             color: kBlack,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -864,7 +878,7 @@ class _StepPill extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
         color: colors.$1,
         borderRadius: BorderRadius.circular(999),
@@ -882,7 +896,7 @@ class _StepPill extends StatelessWidget {
             label,
             style: TextStyle(
               color: colors.$2,
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -910,48 +924,50 @@ class _ExecutiveAircraftPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFF4F0E7),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _AircraftHeroMedia(imageUrl: imageUrl),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   aircraftName,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: kBlack,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w900,
                     height: 1.1,
                   ),
                 ),
                 if (capacity.isNotEmpty) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     capacity,
                     style: const TextStyle(
                       color: Color(0xFF625D55),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
                 if (category.isNotEmpty) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     category,
                     style: const TextStyle(
                       color: Color(0xFF625D55),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -964,6 +980,8 @@ class _ExecutiveAircraftPanel extends StatelessWidget {
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
             color: kBlack,
             visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             tooltip: 'Ver aeronave',
           ),
         ],
@@ -984,15 +1002,15 @@ class _AircraftHeroMedia extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        width: 86,
-        height: 66,
+        width: 72,
+        height: 54,
         color: kBlack,
         child:
             hasImage
                 ? Image.network(
                   imageUrl,
-                  width: 86,
-                  height: 66,
+                  width: 72,
+                  height: 54,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const _AircraftHeroFallback(),
                   loadingBuilder: (context, child, progress) {
@@ -1015,7 +1033,11 @@ class _AircraftHeroFallback extends StatelessWidget {
       child: Text(
         'Jet privado',
         textAlign: TextAlign.center,
-        style: TextStyle(color: kWhite, fontWeight: FontWeight.w900),
+        style: TextStyle(
+          color: kWhite,
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+        ),
       ),
     );
   }
@@ -1030,27 +1052,31 @@ class _NextStepPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF4F0E7),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Siguiente paso',
-            style: TextStyle(color: kBlack, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: kBlack,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           for (final line in lines.take(3))
             Padding(
-              padding: const EdgeInsets.only(bottom: 3),
+              padding: const EdgeInsets.only(bottom: 2),
               child: Text(
                 line,
                 style: const TextStyle(
                   color: Color(0xFF625D55),
-                  fontSize: 12,
+                  fontSize: 11,
                   height: 1.2,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1072,23 +1098,23 @@ class _SegmentsPanel extends StatelessWidget {
     if (segments.length <= 1) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 6),
       child: Wrap(
         spacing: 6,
         runSpacing: 6,
         children: [
           for (final segment in segments)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: const Color(0xFFF4F0E7),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 'Tramo ${segment.order} · ${segment.origin} -> ${segment.destination}',
                 style: const TextStyle(
                   color: Color(0xFF433C31),
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1122,11 +1148,14 @@ class _CardActionButton extends StatelessWidget {
         filled ? kWhite : (enabled ? kBlack : const Color(0xFF8C8376));
 
     return SizedBox(
-      height: 38,
+      height: 34,
       child: FilledButton.icon(
         onPressed: enabled ? onTap : null,
-        icon: Icon(icon, size: 15),
-        label: Text(label),
+        icon: Icon(icon, size: 14),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label, maxLines: 1),
+        ),
         style: FilledButton.styleFrom(
           backgroundColor: background,
           foregroundColor: foreground,
@@ -1134,11 +1163,14 @@ class _CardActionButton extends StatelessWidget {
           disabledForegroundColor: const Color(0xFF8C8376),
           side: BorderSide(color: filled ? kBlack : const Color(0xFFDED6C8)),
           visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+          textStyle: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );

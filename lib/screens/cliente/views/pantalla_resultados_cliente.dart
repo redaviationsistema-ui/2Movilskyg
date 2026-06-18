@@ -41,10 +41,11 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               child: Row(
                 children: [
                   if (widget.showBackButton)
@@ -60,29 +61,29 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
                 children: [
                   const Text(
                     'Aeronaves disponibles',
                     style: TextStyle(
                       color: Color(0xFF050505),
-                      fontSize: 34,
+                      fontSize: 28,
                       height: 1,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -1.1,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   const Text(
-                    'Selecciona tu opción de vuelo.',
+                    'Selecciona tu opcion y crea la solicitud en segundos.',
                     style: TextStyle(
                       color: Color(0xFF666666),
-                      fontSize: 16,
+                      fontSize: 14,
                       height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   if (reservation.quoteError != null) ...[
                     _InfoCard(text: reservation.quoteError!),
                     const SizedBox(height: 14),
@@ -92,7 +93,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                   else
                     ...matches.map(
                       (match) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.only(bottom: 10),
                         child: _QuoteMatchCard(
                           quote: match,
                           isSelected: _sameQuote(match, selected),
@@ -227,12 +228,12 @@ class _QuoteMatchCard extends StatelessWidget {
 
     return InkWell(
       onTap: onSelect,
-      borderRadius: BorderRadius.circular(26),
+      borderRadius: BorderRadius.circular(22),
       child: Ink(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color:
                 isSelected ? const Color(0xFF050505) : const Color(0xFFE7E7E7),
@@ -241,8 +242,8 @@ class _QuoteMatchCard extends StatelessWidget {
           boxShadow: const [
             BoxShadow(
               color: Color(0x10000000),
-              blurRadius: 24,
-              offset: Offset(0, 12),
+              blurRadius: 18,
+              offset: Offset(0, 8),
             ),
           ],
         ),
@@ -253,7 +254,7 @@ class _QuoteMatchCard extends StatelessWidget {
               imageUrl: imageUrl,
               label: cabin.isEmpty ? 'Opcion privada' : cabin,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -267,25 +268,26 @@ class _QuoteMatchCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Color(0xFF050505),
-                          fontSize: 20,
+                          fontSize: 18,
                           height: 1.05,
                           fontWeight: FontWeight.w900,
                           letterSpacing: -0.5,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 3),
                       Text(
                         [
                           if (provider.isNotEmpty) provider,
                           if (cabin.isNotEmpty) cabin,
                           if (capacity.isNotEmpty) '$capacity pasajeros',
                         ].join(' | '),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Color(0xFF666666),
-                          fontSize: 13,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w700,
+                          height: 1.25,
                         ),
                       ),
                     ],
@@ -295,7 +297,7 @@ class _QuoteMatchCard extends StatelessWidget {
               ],
             ),
             if (reason.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 reason,
                 maxLines: 2,
@@ -308,11 +310,11 @@ class _QuoteMatchCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(child: _MetricBox(label: 'Total', value: price)),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _MetricBox(
                     label: 'Tiempo',
@@ -321,7 +323,7 @@ class _QuoteMatchCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -330,9 +332,9 @@ class _QuoteMatchCard extends StatelessWidget {
                   backgroundColor: const Color(0xFF050505),
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: const Color(0xFFE4E4E4),
-                  minimumSize: const Size.fromHeight(54),
+                  minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 icon:
@@ -370,8 +372,9 @@ class _MetricBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
+        color: const Color(0xFFF7F7F7),
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFEDEDED)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,7 +416,7 @@ class _AircraftMedia extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: SizedBox(
         width: double.infinity,
-        height: 220,
+        height: 204,
         child: Stack(
           fit: StackFit.expand,
           children: [

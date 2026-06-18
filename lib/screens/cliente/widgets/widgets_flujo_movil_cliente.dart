@@ -1,24 +1,33 @@
 import 'package:flutter/material.dart';
 
 class ClientMobileTopBar extends StatelessWidget {
-  const ClientMobileTopBar({super.key, required this.userInitial});
+  const ClientMobileTopBar({
+    super.key,
+    required this.userInitial,
+    this.title = 'Sky Group',
+    this.subtitle = 'Private aviation',
+  });
 
   final String userInitial;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFFE7E7E7)),
                   boxShadow: const [
                     BoxShadow(
@@ -28,50 +37,56 @@ class ClientMobileTopBar extends StatelessWidget {
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.all(7),
+                padding: const EdgeInsets.all(6),
                 child: Image.asset('assets/logo.png', fit: BoxFit.contain),
               ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Sky Group',
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.3,
-                      color: Color(0xFF050505),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                        color: Color(0xFF050505),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Private aviation',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF777777),
+                    SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        height: 1.15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF777777),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Container(
-          width: 46,
-          height: 46,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFF050505),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFF050505)),
+            border: Border.all(color: const Color(0xFFE7E7E7)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x24000000),
+                color: Color(0x14000000),
                 blurRadius: 18,
                 offset: Offset(0, 8),
               ),
@@ -81,13 +96,12 @@ class ClientMobileTopBar extends StatelessWidget {
           child: Text(
             userInitial,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF050505),
               fontWeight: FontWeight.w900,
-              fontSize: 16,
+              fontSize: 15,
             ),
           ),
         ),
-        const SizedBox(width: 10),
       ],
     );
   }
@@ -98,26 +112,35 @@ class ClientMobileScreenShell extends StatelessWidget {
     super.key,
     required this.userInitial,
     required this.child,
+    this.welcomeTitle = 'Sky Group',
+    this.welcomeSubtitle = 'Private aviation',
   });
 
   final String userInitial;
   final Widget child;
+  final String welcomeTitle;
+  final String welcomeSubtitle;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: const Color(0xFFF7F7F7),
       child: SafeArea(
+        top: false,
         bottom: false,
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               decoration: const BoxDecoration(
                 color: Color(0xFFF7F7F7),
                 border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
               ),
-              child: ClientMobileTopBar(userInitial: userInitial),
+              child: ClientMobileTopBar(
+                userInitial: userInitial,
+                title: welcomeTitle,
+                subtitle: welcomeSubtitle,
+              ),
             ),
             Expanded(child: child),
           ],
@@ -141,8 +164,8 @@ class ClientMobileBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (label: 'Buscar', icon: Icons.search_rounded),
-      (label: 'Vuelos', icon: Icons.flight_rounded),
-      (label: 'Cuenta', icon: Icons.person_rounded),
+      (label: 'Reservas', icon: Icons.flight_rounded),
+      (label: 'Perfil', icon: Icons.person_rounded),
     ];
 
     return SafeArea(
@@ -150,16 +173,16 @@ class ClientMobileBottomNav extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(30),
             border: Border.all(color: const Color(0xFFE7E7E7)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x20000000),
-                blurRadius: 38,
-                offset: Offset(0, 18),
+                color: Color(0x16000000),
+                blurRadius: 24,
+                offset: Offset(0, 10),
               ),
             ],
           ),
@@ -178,8 +201,8 @@ class ClientMobileBottomNav extends StatelessWidget {
                       duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOut,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 14,
+                        horizontal: 8,
+                        vertical: 12,
                       ),
                       decoration: BoxDecoration(
                         color:
@@ -193,8 +216,19 @@ class ClientMobileBottomNav extends StatelessWidget {
                                   ? const Color(0xFF050505)
                                   : const Color(0xFFEDEDED),
                         ),
+                        boxShadow:
+                            isActive
+                                ? const [
+                                  BoxShadow(
+                                    color: Color(0x18000000),
+                                    blurRadius: 18,
+                                    offset: Offset(0, 8),
+                                  ),
+                                ]
+                                : null,
                       ),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -205,17 +239,25 @@ class ClientMobileBottomNav extends StatelessWidget {
                                     ? Colors.white
                                     : const Color(0xFF646464),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            item.label,
-                            style: TextStyle(
-                              color:
-                                  isActive
-                                      ? Colors.white
-                                      : const Color(0xFF646464),
-                              fontWeight:
-                                  isActive ? FontWeight.w900 : FontWeight.w700,
-                              fontSize: 14,
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color:
+                                      isActive
+                                          ? Colors.white
+                                          : const Color(0xFF646464),
+                                  fontWeight:
+                                      isActive
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -263,7 +305,15 @@ class SegmentedTripSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const options = ['Solo ida', 'Ida y vuelta', 'Multidestino'];
+    const options = [
+      (
+        value: 'Solo ida',
+        label: 'Solo ida',
+        icon: Icons.flight_takeoff_rounded,
+      ),
+      (value: 'Ida y vuelta', label: 'Redondo', icon: Icons.sync_alt_rounded),
+      (value: 'Multidestino', label: 'Multi', icon: Icons.alt_route_rounded),
+    ];
 
     return Container(
       padding: const EdgeInsets.all(6),
@@ -275,11 +325,11 @@ class SegmentedTripSelector extends StatelessWidget {
       child: Row(
         children:
             options.map((option) {
-              final isActive = option == value;
+              final isActive = option.value == value;
 
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => onChanged(option),
+                  onTap: () => onChanged(option.value),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOut,
@@ -304,16 +354,30 @@ class SegmentedTripSelector extends StatelessWidget {
                               ]
                               : null,
                     ),
-                    child: Text(
-                      option,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color:
-                            isActive ? Colors.white : const Color(0xFF505050),
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        letterSpacing: -0.2,
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          option.icon,
+                          size: 17,
+                          color:
+                              isActive ? Colors.white : const Color(0xFF505050),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          option.label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color:
+                                isActive
+                                    ? Colors.white
+                                    : const Color(0xFF505050),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -366,17 +430,21 @@ class ConciergeField extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onTap,
+    this.leadingIcon,
     this.trailing,
     this.secondaryValue,
     this.placeholder = 'Seleccionar',
+    this.helperText,
   });
 
   final String label;
   final String value;
   final VoidCallback onTap;
+  final IconData? leadingIcon;
   final Widget? trailing;
   final String? secondaryValue;
   final String placeholder;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
@@ -403,10 +471,35 @@ class ConciergeField extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: const Color(0xFFE4E4E4)),
-              color: const Color(0xFFF8F8F8),
+              color: const Color(0xFFFAFAFA),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x08000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (leadingIcon != null) ...[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      leadingIcon,
+                      size: 20,
+                      color: const Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,6 +531,20 @@ class ConciergeField extends StatelessWidget {
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             height: 1.3,
+                          ),
+                        ),
+                      ],
+                      if (helperText != null) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          helperText!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF8A8A8A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            height: 1.25,
                           ),
                         ),
                       ],
