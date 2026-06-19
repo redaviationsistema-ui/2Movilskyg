@@ -72,9 +72,9 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final commercialState = resolveCommercialAccessState(auth.accessData);
 
     return ClientMobileScreenShell(
-      userInitial: widget.userInitial,
       welcomeTitle: 'Bienvenido, ${auth.displayName}',
       welcomeSubtitle: 'Cotiza, reserva y administra tus vuelos privados',
+      onSignOut: auth.signOut,
       child: ReservationScreenContent(
         reservation: reservation,
         primaryRoute: primaryRoute,

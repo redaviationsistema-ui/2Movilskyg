@@ -230,8 +230,8 @@ class _QuoteMatchCard extends StatelessWidget {
     final price = _moneyLabel(
       quote['final_price'] ?? quote['total'] ?? quote['price'],
     );
-    final time = _firstText(quote, const ['flight_time', 'time', 'duration']);
-    final reason = _firstText(quote, const ['match_reason', 'source_origin']);
+    final time = _firstText(quote, const ['time', 'flight_time', 'duration']);
+    final reason = _displayMatchReason(quote);
 
     return InkWell(
       onTap: onSelect,
@@ -733,4 +733,21 @@ String _moneyLabel(dynamic value) {
   if (numeric != null) return 'USD ${numeric.toStringAsFixed(0)}';
 
   return text;
+}
+
+String _displayMatchReason(Map<String, dynamic> quote) {
+  final reason = _firstText(quote, const ['match_reason']);
+  if (reason.isNotEmpty && !reason.toLowerCase().contains('base_airport')) {
+    return reason;
+  }
+
+  final sourceOrigin = _firstText(quote, const ['source_origin']);
+  if (sourceOrigin.isNotEmpty) {
+    final baseMatch = quote['base_airport_match'] == true;
+    return baseMatch
+        ? 'Base operativa en $sourceOrigin'
+        : 'Salida optimizada desde $sourceOrigin';
+  }
+
+  return '';
 }

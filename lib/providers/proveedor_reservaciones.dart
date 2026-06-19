@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,16 @@ import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
 
 class ReservationProvider extends ChangeNotifier {
+  static const Set<String> _activeQuoteStatuses = {
+    '',
+    'active',
+    'trial_active',
+    'approved',
+    'aprobada',
+    'available',
+    'disponible',
+  };
+
   final ApiClient _api = ApiClient.instance;
   final LocalCacheService _cacheService = LocalCacheService();
   final NumberFormat _currencyFormat = NumberFormat.currency(
@@ -167,6 +176,7 @@ class ReservationProvider extends ChangeNotifier {
       'lat': _toDouble(json['LATITUDE'] ?? json['lat']),
       'lng': _toDouble(json['LONGITUDE'] ?? json['lng']),
       'iata': json['IATA'] ?? json['iata'] ?? json['gps_code'],
+      'icao': json['ICAO'] ?? json['icao'] ?? json['ident'] ?? json['gps_code'],
       'country':
           json['PAIS'] ??
           json['country'] ??
@@ -292,14 +302,11 @@ class ReservationProvider extends ChangeNotifier {
       final requests = await _api.getClientFlightRequests();
       final historyReservations = await _api.getReservations();
       flightRequests = _mergeFlightHistoryRows([
-        ...requests,
         ...historyReservations,
+        ...requests,
       ]);
 
-      final originHint =
-          routes.first.fromAirport?.iata ??
-          routes.first.fromAirport?.name ??
-          '';
+      final originHint = _backendAirportCode(routes.first.fromAirport);
       final liveAircraft = await _api.getClientAircraft(
         origin: originHint,
         passengers: passengers,
@@ -332,12 +339,8 @@ class ReservationProvider extends ChangeNotifier {
 
     try {
       final primaryRoute = routes.first;
-      final origin =
-          primaryRoute.fromAirport?.iata ??
-          primaryRoute.fromAirport?.name ??
-          '';
-      final destination =
-          primaryRoute.toAirport?.iata ?? primaryRoute.toAirport?.name ?? '';
+      final origin = _backendAirportCode(primaryRoute.fromAirport);
+      final destination = _backendAirportCode(primaryRoute.toAirport);
       final departure = startDate ?? primaryRoute.startDate;
 
       if (origin.isEmpty || destination.isEmpty || departure == null) {
@@ -348,49 +351,22 @@ class ReservationProvider extends ChangeNotifier {
       final segmentCount = routes.length;
       final previewPayload = _buildBackendFlightRequestPayload();
 
-      debugPrint('[client-quote][request] $previewPayload');
-
       final response = await _api.previewClientQuotesPayload(previewPayload);
 
-      final prettyResponse = const JsonEncoder.withIndent(
-        '  ',
-      ).convert(response);
-      debugPrint('[client-quote][raw-backend-response][start]');
-      debugPrint(prettyResponse);
-      debugPrint('[client-quote][raw-backend-response][end]');
-
-      final responseMatches = _extractQuoteMatches(response);
-      debugPrint('[client-quote][response] keys=${response.keys.toList()}');
-      debugPrint(
-        '[client-quote][response] matches=${responseMatches.length} segment_count=${response['segment_count']} trip_type=${response['trip_type']}',
-      );
-      if (responseMatches.isNotEmpty) {
-        final sample = responseMatches.first;
-        debugPrint(
-          '[client-quote][sample] aircraft=${sample['aircraft_name'] ?? sample['aircraft']} aircraft_id=${sample['aircraft_id']} provider_id=${_nestedMap(sample['provider'])['id'] ?? sample['provider_id']} total=${sample['total'] ?? sample['final_price']} source_origin=${sample['source_origin']}',
-        );
-      }
-
-      final catalog = await _api.getClientAircraft(
-        origin: origin,
-        passengers: passengers,
-      );
-
-      quoteMatches = _normalizeMatches(
-        response,
-        segmentCount: segmentCount,
-        catalog: catalog,
-      );
-      quoteMatches = _filterMatchesForOrigin(
+      quoteMatches = _normalizeMatches(response, segmentCount: segmentCount);
+      quoteMatches = _filterMatchesForItinerary(
         quoteMatches,
         primaryRoute.fromAirport,
       );
+      quoteMatches = _sortMatchesForAdvisorRecommendation(quoteMatches);
+
+      for (final match in quoteMatches) {
+        debugPrint(
+          '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${match['total'] ?? match['final_price'] ?? match['price']} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
+        );
+      }
 
       selectedQuoteMatch = _pickSelectedQuoteMatch(quoteMatches);
-
-      debugPrint(
-        '[client-quote][normalized] matches=${quoteMatches.length} selected=${selectedQuoteMatch?['aircraft'] ?? selectedQuoteMatch?['aircraft_name']}',
-      );
 
       if (quoteMatches.isEmpty) {
         quoteError =
@@ -400,7 +376,6 @@ class ReservationProvider extends ChangeNotifier {
 
       return true;
     } catch (error) {
-      debugPrint('[client-quote][error] $error');
       quoteError = 'No fue posible obtener una cotizacion real: $error';
       return false;
     } finally {
@@ -413,10 +388,8 @@ class ReservationProvider extends ChangeNotifier {
     Map<String, dynamic> quote,
   ) async {
     final primaryRoute = routes.first;
-    final origin =
-        primaryRoute.fromAirport?.iata ?? primaryRoute.fromAirport?.name ?? '';
-    final destination =
-        primaryRoute.toAirport?.iata ?? primaryRoute.toAirport?.name ?? '';
+    final origin = _backendAirportCode(primaryRoute.fromAirport);
+    final destination = _backendAirportCode(primaryRoute.toAirport);
     final departure = startDate ?? primaryRoute.startDate;
 
     if (origin.isEmpty || destination.isEmpty || departure == null) {
@@ -689,8 +662,8 @@ class ReservationProvider extends ChangeNotifier {
           final timeLabel = date == null ? '09:00' : _timeOnly(date);
 
           return {
-            'origin': route.fromAirport?.iata ?? route.fromAirport?.name ?? '',
-            'destination': route.toAirport?.iata ?? route.toAirport?.name ?? '',
+            'origin': _backendAirportCode(route.fromAirport),
+            'destination': _backendAirportCode(route.toAirport),
             'date': dateLabel,
             'time': timeLabel,
             'departure_datetime':
@@ -757,23 +730,19 @@ class ReservationProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _normalizeMatches(
     Map<String, dynamic> payload, {
     required int segmentCount,
-    required List<Map<String, dynamic>> catalog,
   }) {
     final rawMatches = _extractQuoteMatches(payload);
-    final normalized =
-        rawMatches
-            .asMap()
-            .entries
-            .map(
-              (entry) => _normalizeMatch(
-                Map<String, dynamic>.from(entry.value),
-                index: entry.key,
-                segmentCount: segmentCount,
-              ),
-            )
-            .toList();
-
-    return _mergeMatchesWithCatalog(normalized, catalog);
+    return rawMatches
+        .asMap()
+        .entries
+        .map(
+          (entry) => _normalizeMatch(
+            Map<String, dynamic>.from(entry.value),
+            index: entry.key,
+            segmentCount: segmentCount,
+          ),
+        )
+        .toList();
   }
 
   Map<String, dynamic> _normalizeMatch(
@@ -828,11 +797,7 @@ class ReservationProvider extends ChangeNotifier {
           aircraftRecord['model'] ??
           aircraftRecord['category'] ??
           'Aeronave verificada',
-      'time':
-          match['time'] ??
-          match['flight_time'] ??
-          match['duration'] ??
-          'Tiempo por confirmar',
+      'time': _resolveMatchTime(match, pricing),
       'final_price':
           pricing != null
               ? _asMoney(pricing['total'])
@@ -865,6 +830,23 @@ class ReservationProvider extends ChangeNotifier {
       ),
       'taxes': _asNumber(match['taxes'] ?? match['tax']),
       'capacity': match['capacity'] ?? aircraftRecord['capacity'] ?? '',
+      'status':
+          match['status'] ??
+          aircraftRecord['status'] ??
+          aircraftRecord['aircraft_status'] ??
+          '',
+      'distance_km': _asNumber(
+        match['distance_km'] ??
+            match['route_distance_km'] ??
+            match['distanceKm'] ??
+            _sumLegDistance(match['legs']),
+      ),
+      'range_km': _asNumber(
+        match['range_km'] ??
+            match['aircraft_range_km'] ??
+            aircraftRecord['range_km'] ??
+            aircraftRecord['aircraft_range_km'],
+      ),
       'model':
           match['model'] ??
           match['aircraft_model'] ??
@@ -883,9 +865,15 @@ class ReservationProvider extends ChangeNotifier {
           aircraftRecord['base'] ??
           aircraftRecord['base_airport_code'] ??
           '',
-      'match_reason':
-          match['match_reason'] ??
-          'Seleccion destacada por disponibilidad real.',
+      'match_reason': _resolveMatchReason(
+        match['match_reason'],
+        sourceOrigin:
+            match['source_origin'] ??
+            match['origin'] ??
+            aircraftRecord['base_airport'] ??
+            aircraftRecord['base'] ??
+            aircraftRecord['base_airport_code'],
+      ),
       'image_url': _primaryImage(match) ?? _primaryImage(aircraftRecord) ?? '',
       'images': _extractImages(match, aircraftRecord),
       'pricing_context':
@@ -1147,95 +1135,293 @@ class ReservationProvider extends ChangeNotifier {
     };
   }
 
-  List<Map<String, dynamic>> _mergeMatchesWithCatalog(
-    List<Map<String, dynamic>> matches,
-    List<Map<String, dynamic>> catalog,
-  ) {
-    if (catalog.isEmpty) return matches;
-
-    return matches.map((match) {
-      final catalogAircraft = _findMatchingCatalogAircraft(match, catalog);
-      if (catalogAircraft == null) return match;
-
-      return {
-        ...match,
-        'aircraft_id':
-            match['aircraft_id'] ??
-            catalogAircraft['aircraft_id'] ??
-            catalogAircraft['id'],
-        'provider_id':
-            match['provider_id'] ??
-            catalogAircraft['provider_id'] ??
-            _nestedMap(catalogAircraft['provider'])['id'],
-        'capacity': match['capacity'] ?? catalogAircraft['capacity'] ?? '',
-        'model': match['model'] ?? catalogAircraft['model'] ?? '',
-        'registration':
-            match['registration'] ?? catalogAircraft['registration'] ?? '',
-        'image_url':
-            (_primaryImage(catalogAircraft) ?? match['image_url'] ?? '')
-                .toString(),
-        'images': _extractImages(catalogAircraft, const {}),
-        'source_origin':
-            catalogAircraft['source_origin'] ??
-            catalogAircraft['base_airport'] ??
-            match['source_origin'],
-        'match_reason':
-            catalogAircraft['source_origin'] != null
-                ? 'Salida optimizada desde ${catalogAircraft['source_origin']}'
-                : match['match_reason'],
-      };
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _filterMatchesForOrigin(
+  List<Map<String, dynamic>> _filterMatchesForItinerary(
     List<Map<String, dynamic>> matches,
     Airport? originAirport,
   ) {
     if (matches.isEmpty || originAirport == null) return matches;
 
-    final exactBaseMatches =
-        matches.where((match) {
-          final sourceOrigin = match['source_origin']?.toString() ?? '';
-          return _originMatches(sourceOrigin, originAirport);
-        }).toList();
+    final filtered =
+        matches
+            .where((match) {
+              final status = _normalizeStatus(match['status']);
+              return _activeQuoteStatuses.contains(status);
+            })
+            .where((match) {
+              final capacity = _extractCapacity(match['capacity']);
+              return capacity == 0 || capacity >= passengers;
+            })
+            .map((match) {
+              final sourceOrigin = match['source_origin']?.toString() ?? '';
+              final baseAirportMatch = _originMatches(
+                sourceOrigin,
+                originAirport,
+              );
+              return {
+                ...match,
+                'base_airport_match': baseAirportMatch,
+                'queried_base_airport':
+                    originAirport.iata?.isNotEmpty == true
+                        ? originAirport.iata!
+                        : originAirport.name,
+                'match_reason': _resolveMatchReason(
+                  match['match_reason'],
+                  sourceOrigin: sourceOrigin,
+                  baseAirportMatch: baseAirportMatch,
+                ),
+              };
+            })
+            .toList();
 
-    if (exactBaseMatches.isNotEmpty) {
-      return exactBaseMatches;
+    final exactBaseAirportMatches =
+        filtered.where((match) => match['base_airport_match'] == true).toList();
+
+    if (exactBaseAirportMatches.isNotEmpty) {
+      return exactBaseAirportMatches;
     }
 
-    return matches;
+    return filtered;
   }
 
-  Map<String, dynamic>? _findMatchingCatalogAircraft(
-    Map<String, dynamic> match,
-    List<Map<String, dynamic>> catalog,
+  List<Map<String, dynamic>> _sortMatchesForAdvisorRecommendation(
+    List<Map<String, dynamic>> matches,
   ) {
-    final matchValues = _aircraftLookupValues(match).toSet();
-    if (matchValues.isEmpty) return null;
+    final rankedMatches =
+        matches
+            .asMap()
+            .entries
+            .map((entry) => (index: entry.key, match: entry.value))
+            .toList()
+          ..sort((current, next) {
+            final scoreDifference = _advisorDecisionScore(
+              next.match,
+              next.index,
+            ).compareTo(_advisorDecisionScore(current.match, current.index));
+            if (scoreDifference != 0) return scoreDifference;
+            return current.index.compareTo(next.index);
+          });
 
-    for (final aircraft in catalog) {
-      final aircraftValues = _aircraftLookupValues(aircraft);
-      if (aircraftValues.any(matchValues.contains)) {
-        return aircraft;
-      }
-    }
-
-    return null;
+    return rankedMatches.map((entry) => entry.match).toList();
   }
 
-  List<String> _aircraftLookupValues(Map<String, dynamic> raw) {
-    return [
-          raw['aircraft_id'],
-          raw['id'],
-          raw['aircraft'],
-          raw['model'],
-          raw['registration'],
-          raw['matricula'],
-          raw['name'],
+  String _normalizeStatus(dynamic value) {
+    return value?.toString().trim().toLowerCase() ?? '';
+  }
+
+  int _extractCapacity(dynamic value) {
+    final raw = value?.toString() ?? '';
+    final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(raw);
+    return int.tryParse(match?.group(1)?.split('.').first ?? '') ?? 0;
+  }
+
+  double _advisorDecisionScore(Map<String, dynamic> match, int index) {
+    final priceScore = 1 / _safePositiveValue(_advisorPriceValue(match));
+    final timeScore = 1 / _safePositiveValue(_advisorTimeValue(match));
+    final luxuryScore = _advisorPremiumValue(match);
+    final amenityScore = _normalizeAmenityTerms(match).isNotEmpty ? 1 : 0;
+
+    return luxuryScore * 12 +
+        amenityScore * 8 +
+        timeScore * 1500 +
+        priceScore * 250000 +
+        (index == 0 ? 24 : 0);
+  }
+
+  double _advisorPriceValue(Map<String, dynamic> match) {
+    final amount = _asNumber(
+      match['total'] ?? match['final_price'] ?? match['price'],
+      double.nan,
+    );
+    if (!amount.isNaN && amount > 0) return amount;
+    return double.maxFinite;
+  }
+
+  double _advisorTimeValue(Map<String, dynamic> match) {
+    final explicitHours = _displayFlightHours(match);
+    if (explicitHours > 0) return explicitHours;
+
+    final rawTime = [
+          match['trip_time'],
+          match['card_time'],
+          match['display_time'],
+          match['ui_time'],
+          match['time'],
+          match['flight_time'],
+          match['duration'],
         ]
-        .map((value) => _normalizeLookup(value))
-        .where((value) => value.isNotEmpty)
-        .toList();
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
+          orElse: () => '',
+        );
+
+    if (rawTime.isEmpty) return double.maxFinite;
+
+    final hours = double.tryParse(
+      RegExp(
+            r'(\d+(?:\.\d+)?)\s*h',
+            caseSensitive: false,
+          ).firstMatch(rawTime)?.group(1) ??
+          '',
+    );
+    final minutes = double.tryParse(
+      RegExp(
+            r'(\d+(?:\.\d+)?)\s*m',
+            caseSensitive: false,
+          ).firstMatch(rawTime)?.group(1) ??
+          '',
+    );
+    final totalMinutes = (hours ?? 0) * 60 + (minutes ?? 0);
+    return totalMinutes > 0 ? totalMinutes : double.maxFinite;
+  }
+
+  double _advisorPremiumValue(Map<String, dynamic> match) {
+    final cabin =
+        (match['cabin'] ?? match['category'] ?? '').toString().toLowerCase();
+    final capacity = _extractCapacity(match['capacity']);
+    final premiumCabin = [
+      'premium',
+      'heavy',
+      'super midsize',
+      'large',
+      'long range',
+      'vip',
+      'elite',
+    ].any(cabin.contains);
+
+    return capacity + (premiumCabin ? 20 : 0);
+  }
+
+  Set<String> _normalizeAmenityTerms(Map<String, dynamic> match) {
+    final rawAmenities = match['amenities'];
+    if (rawAmenities is! List) return const <String>{};
+
+    return rawAmenities
+        .whereType<Object>()
+        .map((item) => item.toString().trim().toLowerCase())
+        .where((item) => item.isNotEmpty && item != 'null')
+        .toSet();
+  }
+
+  double _displayFlightHours(Map<String, dynamic> match) {
+    final explicitDisplayHours = _asNumber(
+      match['trip_flight_hours'] ??
+          match['card_flight_hours'] ??
+          match['ui_flight_hours'] ??
+          match['client_display_flight_hours'] ??
+          match['display_flight_hours'] ??
+          match['real_flight_hours'] ??
+          match['flight_hours'] ??
+          match['estimated_hours'],
+      double.nan,
+    );
+    if (!explicitDisplayHours.isNaN && explicitDisplayHours > 0) {
+      return explicitDisplayHours;
+    }
+
+    final operationalHours = _asNumber(
+      match['operational_flight_hours'] ?? match['billable_hours'],
+      double.nan,
+    );
+    if (!operationalHours.isNaN && operationalHours > 0) {
+      return operationalHours;
+    }
+
+    final distanceKm = _asNumber(match['distance_km'], double.nan);
+    final speedKmh = _asNumber(match['speed_kmh'] ?? match['speedKmh'], 0);
+    final climbDescentHours =
+        _asNumber(match['climb_descent_hours'], 0) +
+        (_asNumber(match['climb_descent_minutes'], 0) / 60);
+
+    if (!distanceKm.isNaN && distanceKm > 0 && speedKmh > 0) {
+      return distanceKm / speedKmh + climbDescentHours;
+    }
+
+    return 0;
+  }
+
+  double _safePositiveValue(double value) {
+    if (value.isNaN || value <= 0) return 1;
+    return value;
+  }
+
+  double _sumLegDistance(dynamic legs) {
+    if (legs is! List) return 0;
+    return legs.fold<double>(0, (sum, leg) {
+      if (leg is! Map) return sum;
+      return sum + _asNumber(leg['distance_km']);
+    });
+  }
+
+  String _resolveMatchTime(
+    Map<String, dynamic> match,
+    Map<String, dynamic>? pricing,
+  ) {
+    final hours = _asNumber(
+      pricing?['billable_hours'] ??
+          pricing?['billableHours'] ??
+          match['billable_hours'] ??
+          match['billableHours'] ??
+          pricing?['real_flight_hours'] ??
+          match['billable_hours'] ??
+          match['real_flight_hours'],
+      double.nan,
+    );
+    if (!hours.isNaN && hours > 0) {
+      return _formatHoursLabel(hours);
+    }
+
+    final billedTime = [
+          match['billed_time'],
+          match['operative_time'],
+          match['operational_time'],
+          match['final_time'],
+        ]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
+          orElse: () => '',
+        );
+    if (billedTime.isNotEmpty) return billedTime;
+
+    final directTime = [match['time'], match['flight_time'], match['duration']]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
+          orElse: () => '',
+        );
+    if (directTime.isNotEmpty) return directTime;
+
+    return 'Tiempo por confirmar';
+  }
+
+  String _formatHoursLabel(double hours) {
+    final totalMinutes = (hours * 60).round();
+    final hourPart = totalMinutes ~/ 60;
+    final minutePart = totalMinutes % 60;
+
+    if (hourPart <= 0) return '${minutePart}m';
+    if (minutePart == 0) return '${hourPart}h';
+    return '${hourPart}h ${minutePart}m';
+  }
+
+  String _resolveMatchReason(
+    dynamic rawReason, {
+    dynamic sourceOrigin,
+    bool baseAirportMatch = false,
+  }) {
+    final base = sourceOrigin?.toString().trim() ?? '';
+    if (baseAirportMatch && base.isNotEmpty) {
+      return 'Base operativa en $base';
+    }
+
+    final reason = rawReason?.toString().trim() ?? '';
+    if (reason.isNotEmpty && !reason.toLowerCase().contains('base_airport')) {
+      return reason;
+    }
+
+    if (base.isNotEmpty) return 'Salida optimizada desde $base';
+    return 'Opcion verificada';
   }
 
   Map<String, dynamic>? _pickSelectedQuoteMatch(
@@ -1287,8 +1473,8 @@ class ReservationProvider extends ChangeNotifier {
         .skip(1)
         .map((route) {
           return {
-            'origin': route.fromAirport?.iata ?? route.fromAirport?.name ?? '',
-            'destination': route.toAirport?.iata ?? route.toAirport?.name ?? '',
+            'origin': _backendAirportCode(route.fromAirport),
+            'destination': _backendAirportCode(route.toAirport),
             'date':
                 (route.startDate ?? startDate)
                     ?.toIso8601String()
@@ -1309,8 +1495,8 @@ class ReservationProvider extends ChangeNotifier {
     return routes
         .map((route) {
           return {
-            'origin': route.fromAirport?.iata ?? route.fromAirport?.name ?? '',
-            'destination': route.toAirport?.iata ?? route.toAirport?.name ?? '',
+            'origin': _backendAirportCode(route.fromAirport),
+            'destination': _backendAirportCode(route.toAirport),
             'date':
                 (route.startDate ?? startDate)
                     ?.toIso8601String()
@@ -1355,24 +1541,94 @@ class ReservationProvider extends ChangeNotifier {
     List<Map<String, dynamic>> rows,
   ) {
     final merged = <Map<String, dynamic>>[];
-    final seen = <String>{};
+    final indexByKey = <String, int>{};
 
     for (final raw in rows) {
       final normalized = _normalizeFlightHistoryRow(raw);
-      final id =
-          _resolveEntityId(normalized) ??
-          [
-            normalized['origin'],
-            normalized['destination'],
-            normalized['departure_datetime'],
-            normalized['created_at'],
-          ].whereType<Object>().join('|');
+      final key = _mergeKeyForFlightHistoryRow(normalized);
 
-      if (id.isNotEmpty && !seen.add(id)) continue;
+      if (key.isNotEmpty && indexByKey.containsKey(key)) {
+        final currentIndex = indexByKey[key]!;
+        merged[currentIndex] = _mergeFlightHistoryRecord(
+          merged[currentIndex],
+          normalized,
+        );
+        continue;
+      }
+
+      if (key.isNotEmpty) {
+        indexByKey[key] = merged.length;
+      }
       merged.add(normalized);
     }
 
     return merged;
+  }
+
+  String _mergeKeyForFlightHistoryRow(Map<String, dynamic> row) {
+    final reservation = _nestedMap(row['reservation']);
+    final flightRequest = _nestedMap(row['flight_request']);
+
+    final flightRequestId =
+        _resolveEntityId(row['flight_request_id']) ??
+        _resolveEntityId(row['request_id']) ??
+        _resolveEntityId(flightRequest['id']) ??
+        _resolveEntityId(reservation['flight_request_id']);
+    if (flightRequestId != null && flightRequestId.isNotEmpty) {
+      return 'flight_request:$flightRequestId';
+    }
+
+    final reservationId =
+        _resolveEntityId(row['reservation_id']) ??
+        _resolveEntityId(row['booking_id']) ??
+        _resolveEntityId(reservation['id']);
+    if (reservationId != null && reservationId.isNotEmpty) {
+      return 'reservation:$reservationId';
+    }
+
+    return _resolveEntityId(row) ??
+        [
+          row['origin'],
+          row['destination'],
+          row['departure_datetime'],
+          row['created_at'],
+        ].whereType<Object>().join('|');
+  }
+
+  Map<String, dynamic> _mergeFlightHistoryRecord(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming,
+  ) {
+    final merged = Map<String, dynamic>.from(current);
+
+    for (final entry in incoming.entries) {
+      final incomingValue = entry.value;
+      final currentValue = merged[entry.key];
+
+      if (_hasMeaningfulValue(incomingValue) &&
+          !_hasMeaningfulValue(currentValue)) {
+        merged[entry.key] = incomingValue;
+        continue;
+      }
+
+      if (entry.key == 'contract' && incomingValue is Map) {
+        merged[entry.key] = {
+          ..._nestedMap(currentValue),
+          ...Map<String, dynamic>.from(incomingValue),
+        };
+        continue;
+      }
+
+      if (entry.key == 'frontend_state' && incomingValue is Map) {
+        merged[entry.key] = {
+          ..._nestedMap(currentValue),
+          ...Map<String, dynamic>.from(incomingValue),
+        };
+        continue;
+      }
+    }
+
+    return _normalizeFlightHistoryRow(merged);
   }
 
   Map<String, dynamic> _normalizeFlightHistoryRow(Map<String, dynamic> raw) {
@@ -1423,10 +1679,17 @@ class ReservationProvider extends ChangeNotifier {
     return {
       ...row,
       if (id != null) 'id': id,
-      if (id != null && row['flight_request_id'] == null)
-        'flight_request_id': row['request_id'] ?? id,
-      if (id != null && row['reservation_id'] == null)
-        'reservation_id': row['booking_id'] ?? id,
+      if (row['flight_request_id'] == null)
+        'flight_request_id':
+            row['request_id'] ??
+            _resolveEntityId(_nestedMap(row['flight_request'])['id']) ??
+            _resolveEntityId(
+              _nestedMap(row['reservation'])['flight_request_id'],
+            ),
+      if (row['reservation_id'] == null)
+        'reservation_id':
+            row['booking_id'] ??
+            _resolveEntityId(_nestedMap(row['reservation'])['id']),
       if (origin != null) 'origin': origin,
       if (destination != null) 'destination': destination,
       if (departure != null) 'departure_datetime': departure,
@@ -1554,6 +1817,20 @@ class ReservationProvider extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  bool _hasMeaningfulValue(dynamic value) {
+    if (value == null) return false;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized.isNotEmpty &&
+          normalized != 'null' &&
+          normalized != 'ruta por confirmar' &&
+          normalized != 'fecha por confirmar';
+    }
+    if (value is Iterable) return value.isNotEmpty;
+    if (value is Map) return value.isNotEmpty;
+    return true;
   }
 
   Map<String, dynamic> _nestedMap(dynamic value) {
@@ -1694,15 +1971,29 @@ class ReservationProvider extends ChangeNotifier {
     if (base.isEmpty) return false;
 
     final candidates = {
+      _normalizeLookup(originAirport.icao),
       _normalizeLookup(originAirport.iata),
       _normalizeLookup(originAirport.city),
       _normalizeLookup(originAirport.name),
+      _normalizeLookup('${originAirport.city} ${originAirport.icao ?? ''}'),
       _normalizeLookup('${originAirport.city} ${originAirport.iata ?? ''}'),
     }..remove('');
 
     return candidates.any(
       (candidate) => base.contains(candidate) || candidate.contains(base),
     );
+  }
+
+  String _backendAirportCode(Airport? airport) {
+    if (airport == null) return '';
+
+    final icao = airport.icao?.trim().toUpperCase() ?? '';
+    if (icao.length == 4) return icao;
+
+    final iata = airport.iata?.trim().toUpperCase() ?? '';
+    if (iata.isNotEmpty) return iata;
+
+    return airport.name.trim();
   }
 
   String _timeStringForRoute(RouteModel route) {

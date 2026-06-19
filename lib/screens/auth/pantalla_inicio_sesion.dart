@@ -238,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       MaterialTapTargetSize.shrinkWrap,
                                 ),
                                 child: const Text(
-                                  'Olvide mi contrasena',
+                                  '',
                                   style: TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),

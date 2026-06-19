@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
+const Color kWarmBg = Color(0xFFF7F3EC);
+const Color kWarmCard = Color(0xFFFFFCF7);
+const Color kWarmSoft = Color(0xFFF3EDE3);
+const Color kWarmBorder = Color(0xFFE7DDCD);
+const Color kWarmMuted = Color(0xFF857A6B);
+const Color kWarmText = Color(0xFF2B241C);
+
 class ClientMobileTopBar extends StatelessWidget {
   const ClientMobileTopBar({
     super.key,
-    required this.userInitial,
     this.title = 'Sky Group',
     this.subtitle = 'Private aviation',
+    this.onSignOut,
   });
 
-  final String userInitial;
   final String title;
   final String subtitle;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -26,9 +33,9 @@ class ClientMobileTopBar extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: kWarmCard,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE7E7E7)),
+                  border: Border.all(color: kWarmBorder),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x0D000000),
@@ -55,7 +62,7 @@ class ClientMobileTopBar extends StatelessWidget {
                         height: 1,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.3,
-                        color: Color(0xFF050505),
+                        color: kWarmText,
                       ),
                     ),
                     SizedBox(height: 3),
@@ -67,7 +74,7 @@ class ClientMobileTopBar extends StatelessWidget {
                         fontSize: 10,
                         height: 1.15,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF777777),
+                        color: kWarmMuted,
                       ),
                     ),
                   ],
@@ -77,28 +84,26 @@ class ClientMobileTopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE7E7E7)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x14000000),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            userInitial,
-            style: const TextStyle(
-              color: Color(0xFF050505),
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
+        InkWell(
+          onTap: onSignOut,
+          borderRadius: BorderRadius.circular(999),
+          child: Ink(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: kWarmCard,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: kWarmBorder),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.logout_rounded, color: kWarmText, size: 20),
             ),
           ),
         ),
@@ -110,36 +115,36 @@ class ClientMobileTopBar extends StatelessWidget {
 class ClientMobileScreenShell extends StatelessWidget {
   const ClientMobileScreenShell({
     super.key,
-    required this.userInitial,
     required this.child,
     this.welcomeTitle = 'Sky Group',
     this.welcomeSubtitle = 'Private aviation',
+    this.onSignOut,
   });
 
-  final String userInitial;
   final Widget child;
   final String welcomeTitle;
   final String welcomeSubtitle;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF7F7F7),
+      color: kWarmBg,
       child: SafeArea(
-        top: false,
+        top: true,
         bottom: false,
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               decoration: const BoxDecoration(
-                color: Color(0xFFF7F7F7),
-                border: Border(bottom: BorderSide(color: Color(0xFFE8E8E8))),
+                color: kWarmBg,
+                border: Border(bottom: BorderSide(color: kWarmBorder)),
               ),
               child: ClientMobileTopBar(
-                userInitial: userInitial,
                 title: welcomeTitle,
                 subtitle: welcomeSubtitle,
+                onSignOut: onSignOut,
               ),
             ),
             Expanded(child: child),
@@ -175,9 +180,9 @@ class ClientMobileBottomNav extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: kWarmCard,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: const Color(0xFFE7E7E7)),
+            border: Border.all(color: kWarmBorder),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x16000000),
@@ -205,16 +210,11 @@ class ClientMobileBottomNav extends StatelessWidget {
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color:
-                            isActive
-                                ? const Color(0xFF050505)
-                                : const Color(0xFFF5F5F5),
+                        color: isActive ? const Color(0xFF050505) : kWarmSoft,
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
                           color:
-                              isActive
-                                  ? const Color(0xFF050505)
-                                  : const Color(0xFFEDEDED),
+                              isActive ? const Color(0xFF050505) : kWarmBorder,
                         ),
                         boxShadow:
                             isActive
@@ -234,10 +234,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                           Icon(
                             item.icon,
                             size: 18,
-                            color:
-                                isActive
-                                    ? Colors.white
-                                    : const Color(0xFF646464),
+                            color: isActive ? Colors.white : kWarmMuted,
                           ),
                           const SizedBox(width: 5),
                           Flexible(
@@ -247,10 +244,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                                 item.label,
                                 maxLines: 1,
                                 style: TextStyle(
-                                  color:
-                                      isActive
-                                          ? Colors.white
-                                          : const Color(0xFF646464),
+                                  color: isActive ? Colors.white : kWarmMuted,
                                   fontWeight:
                                       isActive
                                           ? FontWeight.w900
@@ -318,9 +312,9 @@ class SegmentedTripSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F1F1),
+        color: kWarmSoft,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
+        border: Border.all(color: kWarmBorder),
       ),
       child: Row(
         children:
@@ -360,18 +354,14 @@ class SegmentedTripSelector extends StatelessWidget {
                         Icon(
                           option.icon,
                           size: 17,
-                          color:
-                              isActive ? Colors.white : const Color(0xFF505050),
+                          color: isActive ? Colors.white : kWarmMuted,
                         ),
                         const SizedBox(height: 5),
                         Text(
                           option.label,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color:
-                                isActive
-                                    ? Colors.white
-                                    : const Color(0xFF505050),
+                            color: isActive ? Colors.white : kWarmMuted,
                             fontWeight: FontWeight.w900,
                             fontSize: 13,
                             letterSpacing: -0.2,
@@ -403,9 +393,9 @@ class ConciergeCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kWarmCard,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
+        border: Border.all(color: kWarmBorder),
         boxShadow: const [
           BoxShadow(
             color: Color(0x12000000),
@@ -459,7 +449,7 @@ class ConciergeField extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w900,
             letterSpacing: 1,
-            color: Color(0xFF565656),
+            color: kWarmMuted,
           ),
         ),
         const SizedBox(height: 8),
@@ -470,8 +460,8 @@ class ConciergeField extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE4E4E4)),
-              color: const Color(0xFFFAFAFA),
+              border: Border.all(color: kWarmBorder),
+              color: kWarmCard,
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x08000000),
@@ -488,7 +478,7 @@ class ConciergeField extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F0F0),
+                      color: kWarmSoft,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     alignment: Alignment.center,
@@ -509,10 +499,7 @@ class ConciergeField extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color:
-                              isPlaceholder
-                                  ? const Color(0xFF8A8A8A)
-                                  : const Color(0xFF050505),
+                          color: isPlaceholder ? kWarmMuted : kWarmText,
                           fontWeight:
                               isPlaceholder ? FontWeight.w700 : FontWeight.w900,
                           fontSize: isPlaceholder ? 17 : 21,
@@ -527,7 +514,7 @@ class ConciergeField extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF6F6F6F),
+                            color: kWarmMuted,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             height: 1.3,
@@ -541,7 +528,7 @@ class ConciergeField extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF8A8A8A),
+                            color: kWarmMuted,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             height: 1.25,

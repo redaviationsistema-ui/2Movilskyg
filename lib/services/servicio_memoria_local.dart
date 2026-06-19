@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalCacheService {
   static const _dbName = 'reservation_cache.db';
-  static const _dbVersion = 2;
+  static const _dbVersion = 3;
 
   static const airportsTable = 'airports';
   static const aircraftTable = 'aircraft_fleet';
@@ -31,6 +31,7 @@ class LocalCacheService {
             lat REAL,
             lng REAL,
             iata TEXT,
+            icao TEXT,
             country TEXT
           )
         ''');
@@ -75,9 +76,13 @@ class LocalCacheService {
         if (oldVersion < 2) {
           await _ensureAircraftImageUrlColumn(db);
         }
+        if (oldVersion < 3) {
+          await _ensureAirportsIcaoColumn(db);
+        }
       },
       onOpen: (db) async {
         await _ensureAircraftImageUrlColumn(db);
+        await _ensureAirportsIcaoColumn(db);
       },
     );
   }
@@ -126,21 +131,45 @@ class LocalCacheService {
     }
   }
 
+  Future<void> _ensureAirportsIcaoColumn(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info($airportsTable)');
+    final hasIcao = columns.any((column) => column['name'] == 'icao');
+
+    if (!hasIcao) {
+      await db.execute('ALTER TABLE $airportsTable ADD COLUMN icao TEXT');
+    }
+  }
+
   Future<void> cacheAirports(List<Map<String, dynamic>> airports) async {
     await _withWriteRecovery((db) async {
-      final batch = db.batch();
+      await _ensureAirportsIcaoColumn(db);
 
-      batch.delete(airportsTable);
+      Future<void> writeBatch() async {
+        final batch = db.batch();
 
-      for (final airport in airports) {
-        batch.insert(
-          airportsTable,
-          airport,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        batch.delete(airportsTable);
+
+        for (final airport in airports) {
+          batch.insert(
+            airportsTable,
+            airport,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+
+        await batch.commit(noResult: true);
       }
 
-      await batch.commit(noResult: true);
+      try {
+        await writeBatch();
+      } on DatabaseException catch (error) {
+        if (error.toString().contains('no column named icao')) {
+          await _ensureAirportsIcaoColumn(db);
+          await writeBatch();
+          return;
+        }
+        rethrow;
+      }
     });
   }
 

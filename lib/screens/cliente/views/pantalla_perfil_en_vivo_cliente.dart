@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
+import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
@@ -14,9 +17,14 @@ const Color kBorder = Color(0xFFE6E6E6);
 const Color kSoft = Color(0xFFF2F2F2);
 
 class ClientLiveProfileScreen extends StatefulWidget {
-  const ClientLiveProfileScreen({super.key, this.showBackButton = true});
+  const ClientLiveProfileScreen({
+    super.key,
+    this.showBackButton = true,
+    this.hasExternalTopBanner = false,
+  });
 
   final bool showBackButton;
+  final bool hasExternalTopBanner;
 
   @override
   State<ClientLiveProfileScreen> createState() =>
@@ -34,7 +42,11 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     final dashboard = reservation.dashboardData ?? const <String, dynamic>{};
     final user = auth.user;
 
-    final statusLabel = _accessLabel(access);
+    final commercialState = resolveCommercialAccessState(access);
+    final hasMembership = _hasMembership(access);
+    final statusLabel = _accountStatusLabel(access);
+    final planLabel = _planLabel(access);
+    final membershipCaption = _membershipCaption(access);
     final phone =
         user?.phone.isNotEmpty == true
             ? user!.phone
@@ -55,10 +67,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
       title: 'Perfil',
       subtitle: 'Cuenta, expediente y preferencias.',
       showBackButton: widget.showBackButton,
-      trailing: StatusBadge(
-        label: statusLabel == 'Activo' ? 'Activo' : 'Cliente',
-        color: kBlack,
-      ),
+      includeTopSafeArea: !widget.hasExternalTopBanner,
       child: Container(
         color: kBg,
         child: ListView(
@@ -76,7 +85,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Expediente, membresia, seguridad y preferencias de viaje.',
+              'Expediente, membresía, seguridad y preferencias de viaje.',
               style: TextStyle(
                 color: kMuted,
                 fontSize: 14,
@@ -94,26 +103,28 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
             ),
             const SizedBox(height: 12),
             _MembershipInlineCard(
-              status: statusLabel,
-              plan: _planLabel(access),
-              hasAccess: access['has_access'] == true,
+              status: membershipCaption,
+              plan: planLabel,
+              hasAccess: hasMembership,
             ),
             const SizedBox(height: 12),
             _ProfileTabBar(
               activeTab: _activeTab,
               onSelect: (tab) => setState(() => _activeTab = tab),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             ..._tabContent(
               auth: auth,
               reservation: reservation,
               access: access,
+              commercialState: commercialState,
               dashboard: dashboard,
               displayName: displayName,
               email: email,
               phone: phone,
               company: company,
               statusLabel: statusLabel,
+              planLabel: planLabel,
             ),
             const SizedBox(height: 16),
             _ActionCard(onRefresh: _refreshProfile, onSignOut: auth.signOut),
@@ -132,12 +143,14 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     required AuthProvider auth,
     required ReservationProvider reservation,
     required Map<String, dynamic> access,
+    required CommercialAccessState commercialState,
     required Map<String, dynamic> dashboard,
     required String displayName,
     required String email,
     required String phone,
     required String company,
     required String statusLabel,
+    required String planLabel,
   }) {
     final requests = reservation.flightRequests;
     final metrics = _nestedMap(dashboard['metrics'] ?? dashboard['summary']);
@@ -164,8 +177,14 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
                             0)
                         .toString(),
               ),
-              _MetricData(label: 'Acceso', value: statusLabel),
-              _MetricData(label: 'Plan', value: _planLabel(access)),
+              _MetricData(
+                label: 'Estado',
+                value:
+                    commercialState.hasPaidAccess || commercialState.canReserve
+                        ? 'Activa'
+                        : 'Pendiente',
+              ),
+              _MetricData(label: 'Plan', value: planLabel),
             ],
           ),
           const SizedBox(height: 16),
@@ -176,7 +195,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
                     ? const [
                       _ProfileData(
                         label: 'Estado',
-                        value: 'Aun no hay operaciones recientes',
+                        value: 'Aún no hay operaciones recientes',
                       ),
                     ]
                     : requests
@@ -184,76 +203,22 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
                         .map(
                           (request) => _ProfileData(
                             label: _routeLabel(request),
-                            value: _statusValue(request),
+                            value: _recentActivityValue(request),
                           ),
                         )
                         .toList(),
           ),
         ];
-      case _ProfileTab.travelers:
-        return [
-          _MinimalProfileCard(
-            title: 'Viajeros frecuentes',
-            items: [
-              _ProfileData(label: 'Titular', value: displayName),
-              _ProfileData(
-                label: 'Pasajeros',
-                value: '${reservation.passengers} por defecto',
-              ),
-              _ProfileData(
-                label: 'Mascotas',
-                value:
-                    reservation.pets.trim().isEmpty
-                        ? 'Sin preferencia registrada'
-                        : reservation.pets,
-              ),
-              _ProfileData(
-                label: 'Equipaje',
-                value:
-                    reservation.specialBaggage.trim().isEmpty
-                        ? 'Sin requerimientos especiales'
-                        : reservation.specialBaggage,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _PreferenceEditorCard(reservation: reservation),
-        ];
-      case _ProfileTab.preferences:
-        return [
-          _MinimalProfileCard(
-            title: 'Preferencias de vuelo',
-            items: [
-              _ProfileData(
-                label: 'Paquete',
-                value: reservation.selectedPriorityLabel,
-              ),
-              _ProfileData(
-                label: 'Cabina',
-                value:
-                    reservation.preference.trim().isEmpty
-                        ? 'Por definir'
-                        : reservation.preference,
-              ),
-              _ProfileData(
-                label: 'Concierge',
-                value:
-                    reservation.conciergeRequested
-                        ? 'Solicitado'
-                        : 'Disponible',
-              ),
-            ],
-          ),
-        ];
+
       case _ProfileTab.billing:
         return [
           _MinimalProfileCard(
-            title: 'Billing',
+            title: 'Pago',
             items: [
               _ProfileData(label: 'Empresa', value: company),
               _ProfileData(label: 'Correo fiscal', value: email),
               _ProfileData(
-                label: 'Metodo',
+                label: 'Método',
                 value: reservation.paymentMethod ?? 'Por definir',
               ),
               _ProfileData(
@@ -263,61 +228,24 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
             ],
           ),
         ];
-      case _ProfileTab.documents:
-        return [
-          _MinimalProfileCard(
-            title: 'Documentos',
-            items: [
-              _ProfileData(
-                label: 'Identidad',
-                value: _documentStatus(auth.userPayload),
-              ),
-              _ProfileData(label: 'Telefono', value: phone),
-              _ProfileData(label: 'Correo', value: email),
-              const _ProfileData(
-                label: 'NDA / privacidad',
-                value: 'Pendiente de validacion',
-              ),
-            ],
-          ),
-        ];
+
       case _ProfileTab.security:
         return [
           _MinimalProfileCard(
             title: 'Seguridad',
             items: [
               _ProfileData(
-                label: 'Sesion',
+                label: 'Sesión',
                 value: auth.isAuthenticated ? 'Activa' : 'Inactiva',
               ),
               _ProfileData(label: 'Rol', value: auth.role.name),
               _ProfileData(
-                label: 'Validacion',
+                label: 'Validación',
                 value: _identityStatus(auth.userPayload),
               ),
               _ProfileData(
-                label: 'Ultima sync',
+                label: 'Última actualización',
                 value: _syncLabel(reservation.lastWorkspaceSyncAt),
-              ),
-            ],
-          ),
-        ];
-      case _ProfileTab.concierge:
-        return [
-          _MinimalProfileCard(
-            title: 'Concierge',
-            items: [
-              const _ProfileData(label: 'Cobertura', value: '24/7'),
-              const _ProfileData(
-                label: 'Canal',
-                value: 'App + seguimiento operativo',
-              ),
-              _ProfileData(
-                label: 'Estado',
-                value:
-                    reservation.conciergeRequested
-                        ? 'Activado en solicitud'
-                        : 'Disponible',
               ),
             ],
           ),
@@ -334,27 +262,23 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     final origin = request['origin']?.toString() ?? '';
     final destination = request['destination']?.toString() ?? '';
     if (origin.isEmpty && destination.isEmpty) return 'Solicitud';
-    return '$origin - $destination';
+    return '$origin → $destination';
   }
 
-  String _statusValue(Map<String, dynamic> request) {
-    return (request['workflow_status'] ??
-            request['status'] ??
-            request['payment_status'] ??
-            'En revision')
-        .toString();
-  }
-
-  String _documentStatus(Map<String, dynamic>? payload) {
-    final profile = _nestedMap(payload?['profile']);
-    final value =
-        (payload?['document_status'] ??
-                payload?['identity_verification_status'] ??
-                profile['document_status'])
-            ?.toString()
-            .trim() ??
-        '';
-    return value.isEmpty ? 'Pendiente' : value;
+  String _recentActivityValue(Map<String, dynamic> request) {
+    final stage = resolveClientWorkflowStage(request);
+    switch (stage) {
+      case 'contract_pending':
+        return 'Contrato pendiente';
+      case 'contract_signed':
+        return 'Contrato firmado';
+      case 'payment_pending':
+        return 'Pago pendiente';
+      case 'provider_accepted':
+        return 'Respuesta proveedor';
+      default:
+        return clientWorkflowLabelForStage(stage);
+    }
   }
 
   String _identityStatus(Map<String, dynamic>? payload) {
@@ -375,22 +299,70 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
   }
 
   String _syncLabel(DateTime? value) {
-    if (value == null) return 'Sin sincronizacion';
+    if (value == null) return 'Sin sincronización';
     return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
-  String _accessLabel(Map<String, dynamic> access) {
+  bool _hasMembership(Map<String, dynamic> access) {
+    final commercialState = resolveCommercialAccessState(access);
+    if (commercialState.hasPaidAccess || commercialState.canReserve) {
+      return true;
+    }
+
     final subscription = access['subscription'];
-    if (subscription is Map && subscription['status'] != null) {
-      final value = subscription['status'].toString().trim();
-      return value.isEmpty ? 'Pendiente' : value;
+    if (subscription is Map) {
+      final status = subscription['status']?.toString().trim().toLowerCase();
+      if (status == 'active' || status == 'activo') return true;
+
+      final rawDate =
+          subscription['current_period_end'] ??
+          subscription['expires_at'] ??
+          subscription['renewal_date'];
+      final parsed =
+          rawDate == null ? null : DateTime.tryParse(rawDate.toString());
+      if (parsed != null && parsed.isAfter(DateTime.now())) return true;
     }
-    if (access['subscription_status'] != null) {
-      final value = access['subscription_status'].toString().trim();
-      return value.isEmpty ? 'Pendiente' : value;
+
+    final membership = access['membership'];
+    if (membership is Map) {
+      final status = membership['status']?.toString().trim().toLowerCase();
+      if (status == 'active' || status == 'activo') return true;
     }
-    if (access['has_access'] == true) return 'Activo';
-    return 'Pendiente';
+
+    return false;
+  }
+
+  String _accountStatusLabel(Map<String, dynamic> access) {
+    final commercialState = resolveCommercialAccessState(access);
+    if (commercialState.hasPaidAccess ||
+        commercialState.canReserve ||
+        access['has_access'] == true ||
+        _hasMembership(access)) {
+      return 'Cuenta activa';
+    }
+    return 'Cuenta pendiente';
+  }
+
+  String _membershipCaption(Map<String, dynamic> access) {
+    final commercialState = resolveCommercialAccessState(access);
+    if (_hasMembership(access) && commercialState.expiresAtLabel.isNotEmpty) {
+      return 'Activo hasta ${commercialState.expiresAtLabel}';
+    }
+
+    final subscription = access['subscription'];
+    final rawDate =
+        subscription is Map
+            ? subscription['current_period_end'] ??
+                subscription['expires_at'] ??
+                subscription['renewal_date']
+            : null;
+    final parsed =
+        rawDate == null ? null : DateTime.tryParse(rawDate.toString());
+    if (_hasMembership(access) && parsed != null) {
+      return 'Activo hasta ${DateFormat('dd MMM yyyy', 'es_MX').format(parsed)}';
+    }
+    if (_hasMembership(access)) return 'Membresía activa';
+    return 'Sin membresía';
   }
 
   String _planLabel(Map<String, dynamic> access) {
@@ -402,37 +374,24 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
       return subscription['plan'].toString();
     }
     if (access['plan_name'] != null) return access['plan_name'].toString();
-    return 'Sin plan';
+    if (_hasMembership(access)) return 'Membresía Executive';
+    return 'Sin membresía';
   }
 }
 
-enum _ProfileTab {
-  dashboard,
-  travelers,
-  preferences,
-  billing,
-  documents,
-  security,
-  concierge,
-}
+enum _ProfileTab { dashboard, billing, security }
 
 extension _ProfileTabCopy on _ProfileTab {
   String get label {
     switch (this) {
       case _ProfileTab.dashboard:
         return 'Resumen';
-      case _ProfileTab.travelers:
-        return 'Viajeros';
-      case _ProfileTab.preferences:
-        return 'Preferencias';
+
       case _ProfileTab.billing:
         return 'Pago';
-      case _ProfileTab.documents:
-        return 'Documentos';
+
       case _ProfileTab.security:
         return 'Seguridad';
-      case _ProfileTab.concierge:
-        return 'Concierge';
     }
   }
 }
@@ -490,7 +449,7 @@ class _MembershipInlineCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kBlack,
+        color: hasAccess ? kBlack : const Color(0xFF2A241D),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -539,101 +498,52 @@ class _MetricWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children:
-          metrics.map((metric) {
-            return Container(
-              width: 155,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: kWhite,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: kBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    metric.value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: kBlack,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    metric.label,
-                    style: const TextStyle(
-                      color: kMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-    );
-  }
-}
-
-class _PreferenceEditorCard extends StatelessWidget {
-  const _PreferenceEditorCard({required this.reservation});
-
-  final ReservationProvider reservation;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kBorder),
+    return GridView.builder(
+      itemCount: metrics.length,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        mainAxisExtent: 82,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'PREFERENCIAS RAPIDAS',
-            style: TextStyle(
-              color: kMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
+      itemBuilder: (context, index) {
+        final metric = metrics[index];
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF9F6F1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: kBorder),
           ),
-          const SizedBox(height: 10),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: reservation.conciergeRequested,
-            onChanged: reservation.setConciergeRequested,
-            title: const Text(
-              'Concierge activo para nuevas solicitudes',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                metric.value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: kBlack,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                metric.label,
+                style: const TextStyle(
+                  color: kMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                ReservationProvider.priorityLabels.entries.map((entry) {
-                  return ChoiceChip(
-                    selected: reservation.selectedPriorityType == entry.key,
-                    label: Text(entry.value),
-                    onSelected:
-                        (_) => reservation.setSelectedPriorityType(entry.key),
-                  );
-                }).toList(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -662,11 +572,9 @@ class _AccountHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isActive = status.toLowerCase() == 'activo';
-
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(24),
@@ -727,25 +635,29 @@ class _AccountHeaderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isActive ? kBlack : kSoft,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: isActive ? kBlack : kBorder),
-                  ),
-                  child: Text(
-                    status.toUpperCase(),
-                    style: TextStyle(
-                      color: isActive ? kWhite : kBlack,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.7,
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color:
+                            status.toLowerCase().contains('activa')
+                                ? const Color(0xFF1B8F4D)
+                                : const Color(0xFFB0893B),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 7),
+                    Text(
+                      status,
+                      style: const TextStyle(
+                        color: kBlack,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -863,7 +775,7 @@ class _ActionCard extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'Cerrar sesion',
+                'Cerrar sesión',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),

@@ -5,6 +5,7 @@ class Airport {
   final double lat;
   final double lng;
   final String? iata;
+  final String? icao;
   final String? country;
 
   Airport({
@@ -12,6 +13,7 @@ class Airport {
     required this.city,
     this.state,
     this.iata,
+    this.icao,
     this.country,
     required this.lat,
     required this.lng,
@@ -24,12 +26,15 @@ class Airport {
     final country = json['PAIS'] ?? json['country'];
     final iata =
         json['IATA'] ?? json['iata'] ?? json['iata_code'] ?? json['icao'];
+    final icao =
+        json['ICAO'] ?? json['icao'] ?? json['gps_code'] ?? json['ident'];
     final latValue = json['LATITUDE'] ?? json['lat'] ?? json['latitude'];
     final lngValue = json['LONGITUDE'] ?? json['lng'] ?? json['longitude'];
 
     return Airport(
       name: name,
       iata: iata,
+      icao: icao,
       city: city,
       state: state,
       country: country,
@@ -52,6 +57,7 @@ class Airport {
       'lat': lat,
       'lng': lng,
       'iata': iata,
+      'icao': icao,
       'country': country,
     };
   }

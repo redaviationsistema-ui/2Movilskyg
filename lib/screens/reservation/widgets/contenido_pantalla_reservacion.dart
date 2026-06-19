@@ -78,7 +78,7 @@ class ReservationScreenContent extends StatelessWidget {
         primaryRoute.startDate != null;
 
     return Container(
-      color: const Color(0xFFF7F7F7),
+      color: kWarmBg,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 126),
         children: [
@@ -87,7 +87,7 @@ class ReservationScreenContent extends StatelessWidget {
           const Text(
             'RED AVIATION',
             style: TextStyle(
-              color: Color(0xFF111111),
+              color: kWarmText,
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 2.8,
@@ -101,20 +101,20 @@ class ReservationScreenContent extends StatelessWidget {
               height: 1.04,
               fontWeight: FontWeight.w900,
               letterSpacing: -1.1,
-              color: Color(0xFF050505),
+              color: kWarmText,
             ),
           ),
           const SizedBox(height: 6),
           const Text(
             'Selecciona tu ruta, fecha y pasajeros para ver aeronaves disponibles.',
             style: TextStyle(
-              color: Color(0xFF6F6F6F),
+              color: kWarmMuted,
               fontSize: 13.5,
               height: 1.35,
               fontWeight: FontWeight.w600,
             ),
           ),
-      
+
           const SizedBox(height: 12),
           ConciergeCard(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -129,10 +129,8 @@ class ReservationScreenContent extends StatelessWidget {
                 ),
                 if (tripType == 'Ida y vuelta') ...[
                   const SizedBox(height: 16),
-                 
                 ] else if (tripType == 'Multidestino') ...[
                   const SizedBox(height: 16),
-               
                 ],
                 const SizedBox(height: 16),
                 if (tripType == 'Multidestino') ...[
@@ -241,11 +239,11 @@ class ReservationScreenContent extends StatelessWidget {
                     label: const Text('Agregar tramo'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
-                      side: const BorderSide(color: Color(0xFF111111)),
+                      side: const BorderSide(color: kWarmBorder),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      foregroundColor: const Color(0xFF111111),
+                      foregroundColor: kWarmText,
                     ),
                   ),
                 ],
@@ -259,8 +257,8 @@ class ReservationScreenContent extends StatelessWidget {
                             : onPreview,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF050505),
-                      disabledBackgroundColor: const Color(0xFFCACACA),
-                      disabledForegroundColor: const Color(0xFF6A6A6A),
+                      disabledBackgroundColor: const Color(0xFFD9CFC0),
+                      disabledForegroundColor: const Color(0xFF7B7062),
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(64),
                       shape: RoundedRectangleBorder(
@@ -332,7 +330,7 @@ class ReservationScreenContent extends StatelessWidget {
                 const Text(
                   'Cotizacion estimada, sujeta a disponibilidad y operacion.',
                   style: TextStyle(
-                    color: Color(0xFF6F6F6F),
+                    color: kWarmMuted,
                     fontSize: 12,
                     height: 1.35,
                     fontWeight: FontWeight.w500,
@@ -350,7 +348,7 @@ class ReservationScreenContent extends StatelessWidget {
               child: Text(
                 reservation.quoteError!,
                 style: const TextStyle(
-                  color: Color(0xFF111111),
+                  color: kWarmText,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -381,7 +379,6 @@ class ReservationScreenContent extends StatelessWidget {
   }
 }
 
-
 class _HeroAccent extends StatelessWidget {
   const _HeroAccent();
 
@@ -398,7 +395,7 @@ class _HeroAccent extends StatelessWidget {
               width: 84,
               height: 1.5,
               decoration: BoxDecoration(
-                color: const Color(0xFFDDDDDD),
+                color: kWarmBorder,
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -410,7 +407,7 @@ class _HeroAccent extends StatelessWidget {
               width: 58,
               height: 1.5,
               decoration: BoxDecoration(
-                color: const Color(0xFF050505),
+                color: const Color(0xFF8B6A24),
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -428,12 +425,12 @@ class _FormSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: const [
-        Icon(Icons.flight_outlined, color: Color(0xFF111111), size: 18),
+        Icon(Icons.flight_outlined, color: Color(0xFF8B6A24), size: 18),
         SizedBox(width: 8),
         Text(
           'Datos del vuelo',
           style: TextStyle(
-            color: Color(0xFF050505),
+            color: kWarmText,
             fontSize: 18,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.3,

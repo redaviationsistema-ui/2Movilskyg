@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
@@ -286,10 +287,7 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final route = _routeLabel(request);
-    final status =
-        request['workflow_status']?.toString() ??
-        request['status']?.toString() ??
-        'pendiente';
+    final status = resolveClientWorkflowLabel(request, fallback: 'Pendiente');
     final passengers = request['passengers']?.toString() ?? 'N/D';
     final departure =
         request['departure_datetime']?.toString() ??

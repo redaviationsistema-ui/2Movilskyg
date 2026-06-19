@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
+import '../../../core/client_workflow_status.dart';
 import '../../../models/aeronave.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -174,8 +175,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
               return !status.isClosed;
 
             case _TripTab.history:
-              return status.isClosed ||
-                  (departure != null && departure.isBefore(DateTime.now()));
+              return status.isClosed;
           }
         }).toList();
 
@@ -186,6 +186,10 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
       if (firstDate == null && secondDate == null) return 0;
       if (firstDate == null) return 1;
       if (secondDate == null) return -1;
+
+      if (_activeTab == _TripTab.history) {
+        return secondDate.compareTo(firstDate);
+      }
 
       return firstDate.compareTo(secondDate);
     });
@@ -299,6 +303,10 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
     Map<String, dynamic> request,
   ) {
     final meta = _statusMeta(request);
+    final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
+    final contractEnabled = _contractActionEnabled(request, workflowId);
+    final paymentEnabled = _paymentActionEnabled(request, workflowId);
+    final conciergeEnabled = _conciergeActionEnabled(request, workflowId);
 
     showModalBottomSheet<void>(
       context: context,
@@ -361,7 +369,10 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                         child: _SheetButton(
                           label: 'Concierge',
                           icon: Icons.support_agent_rounded,
-                          onTap: () => _openConcierge(request),
+                          onTap:
+                              conciergeEnabled
+                                  ? () => _openConcierge(request)
+                                  : null,
                           filled: true,
                         ),
                       ),
@@ -383,7 +394,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                           label: 'Contrato',
                           icon: Icons.description_outlined,
                           onTap:
-                              meta.contractReady
+                              contractEnabled
                                   ? () => _handleOpenContract(request)
                                   : null,
                         ),
@@ -394,7 +405,7 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
                           label: 'Pago',
                           icon: Icons.credit_card_rounded,
                           onTap:
-                              meta.paymentReady
+                              paymentEnabled
                                   ? () => _handleOpenPayment(request)
                                   : null,
                         ),
@@ -447,9 +458,9 @@ enum _TripTab { upcoming, processing, history }
 String _tabLabel(_TripTab tab) {
   switch (tab) {
     case _TripTab.upcoming:
-      return 'Proximos';
+      return 'Activos';
     case _TripTab.processing:
-      return 'En proceso';
+      return 'Proximos';
     case _TripTab.history:
       return 'Historial';
   }
@@ -572,6 +583,11 @@ class _MinimalFlightCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final meta = _statusMeta(request);
+    final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
+    final contractEnabled = _contractActionEnabled(request, workflowId);
+    final paymentEnabled = _paymentActionEnabled(request, workflowId);
+    final flightEnabled = _flightActionEnabled(request, workflowId);
+    final conciergeEnabled = _conciergeActionEnabled(request, workflowId);
     final imageUrl = _aircraftImageUrl(request, aircraftFleet);
     final aircraftName = _aircraftLabel(request);
     final capacity = _aircraftCapacityLabel(request);
@@ -678,7 +694,7 @@ class _MinimalFlightCard extends StatelessWidget {
                   child: _CardActionButton(
                     label: 'Contrato',
                     icon: Icons.description_outlined,
-                    enabled: meta.contractReady,
+                    enabled: contractEnabled,
                     onTap: onOpenContract,
                   ),
                 ),
@@ -687,7 +703,7 @@ class _MinimalFlightCard extends StatelessWidget {
                   child: _CardActionButton(
                     label: 'Pago',
                     icon: Icons.credit_card_rounded,
-                    enabled: meta.paymentReady,
+                    enabled: paymentEnabled,
                     onTap: onOpenPayment,
                   ),
                 ),
@@ -696,7 +712,7 @@ class _MinimalFlightCard extends StatelessWidget {
                   child: _CardActionButton(
                     label: _flightActionLabel(meta),
                     icon: Icons.flight_takeoff_rounded,
-                    enabled: meta.flightReady,
+                    enabled: flightEnabled,
                     onTap: onTap,
                   ),
                 ),
@@ -705,7 +721,7 @@ class _MinimalFlightCard extends StatelessWidget {
                   child: _CardActionButton(
                     label: 'Concierge',
                     icon: Icons.support_agent_rounded,
-                    enabled: true,
+                    enabled: conciergeEnabled,
                     filled: true,
                     onTap: onOpenConcierge,
                   ),
@@ -1363,12 +1379,9 @@ class _EmptyFlightsCard extends StatelessWidget {
 }
 
 _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
-  final workflow = _normalizedStatus(
-    request['workflow_status'] ??
-        request['status'] ??
-        request['flight_status'] ??
-        request['reservation_status'],
-  );
+  final workflow = _resolvedWorkflowStage(request);
+  final workflowId = _workflowStageId(workflow);
+  final action = _workflowActionCopy(workflowId);
 
   final contractStatus = _normalizedStatus(
     request['contract_status'] ??
@@ -1394,23 +1407,205 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
         request['monitoring_status'],
   );
 
+  if (workflowId == 'completed') {
+    return const _WorkflowMeta(
+      label: 'Finalizado',
+      tone: _WorkflowTone.completed,
+      progress: 100,
+      activeStep: 5,
+      nextAction: 'Reserva cerrada correctamente.',
+      isClosed: true,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: true,
+      flightReady: true,
+      trackingReady: true,
+    );
+  }
+
+  if (workflowId == 'cancelled' || workflowId == 'rejected') {
+    return _WorkflowMeta(
+      label: clientWorkflowLabelForStage(
+        workflowId,
+        fallback: 'Reserva cerrada',
+      ),
+      tone: _WorkflowTone.cancelled,
+      progress: 100,
+      activeStep: 5,
+      nextAction:
+          workflowId == 'rejected'
+              ? 'No hubo disponibilidad para esta operacion.'
+              : 'Reserva sin seguimiento activo.',
+      isClosed: true,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'tracking_live') {
+    return const _WorkflowMeta(
+      label: 'En operacion',
+      tone: _WorkflowTone.confirmed,
+      progress: 97,
+      activeStep: 5,
+      nextAction:
+          'Monitorea terminal, tripulación y seguimiento en tiempo real.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: true,
+      flightReady: true,
+      trackingReady: true,
+    );
+  }
+
+  if (workflowId == 'flight_confirmed') {
+    return const _WorkflowMeta(
+      label: 'Vuelo confirmado',
+      tone: _WorkflowTone.confirmed,
+      progress: 93,
+      activeStep: 4,
+      nextAction: 'Todo listo para la operación del vuelo.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: true,
+      flightReady: true,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'payment_confirmed') {
+    return const _WorkflowMeta(
+      label: 'Pago confirmado',
+      tone: _WorkflowTone.confirmed,
+      progress: 86,
+      activeStep: 3,
+      nextAction: 'Pago validado. Estamos preparando la salida.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: true,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'payment_pending') {
+    return const _WorkflowMeta(
+      label: 'Pago pendiente',
+      tone: _WorkflowTone.pending,
+      progress: 78,
+      activeStep: 3,
+      nextAction: 'Completa el pago para confirmar la operación.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'contract_signed') {
+    return const _WorkflowMeta(
+      label: 'Contrato firmado',
+      tone: _WorkflowTone.confirmed,
+      progress: 66,
+      activeStep: 2,
+      nextAction: 'Contrato listo. El siguiente paso es el pago.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: true,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'contract_pending') {
+    return const _WorkflowMeta(
+      label: 'Contrato pendiente',
+      tone: _WorkflowTone.pending,
+      progress: 58,
+      activeStep: 2,
+      nextAction: 'Siguiente paso: firma de contrato.',
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'provider_accepted') {
+    return _WorkflowMeta(
+      label: 'Respuesta proveedor',
+      tone: _WorkflowTone.confirmed,
+      progress: 44,
+      activeStep: 1,
+      nextAction: _providerNextAction(request),
+      isClosed: false,
+      providerConfirmed: true,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'provider_pending') {
+    return const _WorkflowMeta(
+      label: 'Esperando proveedor',
+      tone: _WorkflowTone.searching,
+      progress: 36,
+      activeStep: 1,
+      nextAction: 'Estamos validando proveedor y disponibilidad.',
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'reserved') {
+    return const _WorkflowMeta(
+      label: 'Reserva solicitada',
+      tone: _WorkflowTone.info,
+      progress: 28,
+      activeStep: 0,
+      nextAction: 'La reserva ya quedó creada y sigue el flujo comercial.',
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
   final providerConfirmed =
-      _containsAny(providerStatus, const [
-        'accepted',
-        'approved',
-        'confirmed',
-      ]) ||
-      _containsAny(workflow, const [
-        'provider accepted',
-        'provider_accepted',
-        'accepted',
-        'approved',
-        'matched',
-        'confirmado',
-      ]) ||
-      _hasValue(request['provider_id']) ||
-      _hasValue(request['assigned_aircraft_id']) ||
-      _hasValue(request['assigned_provider_id']);
+      workflowId == 'provider_accepted' ||
+      workflowId == 'contract_pending' ||
+      workflowId == 'contract_signed' ||
+      workflowId == 'payment_pending' ||
+      workflowId == 'payment_confirmed' ||
+      workflowId == 'flight_confirmed' ||
+      workflowId == 'tracking_live' ||
+      workflowId == 'completed' ||
+      (_containsAny(providerStatus, const [
+            'accepted',
+            'approved',
+            'confirmed',
+          ]) &&
+          workflowId != 'provider_pending' &&
+          workflowId != 'reserved');
 
   final contractReady =
       _containsAny(contractStatus, const ['signed', 'completed', 'approved']) ||
@@ -1428,6 +1623,9 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       _hasValue(request['payment_reference']);
 
   final flightReady =
+      workflowId == 'flight_confirmed' ||
+      workflowId == 'tracking_live' ||
+      workflowId == 'completed' ||
       _containsAny(workflow, const [
         'flight confirmed',
         'scheduled',
@@ -1444,35 +1642,53 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       ]);
 
   final trackingReady =
+      workflowId == 'tracking_live' ||
+      workflowId == 'completed' ||
       _containsAny(trackingStatus, const ['active', 'live', 'enabled']) ||
       _containsAny(workflow, const ['tracking']) ||
       _hasValue(request['tracking_url']) ||
       _hasValue(request['live_tracking_url']);
 
-  if (workflow.contains('completed')) {
-    return const _WorkflowMeta(
-      label: 'Vuelo completado',
-      tone: _WorkflowTone.completed,
-      progress: 100,
-      activeStep: 5,
-      nextAction: 'Reserva cerrada correctamente.',
-      isClosed: true,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: true,
+  if (workflowId == 'draft') {
+    return _WorkflowMeta(
+      label: 'Cotizacion',
+      tone: _WorkflowTone.info,
+      progress: 8,
+      activeStep: 0,
+      nextAction: action.detail,
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
     );
   }
 
-  if (workflow.contains('cancel') || workflow.contains('rejected')) {
-    return const _WorkflowMeta(
-      label: 'Reserva cerrada',
-      tone: _WorkflowTone.cancelled,
-      progress: 100,
-      activeStep: 5,
-      nextAction: 'Reserva sin seguimiento activo.',
-      isClosed: true,
+  if (workflowId == 'quoted') {
+    return _WorkflowMeta(
+      label: 'Cotizacion',
+      tone: _WorkflowTone.info,
+      progress: 14,
+      activeStep: 0,
+      nextAction: action.detail,
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'package_selected') {
+    return _WorkflowMeta(
+      label: 'Pendiente',
+      tone: _WorkflowTone.info,
+      progress: 22,
+      activeStep: 0,
+      nextAction: action.detail,
+      isClosed: false,
       providerConfirmed: false,
       contractReady: false,
       paymentReady: false,
@@ -1483,9 +1699,9 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
 
   if (trackingReady) {
     return const _WorkflowMeta(
-      label: 'Tracking activo',
+      label: 'En operacion',
       tone: _WorkflowTone.confirmed,
-      progress: 90,
+      progress: 97,
       activeStep: 5,
       nextAction:
           'Monitorea terminal, tripulación y seguimiento en tiempo real.',
@@ -1502,7 +1718,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     return const _WorkflowMeta(
       label: 'Vuelo confirmado',
       tone: _WorkflowTone.confirmed,
-      progress: 82,
+      progress: 93,
       activeStep: 4,
       nextAction: 'Todo listo para la operación del vuelo.',
       isClosed: false,
@@ -1518,7 +1734,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     return const _WorkflowMeta(
       label: 'Pago confirmado',
       tone: _WorkflowTone.confirmed,
-      progress: 74,
+      progress: 86,
       activeStep: 3,
       nextAction: 'Pago validado. Estamos preparando la salida.',
       isClosed: false,
@@ -1536,9 +1752,9 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     'awaiting',
   ])) {
     return const _WorkflowMeta(
-      label: 'Pago en curso',
+      label: 'Pago pendiente',
       tone: _WorkflowTone.pending,
-      progress: 66,
+      progress: 78,
       activeStep: 3,
       nextAction: 'Completa el pago para confirmar la operación.',
       isClosed: false,
@@ -1553,8 +1769,8 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
   if (contractReady) {
     return const _WorkflowMeta(
       label: 'Contrato firmado',
-      tone: _WorkflowTone.pending,
-      progress: 58,
+      tone: _WorkflowTone.confirmed,
+      progress: 66,
       activeStep: 2,
       nextAction: 'Contrato listo. El siguiente paso es el pago.',
       isClosed: false,
@@ -1570,7 +1786,7 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     return const _WorkflowMeta(
       label: 'Contrato pendiente',
       tone: _WorkflowTone.pending,
-      progress: 50,
+      progress: 58,
       activeStep: 2,
       nextAction: 'Siguiente paso: firma de contrato.',
       isClosed: false,
@@ -1582,11 +1798,11 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     );
   }
 
-  if (providerConfirmed) {
+  if (workflowId == 'provider_accepted' || providerConfirmed) {
     return _WorkflowMeta(
-      label: 'Proveedor confirmado',
+      label: 'Respuesta proveedor',
       tone: _WorkflowTone.confirmed,
-      progress: 42,
+      progress: 44,
       activeStep: 1,
       nextAction: _providerNextAction(request),
       isClosed: false,
@@ -1598,15 +1814,79 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     );
   }
 
+  if (workflowId == 'provider_pending' ||
+      _containsAny(workflow, const [
+        'provider_pending',
+        'buscando operador',
+        'buscando aeronave',
+        'matching',
+        'in_validation',
+        'en validacion',
+        'revision operativa',
+      ])) {
+    return const _WorkflowMeta(
+      label: 'Esperando proveedor',
+      tone: _WorkflowTone.searching,
+      progress: 36,
+      activeStep: 1,
+      nextAction: 'Estamos validando proveedor y disponibilidad.',
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (workflowId == 'reserved' ||
+      _containsAny(workflow, const [
+        'reserved',
+        'reserva solicitada',
+        'reservada',
+        'reservado',
+        'solicitada',
+      ])) {
+    return const _WorkflowMeta(
+      label: 'Reserva solicitada',
+      tone: _WorkflowTone.info,
+      progress: 28,
+      activeStep: 0,
+      nextAction: 'La reserva ya quedó creada y sigue el flujo comercial.',
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
   if (workflow.contains('search') ||
       workflow.contains('pending') ||
       workflow.contains('matching') ||
       workflow.contains('validacion')) {
     return const _WorkflowMeta(
-      label: 'En curso',
+      label: 'Esperando proveedor',
       tone: _WorkflowTone.searching,
-      progress: 28,
-      activeStep: 0,
+      progress: 36,
+      activeStep: 1,
+      nextAction: 'Estamos validando proveedor y disponibilidad.',
+      isClosed: false,
+      providerConfirmed: false,
+      contractReady: false,
+      paymentReady: false,
+      flightReady: false,
+      trackingReady: false,
+    );
+  }
+
+  if (_hasProviderPendingSignals(request)) {
+    return const _WorkflowMeta(
+      label: 'Esperando proveedor',
+      tone: _WorkflowTone.searching,
+      progress: 36,
+      activeStep: 1,
       nextAction: 'Estamos validando proveedor y disponibilidad.',
       isClosed: false,
       providerConfirmed: false,
@@ -1618,11 +1898,12 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
   }
 
   return const _WorkflowMeta(
-    label: 'Reserva activa',
+    label: 'Cotizacion',
     tone: _WorkflowTone.info,
-    progress: 16,
+    progress: 8,
     activeStep: 0,
-    nextAction: 'La reserva ya está registrada.',
+    nextAction:
+        'Aun faltan datos para activar la reserva con el equipo comercial.',
     isClosed: false,
     providerConfirmed: false,
     contractReady: false,
@@ -1630,6 +1911,30 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
     flightReady: false,
     trackingReady: false,
   );
+}
+
+String _resolvedWorkflowStage(Map<String, dynamic> request) {
+  return resolveClientWorkflowStage(request);
+}
+
+String _workflowStageId(String workflow) {
+  final stageId = resolveClientWorkflowStageIdFromValue(workflow);
+  return stageId.isEmpty ? workflow : stageId;
+}
+
+bool _hasProviderPendingSignals(Map<String, dynamic> request) {
+  return _hasValue(request['provider_id']) ||
+      _hasValue(request['aircraft_id']) ||
+      _hasValue(request['assigned_provider_id']) ||
+      _hasValue(request['assigned_aircraft_id']) ||
+      _hasValue(request['assigned_aircraft_model']) ||
+      _hasValue(request['aircraft_model']) ||
+      _hasValue(request['aircraft_name']) ||
+      _hasValue(request['aircraft']) ||
+      _hasValue(request['image_url']) ||
+      _hasValue(request['imageUrl']) ||
+      _hasValue(request['operator_name']) ||
+      _hasValue(request['provider_name']);
 }
 
 (Color, Color) _toneColors(_WorkflowTone tone) {
@@ -1686,29 +1991,59 @@ String _flightActionLabel(_WorkflowMeta meta) {
   return 'Vuelo';
 }
 
+bool _contractActionEnabled(Map<String, dynamic> request, String workflowId) {
+  return const ['provider_accepted', 'contract_pending'].contains(workflowId);
+}
+
+bool _paymentActionEnabled(Map<String, dynamic> request, String workflowId) {
+  if (!_isReservationRecord(request)) return false;
+  return const ['contract_signed', 'payment_pending'].contains(workflowId);
+}
+
+bool _flightActionEnabled(Map<String, dynamic> request, String workflowId) {
+  return const [
+    'payment_confirmed',
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+}
+
+bool _conciergeActionEnabled(Map<String, dynamic> request, String workflowId) {
+  return const [
+    'reserved',
+    'provider_pending',
+    'provider_accepted',
+    'contract_pending',
+    'contract_signed',
+    'payment_pending',
+    'payment_confirmed',
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+}
+
+bool _isReservationRecord(Map<String, dynamic> request) {
+  final explicit = request['is_reservation'];
+  if (explicit is bool) return explicit;
+  if (_asBool(explicit)) return true;
+
+  return _hasValue(request['reservation_id']) ||
+      _hasValue(request['booking_id']) ||
+      _hasValue(request['operation_id']) ||
+      _hasValue(request['contract_id']) ||
+      _hasValue(request['contract_status']) ||
+      _hasValue(request['payment_status']);
+}
+
 List<String> _workflowSupportLines(
   Map<String, dynamic> request,
   _WorkflowMeta meta,
 ) {
-  final lines = <String>[meta.nextAction];
-  final package = request['flight_package']?.toString().trim() ?? '';
-  final operator =
-      request['operator']?.toString().trim().isNotEmpty == true
-          ? request['operator'].toString().trim()
-          : request['provider_name']?.toString().trim() ?? '';
-
-  if (package.isNotEmpty) lines.add('Paquete: $package');
-  if (meta.contractReady && !meta.paymentReady) {
-    lines.add('Contrato en gestion');
-  } else if (meta.paymentReady && !meta.flightReady) {
-    lines.add('Pago en proceso operativo');
-  } else if (meta.flightReady || meta.trackingReady) {
-    lines.add('Operacion en liberacion final');
-  }
-  if (operator.isNotEmpty) lines.add('Operado por: $operator');
-  lines.add('Concierge 24/7 disponible');
-
-  return lines;
+  final stage = _workflowStageId(_resolvedWorkflowStage(request));
+  final action = _workflowActionCopy(stage);
+  return [action.title, action.detail, ''];
 }
 
 String _requestCode(Map<String, dynamic> request) {
@@ -1718,15 +2053,117 @@ String _requestCode(Map<String, dynamic> request) {
 
 String _providerNextAction(Map<String, dynamic> request) {
   final providerName =
-      request['provider_name']?.toString() ??
+      request['provider_name']?.toString().trim() ??
       _nestedText(request['provider'], 'name') ??
-      _nestedText(request['provider'], 'company_name');
+      _nestedText(request['provider'], 'company_name') ??
+      request['operator_name']?.toString().trim();
 
   if (providerName != null && providerName.isNotEmpty) {
     return 'Proveedor confirmado: $providerName. Siguiente paso: contrato.';
   }
 
-  return 'El proveedor ya fue confirmado. Siguiente paso: contrato.';
+  return _workflowActionCopy('provider_accepted').detail;
+}
+
+class _WorkflowActionCopy {
+  const _WorkflowActionCopy({required this.title, required this.detail});
+
+  final String title;
+  final String detail;
+}
+
+_WorkflowActionCopy _workflowActionCopy(String stageId) {
+  switch (stageId) {
+    case 'draft':
+      return const _WorkflowActionCopy(
+        title: 'Completar solicitud',
+        detail:
+            'Aun faltan datos para activar la reserva con el equipo comercial.',
+      );
+    case 'quoted':
+      return const _WorkflowActionCopy(
+        title: 'Elegir opcion',
+        detail:
+            'Selecciona aeronave y paquete para convertir la cotizacion en reserva.',
+      );
+    case 'package_selected':
+      return const _WorkflowActionCopy(
+        title: 'Confirmar reserva',
+        detail: 'Tu seleccion ya esta lista para enviarse al flujo operativo.',
+      );
+    case 'reserved':
+      return const _WorkflowActionCopy(
+        title: 'Respuesta del proveedor',
+        detail: 'La reserva ya quedo creada y supero la activacion inicial.',
+      );
+    case 'provider_pending':
+      return const _WorkflowActionCopy(
+        title: 'Respuesta del proveedor',
+        detail: 'Valida disponibilidad, aeronave y ventana operativa.',
+      );
+    case 'provider_accepted':
+      return const _WorkflowActionCopy(
+        title: 'Firma de contrato',
+        detail:
+            'La respuesta del proveedor ya se resolvio y la reserva siguio avanzando.',
+      );
+    case 'contract_pending':
+      return const _WorkflowActionCopy(
+        title: 'Firma de contrato',
+        detail:
+            'El contrato esta en preparacion o esperando firma del cliente.',
+      );
+    case 'contract_signed':
+      return const _WorkflowActionCopy(
+        title: 'Confirmacion de pago',
+        detail: 'La firma se completo y el siguiente paso es validar el pago.',
+      );
+    case 'payment_pending':
+      return const _WorkflowActionCopy(
+        title: 'Confirmacion de pago',
+        detail: 'El cobro se valida y confirma antes de liberar el vuelo.',
+      );
+    case 'payment_confirmed':
+      return const _WorkflowActionCopy(
+        title: 'Confirmacion de vuelo',
+        detail:
+            'Pago confirmado. Coordina proveedor, sobrecargo, aeropuerto y pasajeros sin exponer contacto directo entre cliente, proveedor y tripulacion.',
+      );
+    case 'flight_confirmed':
+      return const _WorkflowActionCopy(
+        title: 'Tracking de servicio',
+        detail: 'La operacion ya tiene aeronave, tripulacion y salida cerrada.',
+      );
+    case 'tracking_live':
+      return const _WorkflowActionCopy(
+        title: 'Tracking y concierge',
+        detail:
+            'El admin puede seguir la ejecucion y las novedades del servicio.',
+      );
+    case 'completed':
+      return const _WorkflowActionCopy(
+        title: 'Finalizado',
+        detail:
+            'La sobrecargo finalizo el servicio y la operacion ya quedo cerrada para seguimiento e historial.',
+      );
+    case 'cancelled':
+      return const _WorkflowActionCopy(
+        title: 'Viaje cancelado',
+        detail:
+            'La reserva fue cancelada. Si quieres, armamos una nueva opcion.',
+      );
+    case 'rejected':
+      return const _WorkflowActionCopy(
+        title: 'Nueva alternativa',
+        detail:
+            'El operador rechazo este vuelo. Podemos buscar otra opcion de inmediato.',
+      );
+    default:
+      return const _WorkflowActionCopy(
+        title: 'Respuesta del proveedor',
+        detail: 'La reserva ya quedo creada y supero la activacion inicial.',
+      );
+  }
 }
 
 String _normalizedStatus(dynamic value) {

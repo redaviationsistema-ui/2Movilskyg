@@ -203,17 +203,6 @@ class ClientAircraftDetailScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             _AircraftSpecsCard(aircraft: aircraft, baseFare: baseFare),
-
-            const SizedBox(height: 16),
-
-            _MinimalServiceCard(
-              title: 'Servicio',
-              items: const [
-                'Brief previo al vuelo',
-                'Coordinación FBO',
-                'Soporte concierge',
-              ],
-            ),
           ],
         ),
       ),
@@ -241,10 +230,13 @@ class _AircraftHeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = aircraft.name.isEmpty ? 'Aeronave ejecutiva' : aircraft.name;
+    final location =
+        aircraft.homeBase.isEmpty ? aircraft.city : aircraft.homeBase;
+    final capacityLabel = '${aircraft.capacityPassengers} pasajeros';
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(30),
@@ -260,106 +252,145 @@ class _AircraftHeaderCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SmallBadge(label: category),
-          const SizedBox(height: 14),
+          Row(
+            children: [
+              _SmallBadge(label: category),
+              const Spacer(),
+              _TinyLabel(icon: Icons.place_rounded, label: location),
+            ],
+          ),
+          const SizedBox(height: 18),
           Text(
             title,
             style: const TextStyle(
               color: kBlack,
-              fontSize: 34,
+              fontSize: 32,
               height: 0.98,
               fontWeight: FontWeight.w900,
               letterSpacing: -1.2,
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            '${aircraft.capacityPassengers} pasajeros · Base ${aircraft.city}',
-            style: const TextStyle(
-              color: kMuted,
-              fontSize: 16,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          Row(
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: _MiniMetric(
-                  label: 'Tarifa',
-                  value: '${formatMoney(aircraft.rentalPriceUsd)}/hr',
-                ),
+              _InfoChip(icon: Icons.groups_rounded, label: capacityLabel),
+              _InfoChip(
+                icon: Icons.speed_rounded,
+                label: '${aircraft.cruiseSpeedKnots.toStringAsFixed(0)} kts',
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MiniMetric(
-                  label: 'Desde',
-                  value: formatMoney(baseFare),
-                ),
+              _InfoChip(
+                icon: Icons.schedule_rounded,
+                label: 'Min. ${aircraft.minimumHours.toStringAsFixed(1)} hrs',
               ),
             ],
           ),
-
+          if (aircraft.imageUrl.trim().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _AircraftHeroImage(imageUrl: aircraft.imageUrl, title: title),
+          ],
           const SizedBox(height: 18),
-
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            decoration: BoxDecoration(
+              color: kBlack,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DESDE',
+                  style: TextStyle(
+                    color: Color(0xFFBBBBBB),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${formatMoney(baseFare)} USD',
+                  style: const TextStyle(
+                    color: kWhite,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${formatMoney(aircraft.rentalPriceUsd)}/hr • Min. ${aircraft.minimumHours.toStringAsFixed(1)} hrs',
+                  style: const TextStyle(
+                    color: Color(0xFFD0D0D0),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: FilledButton(
-                  onPressed: onRequest,
+                child: FilledButton.icon(
+                  onPressed: onCompleteData,
                   style: FilledButton.styleFrom(
                     backgroundColor: kBlack,
                     foregroundColor: kWhite,
-                    minimumSize: const Size.fromHeight(54),
+                    minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'Solicitar',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onCompleteData,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kBlack,
-                    minimumSize: const Size.fromHeight(54),
-                    side: const BorderSide(color: kBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  child: const Text(
+                  icon: const Icon(Icons.flight_takeoff_rounded, size: 18),
+                  label: const Text(
                     'Reservar',
                     style: TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onRequest,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kBlack,
+                    minimumSize: const Size.fromHeight(52),
+                    side: const BorderSide(color: kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  icon: const Icon(Icons.send_rounded, size: 18),
+                  label: const Text(
+                    'Cotizar',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 52,
+                width: 52,
+                child: OutlinedButton(
+                  onPressed: onShare,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kBlack,
+                    side: const BorderSide(color: kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Icon(Icons.ios_share_rounded, size: 19),
+                ),
+              ),
             ],
-          ),
-
-          const SizedBox(height: 10),
-
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              onPressed: onShare,
-              style: TextButton.styleFrom(
-                foregroundColor: kBlack,
-                minimumSize: const Size.fromHeight(46),
-              ),
-              icon: const Icon(Icons.ios_share_rounded, size: 18),
-              label: const Text(
-                'Compartir opción',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
           ),
         ],
       ),
@@ -375,6 +406,11 @@ class _AircraftSpecsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final location =
+        aircraft.homeBase.isEmpty ? aircraft.city : aircraft.homeBase;
+    final description =
+        '${aircraft.name.isEmpty ? 'Esta aeronave' : aircraft.name} es ideal para vuelos ejecutivos ${_routeScopeLabel(aircraft)} con capacidad para hasta ${aircraft.capacityPassengers} pasajeros.';
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -383,29 +419,98 @@ class _AircraftSpecsCard extends StatelessWidget {
         border: Border.all(color: kBorder),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SpecRow(
-            label: 'Capacidad',
-            value: '${aircraft.capacityPassengers} pasajeros',
+          const Text(
+            'Descripción',
+            style: TextStyle(
+              color: kBlack,
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-          _SpecRow(
-            label: 'Velocidad',
-            value: '${aircraft.cruiseSpeedKnots.toStringAsFixed(0)} kts',
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: TextStyle(
+              color: kMuted,
+              fontSize: 13,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          _SpecRow(
-            label: 'Mínimo',
-            value: '${aircraft.minimumHours.toStringAsFixed(1)} hrs',
-          ),
-          _SpecRow(
-            label: 'Base',
-            value:
-                aircraft.homeBase.isEmpty ? aircraft.city : aircraft.homeBase,
-          ),
-          _SpecRow(label: 'Costo desde', value: formatMoney(baseFare)),
-          _SpecRow(
-            label: 'Overnight',
-            value: formatMoney(aircraft.crewOvernightUsd),
-            showDivider: false,
+          const SizedBox(height: 14),
+          Theme(
+            data: Theme.of(context).copyWith(
+              dividerColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+            ),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: const Text(
+                'Ver especificaciones',
+                style: TextStyle(
+                  color: kBlack,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.arrow_forward_rounded,
+                color: kBlack,
+                size: 18,
+              ),
+              children: [
+                const SizedBox(height: 8),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1.95,
+                  children: [
+                    _SpecTile(
+                      icon: Icons.place_rounded,
+                      label: 'Base',
+                      value: location.toUpperCase(),
+                    ),
+                    _SpecTile(
+                      icon: Icons.nightlight_round,
+                      label: 'Overnight',
+                      value:
+                          aircraft.crewOvernightUsd <= 0
+                              ? 'Incluido'
+                              : formatMoney(aircraft.crewOvernightUsd),
+                    ),
+                    _SpecTile(
+                      icon: Icons.flag_rounded,
+                      label: 'Nacional',
+                      value:
+                          aircraft.nationalExpensesUsd <= 0
+                              ? 'Incluido'
+                              : formatMoney(aircraft.nationalExpensesUsd),
+                    ),
+                    _SpecTile(
+                      icon: Icons.public_rounded,
+                      label: 'Internacional',
+                      value:
+                          aircraft.internationalExpensesUsd <= 0
+                              ? 'Segun ruta'
+                              : formatMoney(aircraft.internationalExpensesUsd),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -413,52 +518,125 @@ class _AircraftSpecsCard extends StatelessWidget {
   }
 }
 
-class _MinimalServiceCard extends StatelessWidget {
-  const _MinimalServiceCard({required this.title, required this.items});
+class _AircraftHeroImage extends StatelessWidget {
+  const _AircraftHeroImage({required this.imageUrl, required this.title});
+
+  final String imageUrl;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        height: 112,
+        width: double.infinity,
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _AircraftImageFallback(title: title),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return _AircraftImageFallback(title: title);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+String _routeScopeLabel(Aircraft aircraft) {
+  final type = aircraft.aircraftType.toLowerCase();
+  if (type.contains('heavy') || type.contains('super')) {
+    return 'nacionales e internacionales';
+  }
+  return 'nacionales y regionales';
+}
+
+class _AircraftImageFallback extends StatelessWidget {
+  const _AircraftImageFallback({required this.title});
 
   final String title;
-  final List<String> items;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: kBlack,
-        borderRadius: BorderRadius.circular(26),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFF6F1E8), Color(0xFFE8DECC)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: Color(0xFFBDBDBD),
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
+      child: Center(
+        child: Text(
+          title.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF8C7D6A),
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.1,
           ),
-          const SizedBox(height: 12),
-          ...items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_rounded, color: kWhite, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: const TextStyle(
-                        color: kWhite,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyLabel extends StatelessWidget {
+  const _TinyLabel({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFF7A7368)),
+        const SizedBox(width: 4),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: Color(0xFF7A7368),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F3EE),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFEAE4D9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF756D62)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF4C453C),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -494,9 +672,14 @@ class _SmallBadge extends StatelessWidget {
   }
 }
 
-class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({required this.label, required this.value});
+class _SpecTile extends StatelessWidget {
+  const _SpecTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
+  final IconData icon;
   final String label;
   final String value;
 
@@ -505,89 +688,53 @@ class _MiniMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kSoft,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBorder),
+        color: const Color(0xFFF7F3EC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE9E1D5)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              color: kMuted,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.8,
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: kWhite,
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(icon, size: 18, color: const Color(0xFF786C5B)),
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: kBlack,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.3,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: const TextStyle(
+                    color: Color(0xFF7C7264),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: kBlack,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                    height: 1,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SpecRow extends StatelessWidget {
-  const _SpecRow({
-    required this.label,
-    required this.value,
-    this.showDivider = true,
-  });
-
-  final String label;
-  final String value;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 112,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: kMuted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value,
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  color: kBlack,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  height: 1.25,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (showDivider) ...[
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: kBorder),
-          const SizedBox(height: 12),
-        ],
-      ],
     );
   }
 }

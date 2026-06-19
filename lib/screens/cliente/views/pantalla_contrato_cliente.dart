@@ -1,7 +1,10 @@
+// ignore_for_file: unused_element
+
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,6 +24,8 @@ const Color kText = Color(0xFF111111);
 const Color kMuted = Color(0xFF666666);
 const Color kBorder = Color(0xFFE6E6E6);
 const Color kSoft = Color(0xFFF2F2F2);
+const String kMobileDocuSignReturnScheme = 'redsky';
+const String kDocuSignReturnPath = '/cliente/contrato/';
 
 class ClientContractScreen extends StatefulWidget {
   const ClientContractScreen({
@@ -47,7 +52,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     exportBackgroundColor: kWhite,
   );
   bool _accepted = false;
-  bool _showContractDetails = false;
   bool _submitting = false;
   bool _externalSigning = false;
   bool _downloading = false;
@@ -82,10 +86,405 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     if (mounted) setState(() {});
   }
 
+  Future<String> _assetToDataUrl(String assetPath) async {
+    final bytes = await rootBundle.load(assetPath);
+    final extension = assetPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+    return 'data:image/$extension;base64,${base64Encode(bytes.buffer.asUint8List())}';
+  }
+
+  String _buildContractSourcePath(String reservationId) {
+    final normalized = reservationId.trim();
+    if (normalized.isEmpty) return '';
+    return '/cliente/contrato/$normalized';
+  }
+
+  String _buildDocuSignReturnUrl({
+    required String reservationId,
+    required String flightRequestId,
+  }) {
+    return Uri(
+      scheme: kMobileDocuSignReturnScheme,
+      host: 'cliente',
+      path: '/contrato',
+      queryParameters: {
+        'reservation_id': reservationId,
+        if (flightRequestId.trim().isNotEmpty)
+          'flight_request_id': flightRequestId.trim(),
+        'docusign_return': '1',
+        'refresh': 'contract_status',
+      },
+    ).toString();
+  }
+
+  String _buildContractPlainText(_ContractModel model) {
+    final sections = [..._definitions(model), ..._clauses(model)];
+    final buffer =
+        StringBuffer()
+          ..writeln('Contrato de prestacion de servicios de aviacion ejecutiva')
+          ..writeln('Reserva: ${model.code}')
+          ..writeln('Ruta: ${model.routeLabel}')
+          ..writeln('Salida: ${model.compactDepartureLabel}')
+          ..writeln('Cliente: ${model.customerName}')
+          ..writeln('Representante: ${model.representativeName}')
+          ..writeln('Aeronave: ${model.aircraftLabel}')
+          ..writeln('Categoria: ${model.categoryLabel}')
+          ..writeln('Servicio: ${model.serviceTier}')
+          ..writeln('Pasajeros: ${model.passengerLabel}')
+          ..writeln('Operador: ${model.operatorLabel}')
+          ..writeln('Costo total: ${model.finalPriceLabel}')
+          ..writeln()
+          ..writeln('Incluye:');
+
+    for (final item in _includesItems) {
+      buffer.writeln('- $item');
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('No incluye:');
+
+    for (final item in _excludesItems) {
+      buffer.writeln('- $item');
+    }
+
+    for (final section in sections) {
+      buffer
+        ..writeln()
+        ..writeln(section.title);
+      for (final paragraph in section.paragraphs) {
+        buffer.writeln(paragraph);
+      }
+      for (final item in section.items) {
+        buffer.writeln('- $item');
+      }
+    }
+
+    return buffer.toString().trim();
+  }
+
+  String _buildContractHtmlDocument({
+    required _ContractModel model,
+    required String logoSrc,
+    required String headerSrc,
+  }) {
+    final summaryRows = '''
+      <tr><th>Reserva</th><td>${_escapeHtml(model.code)}</td><th>Cliente</th><td>${_escapeHtml(model.customerName)}</td><th>Prestador comercial</th><td>SKY Group</td></tr>
+      <tr><th>Operador aéreo</th><td>${_escapeHtml(model.operatorLabel)}</td><th>Ruta</th><td>${_escapeHtml(model.routeLabel)}</td><th>Salida</th><td>${_escapeHtml(model.compactDepartureLabel)}</td></tr>
+      <tr><th>Aeronave</th><td>${_escapeHtml(model.aircraftLabel)}</td><th>Cabina</th><td>${_escapeHtml(model.categoryLabel)}</td><th>Pasajeros</th><td>${_escapeHtml(model.passengerLabel)}</td></tr>
+      <tr><th>Pernocta</th><td>Sin pernocta registrada</td><th>Servicio</th><td>${_escapeHtml(model.serviceTier)}</td><th>Tramos</th><td>${model.legs.length}</td></tr>
+      <tr><th>Costo total</th><td>${_escapeHtml(model.finalPriceLabel)}</td><th colspan="4"></th></tr>
+    ''';
+
+    final itineraryRows =
+        model.legs
+            .map(
+              (leg) => '''
+          <tr>
+            <td>${leg.order}</td>
+            <td>${_escapeHtml(leg.origin)}</td>
+            <td>${_escapeHtml(leg.destination)}</td>
+            <td>${_escapeHtml(_datePart(leg.rawDeparture))}</td>
+            <td>${_escapeHtml(_timePart(leg.rawDeparture))}</td>
+          </tr>
+          ''',
+            )
+            .join();
+    final coverCards =
+        [
+          ('Cliente', model.customerName),
+          ('Ruta', model.routeLabel),
+          ('Salida', model.compactDepartureLabel),
+        ].map((item) {
+          return '''
+        <td>
+          <span>${_escapeHtml(item.$1)}</span>
+          <strong>${_escapeHtml(item.$2)}</strong>
+        </td>
+      ''';
+        }).join();
+    final includeRows =
+        _includesItems.map((item) => '<li>${_escapeHtml(item)}</li>').join();
+    final excludeRows =
+        _excludesItems.map((item) => '<li>${_escapeHtml(item)}</li>').join();
+    final considerationsRows =
+        _considerations(
+          model,
+        ).map((item) => '<li>${_escapeHtml(item)}</li>').join();
+    final definitionsRows =
+        _definitions(model)
+            .expand((section) => [...section.paragraphs, ...section.items])
+            .map((item) => '<li>${_escapeHtml(item)}</li>')
+            .join();
+    final legalRows =
+        [..._definitions(model), ..._clauses(model)].map((section) {
+          final paragraphs =
+              section.paragraphs
+                  .map((item) => '<p>${_escapeHtml(item)}</p>')
+                  .join();
+          final items =
+              section.items
+                  .map((item) => '<li>${_escapeHtml(item)}</li>')
+                  .join();
+          return '<section class="clause-block"><h3>${_escapeHtml(section.title)}</h3>$paragraphs${items.isEmpty ? '' : '<ul>$items</ul>'}</section>';
+        }).join();
+
+    return '''
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:18px;background:#f6f1e7;color:#111;font-family:DejaVu Sans,Arial,sans-serif;font-size:12px;line-height:1.5}
+    .sheet{border:1px solid #ddd4c6;border-radius:18px;overflow:hidden;background:#fff}
+    .brandbar{background:#17212b}
+    .brandbar img{display:block;width:100%;height:auto}
+    .body{padding:18px;background:#fffdf9}
+    .eyebrow{color:#8b6a24;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+    .badge{float:right;padding:5px 10px;border-radius:999px;background:#f7ebcc;color:#8b6a24;font-size:10px;font-weight:700}
+    h1{margin:8px 0 6px;font-size:28px;line-height:1.08}
+    h2{font-size:18px;margin:0 0 10px}
+    h3{font-size:15px;margin:0 0 8px}
+    .route{margin:0 0 10px;font-size:18px;font-weight:700;color:#3c3328}
+    .meta span{display:inline-block;margin:0 14px 6px 0;color:#625d55;font-weight:600}
+    .mini-grid,.summary,.accounts,.signature-summary-table,.signature-card-table,.signature-box-table{width:100%}
+    .mini-grid{border-collapse:separate;border-spacing:8px 8px;margin:10px -8px 0}
+    .mini-grid td{width:33.33%;border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px;vertical-align:top}
+    .mini-grid span{display:block;color:#8c7b63;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    .mini-grid strong{display:block;margin-top:4px;color:#1a1816;font-size:13px;line-height:1.35}
+    .section{margin-top:16px;page-break-inside:avoid}
+    .head-center{text-align:center;margin-bottom:10px}
+    .head-center strong{display:block;font-size:18px;letter-spacing:.03em}
+    .copy p{margin:0 0 8px}
+    .copy ul{margin:0;padding-left:18px}
+    .copy li{margin-bottom:6px}
+    .summary{border-collapse:collapse;margin-top:10px}
+    .summary th,.summary td{border:1px solid #e9e2d4;padding:8px 10px;vertical-align:top;text-align:left}
+    .summary th{background:#f4eee3;color:#625d55;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .summary td{background:#faf8f3;font-weight:600}
+    .two-cols{width:100%;border-collapse:separate;border-spacing:10px 0;margin:10px -10px 0}
+    .two-cols td{width:50%;vertical-align:top}
+    .note-box{border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px}
+    .note-box strong{display:block;margin-bottom:6px}
+    .note-box ul{margin:0;padding-left:18px}
+    .note-box li{margin-bottom:6px}
+    .clause-block{margin-bottom:12px}
+    .accounts{border-collapse:separate;border-spacing:10px 10px;margin:0 -10px}
+    .accounts td{width:33.33%;vertical-align:top}
+    .account-card-print{border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px;min-height:94px}
+    .account-card-print strong{display:block;margin-bottom:6px}
+    .signature-summary-table{border-collapse:collapse;margin:10px 0 12px;border:1px solid #e2d8c9;background:#fbf8f1}
+    .signature-summary-table td{width:33.33%;padding:10px 12px;vertical-align:top;color:#5d5448;border-right:1px solid #e2d8c9}
+    .signature-summary-table td:last-child{border-right:0}
+    .summary-label{display:block;color:#8d7c64;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    .summary-value{display:block;margin-top:4px;color:#1a1816;font-size:13px;font-weight:700;line-height:1.35}
+    .signature-card-table{max-width:620px;margin:0 auto;border-collapse:collapse;border:1px solid #e1d8ca;background:#fcfaf6}
+    .signature-card-body{padding:14px 16px 12px;text-align:center}
+    .role{display:block;color:#8b6a24;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+    .name{display:block;margin-top:8px;font-size:18px;font-weight:700}
+    .meta-line{display:block;margin-top:4px;color:#625d55}
+    .signature-box-wrap{padding:14px 18px 10px}
+    .signature-box-table{border-collapse:collapse;border:1px dashed #d3c6ab;background:#f8f2e6}
+    .signature-box-table td{padding:16px 18px;text-align:center}
+    .kicker{display:block;color:#6f6557;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .title{display:block;margin-top:8px;color:#1a1816;font-size:16px;font-weight:700}
+    .signature-anchor-slot{height:58px;padding-top:8px;text-align:center;vertical-align:middle}
+    .anchor-holder{display:inline-block;color:#f8f2e6;font-size:2px;line-height:2px}
+    .signature-rule{padding:0 18px}
+    .signature-rule div{height:2px;background:#111}
+    .signature-caption-row td{padding:10px 16px 14px;text-align:center;color:#756958;font-size:13px}
+    .contact-bar{margin-top:14px;padding-top:12px;border-top:1px solid #ddd4c6}
+    .contact-row{margin-bottom:8px}
+    .contact-row .label{color:#8d7c64;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    .contact-row .value{color:#1a1816;font-size:14px;font-weight:700}
+    .hidden-logo{display:none}
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="brandbar"><img src="$headerSrc" alt="Header"></div>
+    <div class="body">
+      <div class="badge">CONFIDENCIAL · DOCUMENTO PARA FIRMA</div>
+      <div class="eyebrow">RESERVA ${_escapeHtml(model.code)}</div>
+      <h1>Contrato de prestación de servicios de aviación ejecutiva</h1>
+      <p class="route">${_escapeHtml(model.routeLabel)}</p>
+      <div class="meta">
+        <span>Salida: ${_escapeHtml(model.compactDepartureLabel)}</span>
+        <span>Pasajeros: ${_escapeHtml(model.passengerLabel)}</span>
+        <span>Aeronave: ${_escapeHtml(model.aircraftLabel)}</span>
+        <span>Tramos: ${model.legs.length}</span>
+        <span>Total: ${_escapeHtml(model.finalPriceLabel)}</span>
+      </div>
+
+      <table class="mini-grid">
+        <tr>$coverCards</tr>
+      </table>
+
+      <section class="section">
+        <div class="head-center">
+          <span class="eyebrow">Contrato ${_escapeHtml(model.code)}</span>
+          <strong>Anexo A — Datos comerciales de la reserva</strong>
+        </div>
+      </section>
+
+      <section class="section copy">
+        <p>El presente Contrato se celebra en la fecha <strong>${_escapeHtml(model.compactDepartureLabel.split(' ').first)}</strong>.</p>
+        <p>ENTRE <strong>RED AVIATION COMPANY S.A. DE C.V.</strong>, sociedad constituida conforme a las leyes de los Estados Unidos Mexicanos, con domicilio en Circuito Alfonso G. de Orozco, Manzana 007, C.P. 50225, San Miguel Totoltepec, Toluca de Lerdo, Estado de México, legalmente representada en este acto por José Luis Hernández Ortiz, quien cuenta con facultades suficientes para este acto, en lo sucesivo el <strong>Prestador del Servicio</strong>.</p>
+        <p>Y <strong>${_escapeHtml(model.customerName)}</strong>, persona física o moral según corresponda, con domicilio en <strong>Domicilio por confirmar</strong>, por su propio derecho o representada en este acto por <strong>${_escapeHtml(model.representativeName)}</strong>, quien declara contar con la capacidad jurídica y/o facultades suficientes para obligarse en los términos del presente Contrato, en lo sucesivo el <strong>Cliente</strong>.</p>
+      </section>
+
+      <section class="section copy">
+        <h3>CONSIDERANDO QUE</h3>
+        <ul>$considerationsRows</ul>
+      </section>
+
+      <section class="section">
+        <h3>ANEXO A — RESUMEN COMERCIAL</h3>
+        <table class="summary"><tbody>$summaryRows</tbody></table>
+      </section>
+
+      <section class="section">
+        <strong>Itinerario</strong>
+        <table class="summary" style="margin-top:8px;">
+          <thead>
+            <tr><th>Tramo</th><th>Origen</th><th>Destino</th><th>Fecha</th><th>Hora</th></tr>
+          </thead>
+          <tbody>$itineraryRows</tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <table class="two-cols">
+          <tr>
+            <td><div class="note-box"><strong>Incluye</strong><ul>$includeRows</ul></div></td>
+            <td><div class="note-box"><strong>No incluye, salvo pacto expreso</strong><ul>$excludeRows</ul></div></td>
+          </tr>
+        </table>
+      </section>
+
+      <section class="section copy">
+        <h3>1. DEFINICIONES</h3>
+        <ul>$definitionsRows</ul>
+      </section>
+
+      <section class="section copy">
+        $legalRows
+      </section>
+
+      <section class="section copy">
+        <h3>Condiciones operativas</h3>
+        <ul>${_operationalConditions.map((p) => '<li>${_escapeHtml(p)}</li>').join()}</ul>
+      </section>
+
+      <section class="section">
+        <h3>CUENTAS PARA PAGO</h3>
+        <table class="accounts"><tr>${_bankAccounts.map((account) => '<td><div class="account-card-print"><strong>${_escapeHtml(account.bank)}</strong><div>Cuenta: ${_escapeHtml(account.account)}</div><div>CLABE: ${_escapeHtml(account.clabe)}</div><div>Beneficiario: ${_escapeHtml(account.beneficiary)}</div><div>RFC: ${_escapeHtml(account.rfc)}</div></div></td>').join()}</tr></table>
+      </section>
+
+      <section class="section copy">
+        <p>El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.</p>
+      </section>
+
+      <section class="section copy">
+        <div class="head-center" style="text-align:left;">
+          <span class="eyebrow">Formalización</span>
+          <strong style="font-size:24px;">FIRMAS</strong>
+          <p>Las partes aceptan el presente contrato mediante firma electrónica.</p>
+          <p>La firma de este contrato se realizará de forma digital mediante DocuSign. Al completar la firma, el documento quedará registrado y asociado a esta reserva <strong>${_escapeHtml(model.code)}</strong>.</p>
+        </div>
+        <table class="signature-summary-table">
+          <tr>
+            <td><span class="summary-label">Cliente</span><span class="summary-value">${_escapeHtml(model.customerName)}</span></td>
+            <td><span class="summary-label">Ruta</span><span class="summary-value">${_escapeHtml(model.routeLabel)}</span></td>
+            <td><span class="summary-label">Total</span><span class="summary-value">${_escapeHtml(model.finalPriceLabel)}</span></td>
+          </tr>
+        </table>
+        <table class="signature-card-table">
+          <tr>
+            <td class="signature-card-body">
+              <span class="role">Cliente</span>
+              <span class="name">${_escapeHtml(model.customerName)}</span>
+              <span class="meta-line">Representante: ${_escapeHtml(model.representativeName)}</span>
+              <span class="meta-line">Cargo: Cliente / Representante</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="signature-box-wrap">
+              <table class="signature-box-table">
+                <tr>
+                  <td>
+                    <span class="kicker">Espacio reservado para firma digital</span>
+                    <span class="title">Firma digital del cliente</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="signature-anchor-slot">
+                    <span class="anchor-holder">/sig_cliente/</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td class="signature-rule"><div></div></td>
+          </tr>
+          <tr class="signature-caption-row">
+            <td>Pendiente de firma del cliente</td>
+          </tr>
+        </table>
+        <div class="contact-bar">
+          <div class="contact-row"><span class="label">Contacto comercial</span> <span class="value">sales@redskyg.com</span></div>
+          <div class="contact-row"><span class="label">Sitio web</span> <span class="value">https://redskyg.com/mx</span></div>
+          <div class="contact-row"><span class="label">Teléfonos</span> <span class="value">+52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394</span></div>
+        </div>
+      </section>
+
+      <div class="hidden-logo"><img src="$logoSrc" alt=""></div>
+      <div class="contact-bar">
+        <div class="contact-row"><span class="label">Correo</span> <span class="value">sales@redskyg.com</span></div>
+        <div class="contact-row"><span class="label">Sitio</span> <span class="value">https://redskyg.com/mx</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+''';
+  }
+
+  String _escapeHtml(String value) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+  }
+
+  String _datePart(String value) {
+    final parts = value.trim().split(RegExp(r'\s+'));
+    return parts.isEmpty ? value : parts.first;
+  }
+
+  String _timePart(String value) {
+    final parts = value.trim().split(RegExp(r'\s+'));
+    if (parts.length < 2) return '';
+    return parts.sublist(1).join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final request = widget.request;
-    final contractModel = _ContractModel.fromRequest(request);
+    final auth = context.watch<AuthProvider>();
+    final contractModel = _ContractModel.fromRequest(
+      request,
+      fallbackCustomerName: auth.user?.companyName,
+      fallbackRepresentativeName: auth.user?.name,
+    );
+    final legalSections = [
+      ..._definitions(contractModel),
+      ..._clauses(contractModel),
+    ];
 
     return ClientExperienceShell(
       title: 'Contrato',
@@ -98,78 +497,11 @@ class _ClientContractScreenState extends State<ClientContractScreen>
             child: ListView(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
               children: [
-                _DocumentCover(model: contractModel),
-                const SizedBox(height: 12),
-                _ContractProgressRail(
-                  isAccepted: _accepted,
-                  canSignLocally: _canContinue,
-                  waitingForDocuSign: _waitingForExternalSignatureReturn,
-                ),
-                const SizedBox(height: 16),
-                _ContractHeroCard(model: contractModel),
-                const SizedBox(height: 16),
-                _DocumentSection(
-                  icon: Icons.assignment_rounded,
-                  title: 'Resumen de la reserva',
-                  subtitle: 'Datos comerciales principales antes de firmar.',
-                  child: _ContractSummaryGrid(model: contractModel),
-                ),
-                const SizedBox(height: 16),
-                _DocumentSection(
-                  icon: Icons.route_rounded,
-                  title: 'Itinerario operativo',
-                  subtitle: 'Tramos que forman parte del Anexo A.',
-                  child: Column(
-                    children:
-                        contractModel.legs
-                            .map(
-                              (leg) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _LegRow(leg: leg),
-                              ),
-                            )
-                            .toList(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _DocumentSection(
-                  icon: Icons.account_balance_rounded,
-                  title: 'Datos bancarios',
-                  subtitle: 'Cuentas del prestador del servicio.',
-                  child: Column(
-                    children:
-                        _bankAccounts
-                            .map(
-                              (account) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _BankCard(account: account),
-                              ),
-                            )
-                            .toList(),
-                  ),
+                _ClientContractReplicaDocument(
+                  model: contractModel,
+                  legalSections: legalSections,
                 ),
                 const SizedBox(height: 18),
-                _ContractLegalSection(
-                  isExpanded: _showContractDetails,
-                  onToggle:
-                      () => setState(() {
-                        _showContractDetails = !_showContractDetails;
-                      }),
-                  children: [
-                    ..._definitions(contractModel).map(
-                      (section) => Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: _ContractSectionCard(section: section),
-                      ),
-                    ),
-                    ..._clauses(contractModel).map(
-                      (section) => Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: _ContractSectionCard(section: section),
-                      ),
-                    ),
-                  ],
-                ),
                 _SignaturePanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -185,7 +517,8 @@ class _ClientContractScreenState extends State<ClientContractScreen>
                         'La firma electronica tiene la misma validez que una firma autografa para efectos del flujo comercial y operativo dentro de Red Aviation.',
                         style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
                       ),
-                      const SizedBox(height: 14),
+
+                      const SizedBox(height: 12),
                       _DocuSignFlowCard(
                         isLoading: _externalSigning,
                         isWaitingForReturn: _waitingForExternalSignatureReturn,
@@ -195,17 +528,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
                                 : _openExternalSignature,
                       ),
                       const SizedBox(height: 14),
-                      _LocalSignatureCard(
-                        customerName: contractModel.customerName,
-                        signatureController: _signatureController,
-                        drawnSignatureController: _drawnSignatureController,
-                        isSubmitting: _submitting,
-                        onClear: () {
-                          _drawnSignatureController.clear();
-                          setState(() {});
-                        },
-                      ),
-                      const SizedBox(height: 12),
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
@@ -266,12 +588,10 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     }
 
     final request = widget.request;
-    final contractModel = _ContractModel.fromRequest(request);
-    final reservationId =
-        request['id']?.toString() ??
-        request['flight_request_id']?.toString() ??
-        request['reservation_id']?.toString() ??
-        '';
+    final auth = context.read<AuthProvider>();
+    final contractModel = _contractModelForRequest(request, auth: auth);
+    final reservationId = _reservationId(request);
+    final flightRequestId = _flightRequestId(request);
 
     if (reservationId.isEmpty) {
       setState(() {
@@ -296,7 +616,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
           'data:image/png;base64,${base64Encode(signatureBytes)}';
       final payload = {
         'reservation_id': reservationId,
-        'flight_request_id': reservationId,
+        'flight_request_id': flightRequestId,
         'booking_id': reservationId,
         'status': 'pending_payment',
         'workflow_status': 'pago pendiente',
@@ -350,8 +670,16 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     }
 
     final request = widget.request;
-    final contractModel = _ContractModel.fromRequest(request);
+    final auth = context.read<AuthProvider>();
+    final contractModel = _contractModelForRequest(request, auth: auth);
     final reservationId = _reservationId(request);
+    final flightRequestId = _flightRequestId(request);
+    final customerEmail = _firstMeaningfulText([
+      request['client_email'],
+      request['customer_email'],
+      request['email'],
+      auth.user?.email,
+    ], fallback: '');
 
     if (reservationId.isEmpty) {
       setState(() {
@@ -367,11 +695,38 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     });
 
     try {
-      final contractSnapshot = contractModel.toSnapshot();
+      final contractSnapshot = contractModel.toSnapshot(
+        reservationId: reservationId,
+        flightRequestId: flightRequestId,
+        clientSignatureAnchor: '/sig_cliente/',
+      );
+      final returnUrl = _buildDocuSignReturnUrl(
+        reservationId: reservationId,
+        flightRequestId: flightRequestId,
+      );
       final payload = await ApiClient.instance.sendClientContractForSignature(
         reservationId: reservationId,
         contractPayload: {
+          'booking_id': reservationId,
+          'reservation_id': reservationId,
+          'flight_request_id': flightRequestId,
+          'client_name': contractModel.customerName,
+          'client_email': customerEmail,
+          'route': contractModel.routeLabel,
+          'flight_date': contractModel.compactDepartureLabel,
+          'aircraft': contractModel.aircraftLabel,
+          'total': contractModel.finalPriceLabel,
+          'currency': 'USD',
+          'return_url': returnUrl,
+          'callback_url': returnUrl,
+          'return_path': kDocuSignReturnPath,
           'contract_snapshot': contractSnapshot,
+          'source_contract_path': _buildContractSourcePath(reservationId),
+          'document_source': 'backend_pdf_contract',
+          'docusign': {
+            'provider': 'docusign',
+            'client_signature_anchor': '/sig_cliente/',
+          },
           'return_context': 'mobile',
         },
       );
@@ -380,6 +735,11 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       if (signingUrl.isEmpty) {
         throw const ApiException(
           'El backend no devolvio un enlace de firma externo.',
+        );
+      }
+      if (!_isDocuSignRecipientSigningUrl(signingUrl)) {
+        throw const ApiException(
+          'El backend devolvio una URL de DocuSign invalida para firma del cliente.',
         );
       }
 
@@ -447,36 +807,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         return;
       }
 
-      final contractModel = _ContractModel.fromRequest(widget.request);
-      final payload = {
-        'reservation_id': reservationId,
-        'flight_request_id':
-            widget.request['flight_request_id']?.toString() ?? reservationId,
-        'booking_id': reservationId,
-        'status': 'pending_payment',
-        'workflow_status': 'pago pendiente',
-        'contract_status': 'signed',
-        'payment_status': 'pending',
-        'signed_at': DateTime.now().toIso8601String(),
-        'docusign_status': _firstText(statusPayload, const [
-          'docusign_status',
-          'envelope_status',
-          'status',
-        ]),
-        'signed_pdf_url': _firstText(statusPayload, const [
-          'signed_pdf_url',
-          'signedPdfUrl',
-        ]),
-        'contract_snapshot': contractModel.toSnapshot(),
-      };
-
-      await _markContractReadyForPayment(
-        reservationId: reservationId,
-        payload: payload,
-      );
-
       if (!mounted) return;
       setState(() {
+        _externalContractId = '';
         _waitingForExternalSignatureReturn = false;
         _submitMessage = 'Contrato firmado. Preparando pago...';
       });
@@ -556,6 +889,26 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         '';
   }
 
+  String _flightRequestId(Map<String, dynamic> request) {
+    return request['flight_request_id']?.toString() ??
+        request['request_id']?.toString() ??
+        request['id']?.toString() ??
+        request['reservation_id']?.toString() ??
+        request['booking_id']?.toString() ??
+        '';
+  }
+
+  _ContractModel _contractModelForRequest(
+    Map<String, dynamic> request, {
+    required AuthProvider auth,
+  }) {
+    return _ContractModel.fromRequest(
+      request,
+      fallbackCustomerName: auth.user?.companyName,
+      fallbackRepresentativeName: auth.user?.name,
+    );
+  }
+
   String _extractSigningUrl(Map<String, dynamic> payload) {
     final data =
         payload['data'] is Map
@@ -585,6 +938,31 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     }
 
     return '';
+  }
+
+  bool _isDocuSignRecipientSigningUrl(String url) {
+    final normalized = url.toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    const blockedTokens = [
+      'tagger',
+      'prepare',
+      'sender',
+      'correct',
+      'edit',
+      'documents/details',
+      'addfields',
+      'console',
+    ];
+
+    if (!normalized.contains('docusign')) return false;
+
+    for (final token in blockedTokens) {
+      if (normalized.contains(token)) return false;
+    }
+
+    return normalized.startsWith('http://') ||
+        normalized.startsWith('https://');
   }
 
   String _extractContractId(Map<String, dynamic> payload) {
@@ -804,6 +1182,814 @@ class _DocumentCover extends StatelessWidget {
               height: 1.35,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientContractReplicaDocument extends StatelessWidget {
+  const _ClientContractReplicaDocument({
+    required this.model,
+    required this.legalSections,
+  });
+
+  final _ContractModel model;
+  final List<_ContractSection> legalSections;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaryRows = [
+      ('RESERVA', model.code, 'CLIENTE', model.customerName),
+      ('OPERADOR', model.operatorLabel, 'RUTA', model.routeLabel),
+      ('SALIDA', model.compactDepartureLabel, 'AERONAVE', model.aircraftLabel),
+      ('CABINA', model.categoryLabel, 'PASAJEROS', model.passengerLabel),
+      ('SERVICIO', model.serviceTier, 'COSTO TOTAL', model.finalPriceLabel),
+      ('DEPOSITO', model.depositLabel, 'SALDO', model.balanceLabel),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF7),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE3D7C3)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            color: const Color(0xFF17212B),
+            child: Center(
+              child: Image.asset(
+                'assets/logo.png',
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Reserva ${model.code}',
+                        style: const TextStyle(
+                          color: Color(0xFF8B6A24),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4E6B9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'CONFIDENCIAL · DOCUMENTO PARA FIRMA',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF9A7A2A),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Contrato de prestación de servicios de aviación ejecutiva',
+                  style: TextStyle(
+                    color: kBlack,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  model.routeLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF3A352E),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: [
+                    _ReplicaMetaText(
+                      'Fecha de salida: ${model.compactDepartureLabel}',
+                    ),
+                    _ReplicaMetaText('Pasajeros: ${model.passengerLabel}'),
+                    _ReplicaMetaText('Aeronave: ${model.aircraftLabel}'),
+                    _ReplicaMetaText('Tramos: ${model.legs.length}'),
+                    _ReplicaMetaText('Total: ${model.finalPriceLabel}'),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                const _ReplicaSectionTitle('ANEXO A — RESUMEN COMERCIAL'),
+                const SizedBox(height: 12),
+                ...summaryRows.map(
+                  (row) => _ReplicaSummaryRow(
+                    leftLabel: row.$1,
+                    leftValue: row.$2,
+                    rightLabel: row.$3,
+                    rightValue: row.$4,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                const _ReplicaSectionTitle('Itinerario'),
+                const SizedBox(height: 12),
+                _ReplicaItineraryTable(legs: model.legs),
+                const SizedBox(height: 22),
+                const _ReplicaSectionTitle('Desglose comercial'),
+                const SizedBox(height: 12),
+                _ReplicaBreakdownTable(model: model),
+                const SizedBox(height: 14),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final vertical = constraints.maxWidth < 560;
+                    final cards = [
+                      _ReplicaBulletCard(
+                        title: 'Incluye',
+                        items: _includesItems,
+                      ),
+                      _ReplicaBulletCard(
+                        title: 'No incluye, salvo pacto expreso',
+                        items: _excludesItems,
+                      ),
+                    ];
+
+                    if (vertical) {
+                      return Column(
+                        children: [
+                          cards[0],
+                          const SizedBox(height: 12),
+                          cards[1],
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: cards[0]),
+                        const SizedBox(width: 12),
+                        Expanded(child: cards[1]),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                const _ReplicaSectionTitle('Contrato'),
+                const SizedBox(height: 10),
+                ..._contractPreviewParagraphs(model).map(
+                  (paragraph) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      paragraph,
+                      style: const TextStyle(
+                        color: Color(0xFF4E473D),
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const _ReplicaSectionTitle('Condiciones operativas'),
+                const SizedBox(height: 10),
+                ..._operationalConditions.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '• $item',
+                      style: const TextStyle(
+                        color: Color(0xFF4E473D),
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const _ReplicaSectionTitle('Clausulas'),
+                const SizedBox(height: 12),
+                ...legalSections.map(
+                  (section) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _ReplicaLegalCard(section: section),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const _ReplicaSectionTitle('Cuentas para pago'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children:
+                      _bankAccounts
+                          .map(
+                            (account) => SizedBox(
+                              width:
+                                  MediaQuery.sizeOf(context).width > 520
+                                      ? 240
+                                      : double.infinity,
+                              child: _ReplicaBankCard(account: account),
+                            ),
+                          )
+                          .toList(),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.',
+                  style: TextStyle(
+                    color: Color(0xFF4E473D),
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const _ReplicaSectionTitle('Firmas'),
+                const SizedBox(height: 12),
+                _ReplicaSignatureBox(
+                  title: 'Prestador del Servicio',
+                  lineOne: 'RED AVIATION COMPANY S.A. DE C.V.',
+                  lineTwo: 'José Luis Hernández Ortiz',
+                ),
+                const SizedBox(height: 10),
+                _ReplicaSignatureBox(
+                  title: 'Cliente',
+                  lineOne: model.customerName,
+                  lineTwo: model.representativeName,
+                ),
+                const SizedBox(height: 18),
+                const Divider(color: Color(0xFF1C2430), thickness: 2),
+                const SizedBox(height: 10),
+                const Text(
+                  'Teléfonos: +52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394',
+                  style: TextStyle(
+                    color: Color(0xFF6F6557),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Correo: sales@redskyg.com · Sitio: https://redskyg.com/mx',
+                  style: TextStyle(
+                    color: Color(0xFF6F6557),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplicaMetaText extends StatelessWidget {
+  const _ReplicaMetaText(this.value);
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      value,
+      style: const TextStyle(
+        color: Color(0xFF6B645A),
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _ReplicaSectionTitle extends StatelessWidget {
+  const _ReplicaSectionTitle(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Color(0xFF2A241D),
+        fontSize: 15,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0.2,
+      ),
+    );
+  }
+}
+
+class _ReplicaLegalCard extends StatelessWidget {
+  const _ReplicaLegalCard({required this.section});
+
+  final _ContractSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3D7C3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            section.title,
+            style: const TextStyle(
+              color: Color(0xFF2A241D),
+              fontSize: 15.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (section.paragraphs.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...section.paragraphs.map(
+              (paragraph) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  paragraph,
+                  style: const TextStyle(
+                    color: Color(0xFF4E473D),
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (section.items.isNotEmpty) ...[
+            if (section.paragraphs.isNotEmpty) const SizedBox(height: 2),
+            ...section.items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '• $item',
+                  style: const TextStyle(
+                    color: Color(0xFF4E473D),
+                    height: 1.42,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplicaSummaryRow extends StatelessWidget {
+  const _ReplicaSummaryRow({
+    required this.leftLabel,
+    required this.leftValue,
+    required this.rightLabel,
+    required this.rightValue,
+  });
+
+  final String leftLabel;
+  final String leftValue;
+  final String rightLabel;
+  final String rightValue;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 430;
+
+        Widget pair(String label, String value) {
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _ReplicaTableCell(
+                  label: label,
+                  value: label,
+                  isLabel: true,
+                  compact: isCompact,
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: _ReplicaTableCell(
+                  label: value,
+                  value: value,
+                  compact: isCompact,
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (isCompact) {
+          return Column(
+            children: [
+              pair(leftLabel, leftValue),
+              pair(rightLabel, rightValue),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: _ReplicaTableCell(
+                label: leftLabel,
+                value: leftLabel,
+                isLabel: true,
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: _ReplicaTableCell(label: leftValue, value: leftValue),
+            ),
+            Expanded(
+              flex: 2,
+              child: _ReplicaTableCell(
+                label: rightLabel,
+                value: rightLabel,
+                isLabel: true,
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: _ReplicaTableCell(label: rightValue, value: rightValue),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ReplicaTableCell extends StatelessWidget {
+  const _ReplicaTableCell({
+    required this.label,
+    required this.value,
+    this.isLabel = false,
+    this.compact = false,
+  });
+
+  final String label;
+  final String value;
+  final bool isLabel;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(minHeight: compact ? 48 : 56),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 8 : 10,
+      ),
+      decoration: BoxDecoration(
+        color: isLabel ? const Color(0xFFF5EFE2) : kWhite,
+        border: Border.all(color: const Color(0xFFE5DAC8)),
+      ),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        isLabel ? label : value,
+        softWrap: true,
+        style: TextStyle(
+          color: isLabel ? const Color(0xFF746A5A) : const Color(0xFF2A241D),
+          fontSize: compact ? (isLabel ? 10.5 : 12.5) : (isLabel ? 11.5 : 13.5),
+          fontWeight: FontWeight.w800,
+          height: compact ? 1.2 : 1.28,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplicaItineraryTable extends StatelessWidget {
+  const _ReplicaItineraryTable({required this.legs});
+
+  final List<_ContractLeg> legs;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 430;
+
+        if (isCompact) {
+          return Column(
+            children:
+                legs
+                    .map(
+                      (leg) => Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: kWhite,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE5DAC8)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'TRAMO ${leg.order}',
+                              style: const TextStyle(
+                                color: Color(0xFF7D6F5B),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.7,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${leg.origin} → ${leg.destination}',
+                              style: const TextStyle(
+                                color: Color(0xFF2A241D),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              leg.rawDeparture,
+                              style: const TextStyle(
+                                color: Color(0xFF5A5247),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+          );
+        }
+
+        return Column(
+          children: [
+            const Row(
+              children: [
+                Expanded(child: _ReplicaHeadCell('TRAMO')),
+                Expanded(child: _ReplicaHeadCell('ORIGEN')),
+                Expanded(child: _ReplicaHeadCell('DESTINO')),
+                Expanded(child: _ReplicaHeadCell('SALIDA')),
+              ],
+            ),
+            ...legs.map(
+              (leg) => Row(
+                children: [
+                  Expanded(child: _ReplicaBodyCell('${leg.order}')),
+                  Expanded(child: _ReplicaBodyCell(leg.origin)),
+                  Expanded(child: _ReplicaBodyCell(leg.destination)),
+                  Expanded(child: _ReplicaBodyCell(leg.rawDeparture)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ReplicaHeadCell extends StatelessWidget {
+  const _ReplicaHeadCell(this.value);
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5EFE2),
+        border: Border.all(color: const Color(0xFFE5DAC8)),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Color(0xFF746A5A),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplicaBodyCell extends StatelessWidget {
+  const _ReplicaBodyCell(this.value);
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: kWhite,
+        border: Border.all(color: const Color(0xFFE5DAC8)),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Color(0xFF2A241D),
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplicaBreakdownTable extends StatelessWidget {
+  const _ReplicaBreakdownTable({required this.model});
+
+  final _ContractModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [('COSTO TOTAL DEL SERVICIO', model.finalPriceLabel)];
+
+    return Column(
+      children:
+          rows
+              .map(
+                (row) => Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _ReplicaTableCell(
+                        label: row.$1,
+                        value: row.$1,
+                        isLabel: true,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 5,
+                      child: _ReplicaTableCell(label: row.$2, value: row.$2),
+                    ),
+                  ],
+                ),
+              )
+              .toList(),
+    );
+  }
+}
+
+class _ReplicaBulletCard extends StatelessWidget {
+  const _ReplicaBulletCard({required this.title, required this.items});
+
+  final String title;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3D7C3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF2A241D),
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '• $item',
+                style: const TextStyle(
+                  color: Color(0xFF4E473D),
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplicaBankCard extends StatelessWidget {
+  const _ReplicaBankCard({required this.account});
+
+  final _BankAccount account;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3D7C3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            account.bank,
+            style: const TextStyle(
+              color: Color(0xFF2A241D),
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Cuenta: ${account.account}'),
+          Text('CLABE: ${account.clabe}'),
+          Text('Beneficiario: ${account.beneficiary}'),
+          Text('RFC: ${account.rfc}'),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplicaSignatureBox extends StatelessWidget {
+  const _ReplicaSignatureBox({
+    required this.title,
+    required this.lineOne,
+    required this.lineTwo,
+  });
+
+  final String title;
+  final String lineOne;
+  final String lineTwo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3D7C3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF2A241D),
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(lineOne, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(lineTwo, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 28),
+          const Divider(color: Color(0xFF6F6557), thickness: 1),
         ],
       ),
     );
@@ -1221,110 +2407,6 @@ class _LocalSignatureCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE8DDCB)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3E8D3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.gesture_rounded,
-                  color: Color(0xFF8B6A24),
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Firma local',
-                      style: TextStyle(
-                        color: kBlack,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Alternativa directa dentro de la app.',
-                      style: TextStyle(
-                        color: Color(0xFF6F6557),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: signatureController,
-            decoration: InputDecoration(
-              labelText: 'Nombre completo para firma electronica',
-              hintText: customerName,
-              filled: true,
-              fillColor: const Color(0xFFFAF8F3),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE1D4BD)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE1D4BD)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: kBlack, width: 1.2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 190,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEFCF8),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD9D0BF)),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Signature(
-                controller: drawnSignatureController,
-                backgroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Dibuja tu firma dentro del recuadro.',
-                  style: TextStyle(
-                    color: Color(0xFF625D55),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: isSubmitting ? null : onClear,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Limpiar'),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1478,7 +2560,6 @@ class _ContractSummaryGrid extends StatelessWidget {
       _SummaryItem('Pasajeros', model.passengerLabel, Icons.groups_rounded),
       _SummaryItem('Operador', model.operatorLabel, Icons.verified_rounded),
       _SummaryItem('Total', model.finalPriceLabel, Icons.payments_rounded),
-      _SummaryItem('Deposito', model.depositLabel, Icons.receipt_long_rounded),
     ];
 
     return LayoutBuilder(
@@ -1497,6 +2578,189 @@ class _ContractSummaryGrid extends StatelessWidget {
           itemBuilder: (context, index) => _SummaryTile(item: items[index]),
         );
       },
+    );
+  }
+}
+
+class _ContractHistorySection extends StatelessWidget {
+  const _ContractHistorySection({required this.request});
+
+  final Map<String, dynamic> request;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = _ContractHistoryModel.fromRequest(request);
+    final colors = _historyToneColors(model.tone);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.$1,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: colors.$3),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: kWhite.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(model.icon, color: colors.$2, size: 19),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      model.statusLabel,
+                      style: TextStyle(
+                        color: colors.$2,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                model.summary,
+                style: const TextStyle(
+                  color: Color(0xFF3B3428),
+                  height: 1.35,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        ...model.entries.asMap().entries.map((entry) {
+          final isLast = entry.key == model.entries.length - 1;
+          return _HistoryEntryTile(entry: entry.value, isLast: isLast);
+        }),
+      ],
+    );
+  }
+}
+
+class _HistoryEntryTile extends StatelessWidget {
+  const _HistoryEntryTile({required this.entry, required this.isLast});
+
+  final _HistoryEntry entry;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = switch (entry.state) {
+      _HistoryEntryState.done => (
+        const Color(0xFFE5F7EA),
+        const Color(0xFF14673A),
+        const Color(0xFFCEEED9),
+      ),
+      _HistoryEntryState.active => (
+        const Color(0xFFFFF3DE),
+        const Color(0xFF9A6500),
+        const Color(0xFFEBD8B1),
+      ),
+      _HistoryEntryState.todo => (
+        const Color(0xFFF5F1EA),
+        const Color(0xFF8A8174),
+        const Color(0xFFE3DBCF),
+      ),
+    };
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: colors.$1,
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: colors.$3),
+              ),
+              child: Icon(
+                entry.state == _HistoryEntryState.done
+                    ? Icons.check_rounded
+                    : entry.icon,
+                color: colors.$2,
+                size: 17,
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 46,
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: const Color(0xFFE7DDCD),
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9F6F0),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE7DDCD)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          entry.title,
+                          style: const TextStyle(
+                            color: kBlack,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        entry.timeLabel,
+                        style: const TextStyle(
+                          color: Color(0xFF8C7B63),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    entry.subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF625D55),
+                      height: 1.35,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1564,6 +2828,435 @@ class _SummaryItem {
   final String label;
   final String value;
   final IconData icon;
+}
+
+enum _HistoryTone { info, pending, confirmed, completed, cancelled }
+
+enum _HistoryEntryState { done, active, todo }
+
+class _HistoryEntry {
+  const _HistoryEntry({
+    required this.title,
+    required this.subtitle,
+    required this.timeLabel,
+    required this.icon,
+    required this.state,
+  });
+
+  final String title;
+  final String subtitle;
+  final String timeLabel;
+  final IconData icon;
+  final _HistoryEntryState state;
+}
+
+class _ContractHistoryModel {
+  const _ContractHistoryModel({
+    required this.statusLabel,
+    required this.summary,
+    required this.icon,
+    required this.tone,
+    required this.entries,
+  });
+
+  final String statusLabel;
+  final String summary;
+  final IconData icon;
+  final _HistoryTone tone;
+  final List<_HistoryEntry> entries;
+
+  static _ContractHistoryModel fromRequest(Map<String, dynamic> request) {
+    final workflow = _normalizeHistoryStatus(
+      request['workflow_status'] ??
+          request['status'] ??
+          request['flight_status'] ??
+          request['reservation_status'],
+    );
+    final contractStatus = _normalizeHistoryStatus(
+      request['contract_status'] ??
+          request['signature_status'] ??
+          request['docusign_status'],
+    );
+    final paymentStatus = _normalizeHistoryStatus(
+      request['payment_status'] ??
+          request['checkout_status'] ??
+          request['payment'],
+    );
+    final providerStatus = _normalizeHistoryStatus(
+      request['provider_status'] ??
+          request['match_status'] ??
+          request['supplier_status'],
+    );
+    final trackingStatus = _normalizeHistoryStatus(
+      request['tracking_status'] ??
+          request['tracking'] ??
+          request['monitoring_status'],
+    );
+
+    final providerConfirmed =
+        _containsHistoryAny(providerStatus, const [
+          'accepted',
+          'approved',
+          'confirmed',
+        ]) ||
+        _containsHistoryAny(workflow, const [
+          'provider accepted',
+          'provider_accepted',
+          'accepted',
+          'approved',
+          'matched',
+          'confirmado',
+        ]) ||
+        _historyHasValue(request['provider_id']) ||
+        _historyHasValue(request['assigned_aircraft_id']) ||
+        _historyHasValue(request['assigned_provider_id']);
+
+    final contractReady =
+        _containsHistoryAny(contractStatus, const [
+          'signed',
+          'completed',
+          'approved',
+        ]) ||
+        _historyAsBool(
+          request['contract_signed'] ??
+              request['contract_completed'] ??
+              request['contract_ready'],
+        ) ||
+        _historyHasValue(request['contract_url']) ||
+        _historyHasValue(request['contract_document_url']) ||
+        _historyHasValue(request['signed_pdf_url']);
+
+    final paymentDone =
+        _containsHistoryAny(paymentStatus, const [
+          'paid',
+          'completed',
+          'confirmed',
+          'succeeded',
+        ]) ||
+        _historyAsBool(request['payment_completed'] ?? request['is_paid']) ||
+        _historyHasValue(request['payment_reference']);
+
+    final paymentPending =
+        paymentDone ||
+        _containsHistoryAny(paymentStatus, const [
+          'pending',
+          'processing',
+          'awaiting',
+        ]);
+
+    final flightReady =
+        _containsHistoryAny(workflow, const [
+          'flight confirmed',
+          'scheduled',
+          'boarding',
+          'departed',
+          'airborne',
+        ]) ||
+        _containsHistoryAny(
+          _normalizeHistoryStatus(request['flight_status']),
+          const ['confirmed', 'scheduled', 'boarding', 'departed', 'airborne'],
+        );
+
+    final trackingReady =
+        _containsHistoryAny(trackingStatus, const [
+          'active',
+          'live',
+          'enabled',
+        ]) ||
+        _containsHistoryAny(workflow, const ['tracking']) ||
+        _historyHasValue(request['tracking_url']) ||
+        _historyHasValue(request['live_tracking_url']);
+
+    final isCompleted = workflow.contains('completed');
+    final isCancelled =
+        workflow.contains('cancel') || workflow.contains('rejected');
+
+    final createdAt = _historyFormatDate(
+      _historyFirstText(request, const ['created_at', 'requested_at']),
+      fallback: 'Registrada',
+    );
+    final providerAt = _historyFormatDate(
+      _historyFirstText(request, const ['provider_confirmed_at', 'matched_at']),
+      fallback: providerConfirmed ? 'Proveedor asignado' : 'Pendiente',
+    );
+    final contractAt = _historyFormatDate(
+      _historyFirstText(request, const ['signed_at', 'contract_signed_at']),
+      fallback:
+          contractReady
+              ? 'Contrato listo'
+              : _containsHistoryAny(contractStatus, const ['pending', 'sent'])
+              ? 'En espera'
+              : 'Pendiente',
+    );
+    final paymentAt = _historyFormatDate(
+      _historyFirstText(request, const ['paid_at', 'payment_confirmed_at']),
+      fallback:
+          paymentDone
+              ? 'Pago validado'
+              : paymentPending
+              ? 'En proceso'
+              : 'Pendiente',
+    );
+    final operationAt = _historyFormatDate(
+      _historyFirstText(request, const [
+        'completed_at',
+        'departure_datetime',
+        'start_datetime',
+        'date',
+      ]),
+      fallback:
+          isCompleted
+              ? 'Cerrada'
+              : trackingReady
+              ? 'Tracking activo'
+              : flightReady
+              ? 'Operación lista'
+              : isCancelled
+              ? 'Cancelada'
+              : 'Pendiente',
+    );
+
+    final entries = <_HistoryEntry>[
+      _HistoryEntry(
+        title: 'Reserva registrada',
+        subtitle:
+            'La solicitud fue creada y ya forma parte del flujo comercial.',
+        timeLabel: createdAt,
+        icon: Icons.event_available_rounded,
+        state: _HistoryEntryState.done,
+      ),
+      _HistoryEntry(
+        title: 'Proveedor y aeronave',
+        subtitle:
+            providerConfirmed
+                ? 'La reserva ya tiene proveedor o aeronave asignada para continuar.'
+                : 'Estamos validando disponibilidad y asignación operativa.',
+        timeLabel: providerAt,
+        icon: Icons.verified_user_rounded,
+        state:
+            providerConfirmed
+                ? _HistoryEntryState.done
+                : _HistoryEntryState.active,
+      ),
+      _HistoryEntry(
+        title: 'Contrato',
+        subtitle:
+            contractReady
+                ? 'El contrato fue firmado o quedó habilitado para avanzar a pago.'
+                : _containsHistoryAny(contractStatus, const ['pending', 'sent'])
+                ? 'El contrato fue generado y sigue pendiente de firma.'
+                : 'Aún no se habilita la etapa de firma.',
+        timeLabel: contractAt,
+        icon: Icons.description_rounded,
+        state:
+            contractReady
+                ? _HistoryEntryState.done
+                : providerConfirmed
+                ? _HistoryEntryState.active
+                : _HistoryEntryState.todo,
+      ),
+      _HistoryEntry(
+        title: 'Pago',
+        subtitle:
+            paymentDone
+                ? 'El pago ya fue confirmado correctamente.'
+                : paymentPending
+                ? 'El pago está listo o en proceso de confirmación.'
+                : 'El pago se habilita después de la firma del contrato.',
+        timeLabel: paymentAt,
+        icon: Icons.payments_rounded,
+        state:
+            paymentDone
+                ? _HistoryEntryState.done
+                : paymentPending
+                ? _HistoryEntryState.active
+                : contractReady
+                ? _HistoryEntryState.active
+                : _HistoryEntryState.todo,
+      ),
+      _HistoryEntry(
+        title:
+            isCancelled
+                ? 'Reserva cerrada'
+                : isCompleted
+                ? 'Vuelo completado'
+                : trackingReady
+                ? 'Seguimiento activo'
+                : 'Operación del vuelo',
+        subtitle:
+            isCancelled
+                ? 'La reserva se cerró y ya no tiene seguimiento operativo activo.'
+                : isCompleted
+                ? 'La operación terminó y queda disponible dentro del historial.'
+                : trackingReady
+                ? 'El seguimiento en tiempo real ya está disponible para esta reserva.'
+                : flightReady
+                ? 'El vuelo está confirmado y avanzando a liberación operativa.'
+                : 'Esta etapa se habilita al confirmar pago y salida.',
+        timeLabel: operationAt,
+        icon:
+            isCancelled
+                ? Icons.block_rounded
+                : isCompleted
+                ? Icons.task_alt_rounded
+                : trackingReady
+                ? Icons.radar_rounded
+                : Icons.flight_takeoff_rounded,
+        state:
+            isCancelled || isCompleted
+                ? _HistoryEntryState.done
+                : trackingReady || flightReady
+                ? _HistoryEntryState.active
+                : _HistoryEntryState.todo,
+      ),
+    ];
+
+    if (isCancelled) {
+      return _ContractHistoryModel(
+        statusLabel: 'Reserva cerrada',
+        summary:
+            'La operación fue cancelada o rechazada y el seguimiento quedó concluido.',
+        icon: Icons.block_rounded,
+        tone: _HistoryTone.cancelled,
+        entries: entries,
+      );
+    }
+
+    if (isCompleted) {
+      return _ContractHistoryModel(
+        statusLabel: 'Vuelo completado',
+        summary: 'El flujo comercial y operativo terminó correctamente.',
+        icon: Icons.task_alt_rounded,
+        tone: _HistoryTone.completed,
+        entries: entries,
+      );
+    }
+
+    if (trackingReady || flightReady) {
+      return _ContractHistoryModel(
+        statusLabel: trackingReady ? 'Seguimiento activo' : 'Vuelo confirmado',
+        summary:
+            trackingReady
+                ? 'La reserva ya está en fase de monitoreo operativo.'
+                : 'Todo está listo para la operación del vuelo.',
+        icon:
+            trackingReady ? Icons.radar_rounded : Icons.flight_takeoff_rounded,
+        tone: _HistoryTone.confirmed,
+        entries: entries,
+      );
+    }
+
+    if (paymentDone || paymentPending || contractReady) {
+      return _ContractHistoryModel(
+        statusLabel:
+            paymentDone
+                ? 'Pago confirmado'
+                : paymentPending
+                ? 'Pago en curso'
+                : 'Contrato firmado',
+        summary:
+            paymentDone
+                ? 'La reserva ya terminó la etapa comercial y pasa a operación.'
+                : paymentPending
+                ? 'La reserva está en checkout o esperando validación de pago.'
+                : 'El contrato ya está listo y el siguiente paso es el pago.',
+        icon:
+            paymentDone
+                ? Icons.payments_rounded
+                : paymentPending
+                ? Icons.credit_card_rounded
+                : Icons.description_rounded,
+        tone: paymentDone ? _HistoryTone.confirmed : _HistoryTone.pending,
+        entries: entries,
+      );
+    }
+
+    if (providerConfirmed) {
+      return _ContractHistoryModel(
+        statusLabel: 'Proveedor confirmado',
+        summary:
+            'La reserva avanzó a validación contractual para continuar con la firma.',
+        icon: Icons.verified_rounded,
+        tone: _HistoryTone.confirmed,
+        entries: entries,
+      );
+    }
+
+    return _ContractHistoryModel(
+      statusLabel: 'Reserva activa',
+      summary:
+          'La reserva sigue en validación comercial antes de habilitar contrato y pago.',
+      icon: Icons.schedule_rounded,
+      tone: _HistoryTone.info,
+      entries: entries,
+    );
+  }
+}
+
+(Color, Color, Color) _historyToneColors(_HistoryTone tone) {
+  return switch (tone) {
+    _HistoryTone.info => (
+      const Color(0xFFEEF4FF),
+      const Color(0xFF355DA8),
+      const Color(0xFFD7E2F5),
+    ),
+    _HistoryTone.pending => (
+      const Color(0xFFFFF2D8),
+      const Color(0xFF9A6500),
+      const Color(0xFFEBD8B1),
+    ),
+    _HistoryTone.confirmed => (
+      const Color(0xFFE5F7EA),
+      const Color(0xFF14673A),
+      const Color(0xFFCEEED9),
+    ),
+    _HistoryTone.completed => (
+      const Color(0xFFDDF7E6),
+      const Color(0xFF0D6A34),
+      const Color(0xFFC9EACE),
+    ),
+    _HistoryTone.cancelled => (
+      const Color(0xFFFFE6E2),
+      const Color(0xFFA13622),
+      const Color(0xFFF0C8C1),
+    ),
+  };
+}
+
+String _normalizeHistoryStatus(dynamic value) =>
+    value?.toString().trim().toLowerCase() ?? '';
+
+bool _containsHistoryAny(String value, List<String> needles) {
+  for (final needle in needles) {
+    if (value.contains(needle.toLowerCase())) return true;
+  }
+  return false;
+}
+
+bool _historyHasValue(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isNotEmpty && text.toLowerCase() != 'null';
+}
+
+bool _historyAsBool(dynamic value) {
+  if (value is bool) return value;
+  final text = value?.toString().trim().toLowerCase() ?? '';
+  return text == 'true' || text == '1' || text == 'yes';
+}
+
+String _historyFirstText(Map<String, dynamic> request, List<String> keys) {
+  for (final key in keys) {
+    final value = request[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+  }
+  return '';
+}
+
+String _historyFormatDate(String raw, {required String fallback}) {
+  if (raw.trim().isEmpty) return fallback;
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  return DateFormat("d MMM y · h:mm a", 'es').format(parsed);
 }
 
 class _ContractLegalSection extends StatelessWidget {
@@ -1686,12 +3379,6 @@ class _ContractHeroCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _DarkMetric(
-                  label: 'Depósito',
-                  value: model.depositLabel,
-                ),
-              ),
             ],
           ),
         ],
@@ -1922,6 +3609,8 @@ class _ContractModel {
     required this.operatorLabel,
     required this.finalPriceLabel,
     required this.depositLabel,
+    required this.balanceLabel,
+    required this.compactDepartureLabel,
     required this.legs,
   });
 
@@ -1937,22 +3626,41 @@ class _ContractModel {
   final String operatorLabel;
   final String finalPriceLabel;
   final String depositLabel;
+  final String balanceLabel;
+  final String compactDepartureLabel;
   final List<_ContractLeg> legs;
 
-  static _ContractModel fromRequest(Map<String, dynamic> request) {
+  String get depositDetailLabel => depositLabel;
+
+  static _ContractModel fromRequest(
+    Map<String, dynamic> request, {
+    String? fallbackCustomerName,
+    String? fallbackRepresentativeName,
+  }) {
     final routeLabel = _routeLabel(request);
+    final customerName = _firstMeaningfulText([
+      request['client_name'],
+      request['customer_name'],
+      request['company_name'],
+      request['client_company_name'],
+      request['name'],
+      fallbackCustomerName,
+      fallbackRepresentativeName,
+    ], fallback: 'Cliente por confirmar');
+    final representativeName = _firstMeaningfulText([
+      request['client_representative'],
+      request['representative_name'],
+      request['customer_representative'],
+      request['customer_name'],
+      request['name'],
+      fallbackRepresentativeName,
+      fallbackCustomerName,
+    ], fallback: 'Representante por confirmar');
+
     return _ContractModel(
       code: _reservationCode(request),
-      customerName:
-          request['client_name']?.toString() ??
-          request['customer_name']?.toString() ??
-          request['name']?.toString() ??
-          'Cliente Red Aviation',
-      representativeName:
-          request['client_representative']?.toString() ??
-          request['customer_name']?.toString() ??
-          request['name']?.toString() ??
-          'Representante por confirmar',
+      customerName: customerName,
+      representativeName: representativeName,
       routeLabel: routeLabel,
       departureLabel: _formatDateTime(
         request['date']?.toString() ??
@@ -1980,24 +3688,61 @@ class _ContractModel {
           'Operador confirmado por SKY Group',
       finalPriceLabel: _priceLabel(request),
       depositLabel: _depositLabel(request),
+      balanceLabel: _balanceLabel(request),
+      compactDepartureLabel: _compactDateTime(
+        request['date']?.toString() ??
+            request['departure_datetime']?.toString() ??
+            request['created_at']?.toString() ??
+            '',
+      ),
       legs: _legs(request),
     );
   }
 
-  Map<String, dynamic> toSnapshot() {
+  Map<String, dynamic> toSnapshot({
+    String reservationId = '',
+    String flightRequestId = '',
+    String clientSignatureAnchor = '/sig_cliente/',
+  }) {
     return {
+      'contract_version': 'client_contract_v1',
+      'contract_provider': 'docusign',
+      'client_signature_anchor': clientSignatureAnchor,
+      'reservation_id': reservationId,
+      'flight_request_id': flightRequestId,
+      'reservation_code': code,
       'code': code,
       'customer_name': customerName,
+      'customer_representative': representativeName,
       'representative_name': representativeName,
+      'customer_address': 'Domicilio por confirmar',
       'route': routeLabel,
+      'departure_date': compactDepartureLabel,
       'departure': departureLabel,
       'aircraft': aircraftLabel,
+      'aircraft_category': categoryLabel,
       'category': categoryLabel,
       'service_tier': serviceTier,
       'passengers': passengerLabel,
       'operator': operatorLabel,
+      'contract_date': compactDepartureLabel.split(' ').first,
+      'overnight': 'Sin pernocta registrada',
       'final_price': finalPriceLabel,
+      'deposit_amount': depositLabel,
       'deposit': depositLabel,
+      'balance': balanceLabel,
+      'itinerary_segments':
+          legs
+              .map(
+                (leg) => {
+                  'order': leg.order,
+                  'origin': leg.origin,
+                  'destination': leg.destination,
+                  'departure': leg.rawDeparture,
+                  'departure_label': leg.departure,
+                },
+              )
+              .toList(),
       'legs':
           legs
               .map(
@@ -2014,10 +3759,15 @@ class _ContractModel {
 
   static String _reservationCode(Map<String, dynamic> request) {
     final raw =
+        request['reservation_code']?.toString() ??
         request['id']?.toString() ??
         request['flight_request_id']?.toString() ??
         '';
     if (raw.isEmpty) return 'SKY-PENDIENTE';
+    if (raw.toUpperCase().contains('PV-') ||
+        raw.toUpperCase().contains('SKY-')) {
+      return raw.toUpperCase();
+    }
     return 'SKY-${raw.padLeft(4, '0')}';
   }
 
@@ -2027,7 +3777,7 @@ class _ContractModel {
         request['base_airport']?.toString() ??
         'Origen';
     final destination = request['destination']?.toString() ?? 'Destino';
-    return '$origin -> $destination';
+    return '$origin → $destination';
   }
 
   static String _priceLabel(Map<String, dynamic> request) {
@@ -2047,7 +3797,20 @@ class _ContractModel {
         request['deposit']?.toString() ??
         '';
     if (raw.isNotEmpty) return raw;
+    final total = _parseMoney(_priceLabel(request));
+    if (total > 0) {
+      return _formatUsd(total * 0.5);
+    }
     return 'Por confirmar en Anexo A';
+  }
+
+  static String _balanceLabel(Map<String, dynamic> request) {
+    final total = _parseMoney(_priceLabel(request));
+    final deposit = _parseMoney(_depositLabel(request));
+    if (total > 0) {
+      return _formatUsd((total - deposit).clamp(0, double.infinity));
+    }
+    return 'Saldo por definir';
   }
 
   static List<_ContractLeg> _legs(Map<String, dynamic> request) {
@@ -2066,6 +3829,7 @@ class _ContractModel {
             'Origen',
         destination: request['destination']?.toString() ?? 'Destino',
         departure: _formatDateTime(baseDate),
+        rawDeparture: _rawDateTime(baseDate),
       ),
     );
 
@@ -2084,6 +3848,7 @@ class _ContractModel {
             origin: item['origin']?.toString() ?? 'Origen',
             destination: item['destination']?.toString() ?? 'Destino',
             departure: _formatDateTime(date),
+            rawDeparture: _rawDateTime(date),
           ),
         );
       }
@@ -2098,6 +3863,41 @@ class _ContractModel {
     if (parsed == null) return value;
     return DateFormat("d 'de' MMMM 'de' y · h:mm a", 'es').format(parsed);
   }
+
+  static String _compactDateTime(String value) {
+    if (value.trim().isEmpty) return 'Fecha por confirmar';
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+    return DateFormat('dd/MM/yyyy HH:mm').format(parsed);
+  }
+
+  static String _rawDateTime(String value) {
+    if (value.trim().isEmpty) return 'Fecha por confirmar';
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+    return DateFormat('dd/MM/yyyy HH:mm').format(parsed);
+  }
+}
+
+String _firstMeaningfulText(
+  List<dynamic> candidates, {
+  required String fallback,
+}) {
+  for (final candidate in candidates) {
+    final value = candidate?.toString().trim() ?? '';
+    if (value.isEmpty) continue;
+
+    final normalized = value.toLowerCase();
+    if (normalized == 'null' ||
+        normalized == 'cliente red aviation' ||
+        normalized == 'red aviation') {
+      continue;
+    }
+
+    return value;
+  }
+
+  return fallback;
 }
 
 class _ContractLeg {
@@ -2106,12 +3906,14 @@ class _ContractLeg {
     required this.origin,
     required this.destination,
     required this.departure,
+    required this.rawDeparture,
   });
 
   final int order;
   final String origin;
   final String destination;
   final String departure;
+  final String rawDeparture;
 }
 
 class _BankAccount {
@@ -2165,6 +3967,71 @@ const List<_BankAccount> _bankAccounts = [
     rfc: 'TEB231030NU9',
   ),
 ];
+
+const List<String> _includesItems = [
+  'Aeronave y tripulación asignada para la ruta contratada.',
+  'Coordinación operativa y seguimiento comercial de SKY Group / Red Aviation.',
+  'Combustible y operación contemplados en la cotización validada.',
+  'Uso de aeronave conforme al itinerario confirmado en este Anexo A.',
+];
+
+const List<String> _excludesItems = [
+  'Catering especial no contemplado expresamente.',
+  'Transporte terrestre, hospedaje o concierge fuera del alcance contratado.',
+  'Cambios de itinerario solicitados por el Cliente después de la firma.',
+  'Tiempos de espera extraordinarios, permisos especiales o costos por reprogramación.',
+];
+
+const List<String> _operationalConditions = [
+  'Pago requerido antes de confirmación final.',
+  'Operación sujeta a condiciones de seguridad y slot.',
+  'Cualquier cambio relevante queda registrado en historial operativo.',
+];
+
+List<String> _contractPreviewParagraphs(_ContractModel model) => [
+  'El presente Contrato se celebra en fecha ${model.compactDepartureLabel.split(' ').first} entre RED AVIATION COMPANY S.A. DE C.V. y ${model.customerName}, representado por ${model.representativeName}, con domicilio en Domicilio por confirmar.',
+  'El servicio contratado corresponde a la ruta ${model.routeLabel}, con salida programada para ${model.compactDepartureLabel}, aeronave ${model.aircraftLabel}, categoría ${model.categoryLabel} y ${model.passengerLabel}.',
+  'El costo total del servicio asciende a ${model.finalPriceLabel}. ',
+];
+
+List<String> _considerations(_ContractModel model) => [
+  'Que RED AVIATION COMPANY S.A. DE C.V. cuenta con la capacidad comercial y operativa para coordinar servicios de aviación ejecutiva privada.',
+  'Que el Cliente ha solicitado la prestación del servicio correspondiente a la ruta ${model.routeLabel}, conforme a la cotización validada.',
+  'Que ambas partes reconocen y aceptan la información comercial, operativa y económica contenida en el presente Contrato y su Anexo A.',
+];
+
+double _parseMoney(String value) {
+  final normalized = value.replaceAll(RegExp(r'[^0-9,.-]'), '');
+  if (normalized.isEmpty) return 0;
+
+  if (normalized.contains(',') && normalized.contains('.')) {
+    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+      return double.tryParse(
+            normalized.replaceAll('.', '').replaceAll(',', '.'),
+          ) ??
+          0;
+    }
+    return double.tryParse(normalized.replaceAll(',', '')) ?? 0;
+  }
+
+  if (RegExp(r'^\d{1,3}(,\d{3})+$').hasMatch(normalized)) {
+    return double.tryParse(normalized.replaceAll(',', '')) ?? 0;
+  }
+
+  if (RegExp(r'^\d{1,3}(\.\d{3})+$').hasMatch(normalized)) {
+    return double.tryParse(normalized.replaceAll('.', '')) ?? 0;
+  }
+
+  return double.tryParse(normalized.replaceAll(',', '.')) ?? 0;
+}
+
+String _formatUsd(num value) {
+  return NumberFormat.currency(
+    locale: 'en_US',
+    symbol: r'$',
+    decimalDigits: 2,
+  ).format(value);
+}
 
 List<_ContractSection> _definitions(_ContractModel model) => [
   _ContractSection(

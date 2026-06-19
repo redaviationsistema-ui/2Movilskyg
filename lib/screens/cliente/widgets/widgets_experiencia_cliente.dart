@@ -14,6 +14,7 @@ class ClientExperienceShell extends StatelessWidget {
     required this.child,
     this.trailing,
     this.showBackButton = true,
+    this.includeTopSafeArea = true,
   });
 
   final String title;
@@ -21,13 +22,14 @@ class ClientExperienceShell extends StatelessWidget {
   final Widget child;
   final Widget? trailing;
   final bool showBackButton;
+  final bool includeTopSafeArea;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SafeArea(
-        top: false,
+        top: includeTopSafeArea,
         child: Column(
           children: [
             Container(

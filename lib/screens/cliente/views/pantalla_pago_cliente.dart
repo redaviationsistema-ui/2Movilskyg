@@ -15,12 +15,14 @@ class ClientPaymentScreen extends StatefulWidget {
     super.key,
     required this.request,
     required this.onPaymentComplete,
+    this.onBack,
     this.commercialAccessMode = false,
     this.showBackButton = true,
   });
 
   final Map<String, dynamic> request;
   final VoidCallback onPaymentComplete;
+  final VoidCallback? onBack;
   final bool commercialAccessMode;
   final bool showBackButton;
 
@@ -84,6 +86,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (mounted) setState(() {});
   }
 
+  void _handleBack() {
+    if (widget.onBack != null) {
+      widget.onBack!();
+      return;
+    }
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final amount =
@@ -95,317 +105,363 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Activa el acceso comercial para reservar, firmar contrato y pagar vuelos.'
             : _routeLabel(widget.request);
 
-    return ClientExperienceShell(
-      title: 'Pago',
-      subtitle:
-          widget.commercialAccessMode
-              ? 'Activa tu acceso comercial dentro del mismo flujo premium.'
-              : 'Checkout seguro dentro del mismo flujo del portal cliente.',
-      showBackButton: widget.showBackButton,
-      trailing: const StatusBadge(
-        label: 'Checkout seguro',
-        color: Color(0xFF2D6A4F),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 24),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  if (widget.showBackButton || widget.onBack != null)
+                    _PaymentRoundActionButton(
+                      icon: Icons.arrow_back_rounded,
+                      onTap: _handleBack,
+                    ),
+                  if (widget.showBackButton || widget.onBack != null)
+                    const SizedBox(width: 10),
+                  const Spacer(),
+                  const StatusBadge(
+                    label: 'Checkout seguro',
+                    color: Color(0xFF2D6A4F),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: const Text(
+                'Configura tu pago',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF111111),
+                  height: 0.98,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                route,
+                style: const TextStyle(
+                  color: Color(0xFF625D55),
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF08121C),
+                      Color(0xFF12304A),
+                      Color(0xFF1C5170),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1F0E2238),
+                      blurRadius: 28,
+                      offset: Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Checkout cifrado',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.commercialAccessMode
+                          ? 'Revisa el correo de contacto y abre Stripe Checkout para activar o renovar tu acceso comercial.'
+                          : 'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        height: 1.35,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: const [
+                        _TrustChip(label: 'Pago protegido'),
+                        _TrustChip(label: 'Concierge financiero'),
+                        _TrustChip(label: 'Acceso premium'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassInfoCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Detalles del pago',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (!widget.commercialAccessMode)
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _PaymentMethodCard(
+                            label: 'Tarjeta corporativa',
+                            note: 'Checkout seguro integrado',
+                            icon: Icons.credit_card_rounded,
+                            selected: _paymentMethod == 'card',
+                            onTap:
+                                () => setState(() => _paymentMethod = 'card'),
+                          ),
+                          _PaymentMethodCard(
+                            label: 'Transferencia / wire',
+                            note: 'Validacion manual del comprobante',
+                            icon: Icons.account_balance_rounded,
+                            selected: _paymentMethod == 'wire',
+                            onTap:
+                                () => setState(() => _paymentMethod = 'wire'),
+                          ),
+                        ],
+                      )
+                    else
+                      const _PaymentMethodCard(
+                        label: 'Stripe Checkout',
+                        note: 'Activa o renueva tu acceso comercial',
+                        icon: Icons.workspace_premium_rounded,
+                        selected: true,
+                        onTap: null,
+                      ),
+                    const SizedBox(height: 18),
+                    _buildPaymentFields(),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassInfoCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Resumen de reserva',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _PaymentRow(label: 'Ruta', value: route),
+                    _PaymentRow(
+                      label: 'Pasajeros',
+                      value: (widget.request['passengers'] ?? '1').toString(),
+                    ),
+                    _PaymentRow(
+                      label: 'Metodo seleccionado',
+                      value:
+                          widget.commercialAccessMode
+                              ? 'Stripe Checkout'
+                              : _paymentMethod == 'card'
+                              ? 'Tarjeta corporativa'
+                              : 'Transferencia / wire',
+                    ),
+                    _PaymentRow(label: 'Importe a pagar hoy', value: amount),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: FilledButton(
+                onPressed: _canSubmit && !_submitting ? _submitPayment : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  backgroundColor: const Color(0xFF10253A),
+                ),
+                child:
+                    _submitting
+                        ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                        : Text(
+                          widget.commercialAccessMode
+                              ? 'Activar acceso comercial'
+                              : _paymentMethod == 'card'
+                              ? 'Pagar ahora'
+                              : 'Generar referencia bancaria',
+                        ),
+              ),
+            ),
+          ],
+        ),
       ),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
-        children: [
-          const Text(
-            'Configura tu pago',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF111111),
-              height: 0.98,
-            ),
+    );
+  }
+
+  Widget _buildPaymentFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _InputField(
+          controller: _emailController,
+          label: 'Correo electronico',
+          hint: 'cliente@empresa.com',
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 14),
+        if (!widget.commercialAccessMode && _paymentMethod == 'card') ...[
+          _InputField(
+            controller: _cardController,
+            label: 'Numero de tarjeta',
+            hint: '1234 5678 9012 3456',
+            keyboardType: TextInputType.number,
+            onChanged: (value) {
+              final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+              final grouped =
+                  digits
+                      .replaceAllMapped(
+                        RegExp(r'.{1,4}'),
+                        (match) => '${match.group(0)} ',
+                      )
+                      .trimRight();
+              if (grouped != value) {
+                _cardController.value = TextEditingValue(
+                  text: grouped,
+                  selection: TextSelection.collapsed(offset: grouped.length),
+                );
+              }
+            },
           ),
-          const SizedBox(height: 6),
-          Text(
-            route,
-            style: const TextStyle(
-              color: Color(0xFF625D55),
-              fontSize: 14,
-              height: 1.35,
-            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _InputField(
+                  controller: _expiryController,
+                  label: 'Expiracion',
+                  hint: 'MM/AA',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _InputField(
+                  controller: _cvcController,
+                  label: 'CVC',
+                  hint: '123',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+        ] else if (!widget.commercialAccessMode) ...[
+          _InputField(
+            controller: _wireReferenceController,
+            label: 'Referencia bancaria',
+            hint: 'Folio o comprobante',
           ),
           const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.all(18),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF08121C),
-                  Color(0xFF12304A),
-                  Color(0xFF1C5170),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              color: const Color(0xFFFFFEFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFEADFCE)),
+            ),
+            child: const Text(
+              'Generamos referencia bancaria y el pago queda pendiente hasta validar comprobante. Este flujo permite operar sin tarjeta.',
+              style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
+            ),
+          ),
+          if (_wireInstructions != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4FAF6),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFD9EFE1)),
               ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1F0E2238),
-                  blurRadius: 28,
-                  offset: Offset(0, 16),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Checkout cifrado',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Referencia generada',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F5F3C),
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const SizedBox(height: 12),
-                Text(
-                  widget.commercialAccessMode
-                      ? 'Revisa el correo de contacto y abre Stripe Checkout para activar o renovar tu acceso comercial.'
-                      : 'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    height: 1.35,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: const [
-                    _TrustChip(label: 'Pago protegido'),
-                    _TrustChip(label: 'Concierge financiero'),
-                    _TrustChip(label: 'Acceso premium'),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(_wireInstructionText(_wireInstructions!)),
+                ],
+              ),
             ),
-          ),
+          ],
+        ],
+        if (_inlineMessage.isNotEmpty) ...[
           const SizedBox(height: 14),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Detalles del pago',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 12),
-                if (!widget.commercialAccessMode)
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _PaymentMethodCard(
-                        label: 'Tarjeta corporativa',
-                        note: 'Checkout seguro integrado',
-                        icon: Icons.credit_card_rounded,
-                        selected: _paymentMethod == 'card',
-                        onTap: () => setState(() => _paymentMethod = 'card'),
-                      ),
-                      _PaymentMethodCard(
-                        label: 'Transferencia / wire',
-                        note: 'Validacion manual del comprobante',
-                        icon: Icons.account_balance_rounded,
-                        selected: _paymentMethod == 'wire',
-                        onTap: () => setState(() => _paymentMethod = 'wire'),
-                      ),
-                    ],
-                  )
-                else
-                  const _PaymentMethodCard(
-                    label: 'Stripe Checkout',
-                    note: 'Activa o renueva tu acceso comercial',
-                    icon: Icons.workspace_premium_rounded,
-                    selected: true,
-                    onTap: null,
-                  ),
-                const SizedBox(height: 18),
-                _InputField(
-                  controller: _emailController,
-                  label: 'Correo electronico',
-                  hint: 'cliente@empresa.com',
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 14),
-                if (!widget.commercialAccessMode &&
-                    _paymentMethod == 'card') ...[
-                  _InputField(
-                    controller: _cardController,
-                    label: 'Numero de tarjeta',
-                    hint: '1234 5678 9012 3456',
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                      final grouped =
-                          digits
-                              .replaceAllMapped(
-                                RegExp(r'.{1,4}'),
-                                (match) => '${match.group(0)} ',
-                              )
-                              .trimRight();
-                      if (grouped != value) {
-                        _cardController.value = TextEditingValue(
-                          text: grouped,
-                          selection: TextSelection.collapsed(
-                            offset: grouped.length,
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _InputField(
-                          controller: _expiryController,
-                          label: 'Expiracion',
-                          hint: 'MM/AA',
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _InputField(
-                          controller: _cvcController,
-                          label: 'CVC',
-                          hint: '123',
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else if (!widget.commercialAccessMode) ...[
-                  _InputField(
-                    controller: _wireReferenceController,
-                    label: 'Referencia bancaria',
-                    hint: 'Folio o comprobante',
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFEFC),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFEADFCE)),
-                    ),
-                    child: const Text(
-                      'Generamos referencia bancaria y el pago queda pendiente hasta validar comprobante. Este flujo permite operar sin tarjeta.',
-                      style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
-                    ),
-                  ),
-                  if (_wireInstructions != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF4FAF6),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFD9EFE1)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Referencia generada',
-                            style: TextStyle(
-                              color: Color(0xFF1F5F3C),
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(_wireInstructionText(_wireInstructions!)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-                if (_inlineMessage.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _inlineMessage,
-                    style: const TextStyle(
-                      color: Color(0xFF625D55),
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ],
+          Text(
+            _inlineMessage,
+            style: const TextStyle(
+              color: Color(0xFF625D55),
+              fontWeight: FontWeight.w700,
+              height: 1.35,
             ),
-          ),
-          const SizedBox(height: 18),
-          GlassInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Resumen de reserva',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 12),
-                _PaymentRow(label: 'Ruta', value: route),
-                _PaymentRow(
-                  label: 'Pasajeros',
-                  value: (widget.request['passengers'] ?? '1').toString(),
-                ),
-                _PaymentRow(
-                  label: 'Metodo seleccionado',
-                  value:
-                      widget.commercialAccessMode
-                          ? 'Stripe Checkout'
-                          : _paymentMethod == 'card'
-                          ? 'Tarjeta corporativa'
-                          : 'Transferencia / wire',
-                ),
-                _PaymentRow(label: 'Importe a pagar hoy', value: amount),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          FilledButton(
-            onPressed: _canSubmit && !_submitting ? _submitPayment : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(56),
-              backgroundColor: const Color(0xFF10253A),
-            ),
-            child:
-                _submitting
-                    ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                    : Text(
-                      widget.commercialAccessMode
-                          ? 'Activar acceso comercial'
-                          : _paymentMethod == 'card'
-                          ? 'Pagar ahora'
-                          : 'Generar referencia bancaria',
-                    ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -917,6 +973,31 @@ class _InputField extends StatelessWidget {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+}
+
+class _PaymentRoundActionButton extends StatelessWidget {
+  const _PaymentRoundActionButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFE4EAF0)),
+        ),
+        child: Icon(icon, color: const Color(0xFF10253A), size: 20),
       ),
     );
   }

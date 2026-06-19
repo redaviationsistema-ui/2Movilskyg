@@ -44,21 +44,11 @@ class ApiClient {
   static const String _defaultBaseUrl =
       'https://uber-aviones.onrender.com/api/v1/';
 
-  static const String _configuredBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: '',
-  );
-  static const String _configuredFallbackBaseUrl = String.fromEnvironment(
-    'FALLBACK_API_BASE_URL',
-    defaultValue: '',
-  );
-
   String? _token;
-  int _activeBackendIndex = 0;
 
   bool get hasToken => _token != null && _token!.isNotEmpty;
 
-  String get baseUrl => _backendCandidates[_activeBackendIndex];
+  String get baseUrl => _defaultBaseUrl;
 
   String get backendOrigin {
     final uri = Uri.tryParse(baseUrl);
@@ -68,25 +58,6 @@ class ApiClient {
       host: uri.host,
       port: uri.hasPort ? uri.port : null,
     ).toString();
-  }
-
-  List<String> get _backendCandidates {
-    final candidates = <String>[];
-
-    if (_configuredBaseUrl.isNotEmpty) {
-      candidates.add(_normalizeBaseUrl(_configuredBaseUrl));
-    } else {
-      candidates.add(_defaultBaseUrl);
-    }
-
-    if (_configuredFallbackBaseUrl.isNotEmpty) {
-      final fallback = _normalizeBaseUrl(_configuredFallbackBaseUrl);
-      if (!candidates.contains(fallback)) {
-        candidates.add(fallback);
-      }
-    }
-
-    return candidates;
   }
 
   void setToken(String? token) {
@@ -488,10 +459,10 @@ class ApiClient {
   }) {
     return postFirstAvailable(
       [
-        '/cliente/reservas/$reservationId/contrato/enviar',
         '/cliente/reservas/$reservationId/contrato/docusign',
-        '/client/reservations/$reservationId/contract/send',
         '/client/reservations/$reservationId/contract/docusign',
+        '/cliente/reservas/$reservationId/contrato/enviar',
+        '/client/reservations/$reservationId/contract/send',
         '/contracts/send',
       ],
       authenticated: true,
@@ -967,53 +938,33 @@ class ApiClient {
     bool authenticated = false,
     Map<String, String>? query,
   }) async {
-    Object? lastError;
+    final response = await _send(
+      baseUrl,
+      path,
+      method: 'GET',
+      authenticated: authenticated,
+      query: query,
+    );
 
-    for (var index = 0; index < _backendCandidates.length; index++) {
-      final candidate = _backendCandidates[index];
-
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      Map<String, dynamic> decoded = const {};
       try {
-        final response = await _send(
-          candidate,
-          path,
-          method: 'GET',
-          authenticated: authenticated,
-          query: query,
-        );
-        _activeBackendIndex = index;
-
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          Map<String, dynamic> decoded = const {};
-          try {
-            decoded =
-                response.body.isEmpty
-                    ? const {}
-                    : jsonDecode(response.body) as Map<String, dynamic>;
-          } catch (_) {
-            decoded = const {};
-          }
-          throw ApiException(
-            decoded['message']?.toString() ??
-                'Error HTTP ${response.statusCode} en $candidate',
-            statusCode: response.statusCode,
-            payload: decoded,
-          );
-        }
-
-        return response.bodyBytes;
-      } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
-        lastError = error;
-      } catch (error) {
-        lastError = error;
+        decoded =
+            response.body.isEmpty
+                ? const {}
+                : jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        decoded = const {};
       }
+      throw ApiException(
+        decoded['message']?.toString() ??
+            'Error HTTP ${response.statusCode} en $baseUrl',
+        statusCode: response.statusCode,
+        payload: decoded,
+      );
     }
 
-    if (lastError is ApiException) throw lastError;
-    throw ApiException(
-      'No fue posible descargar desde el backend configurado.',
-      cause: lastError,
-    );
+    return response.bodyBytes;
   }
 
   Future<Map<String, dynamic>> get(
@@ -1055,41 +1006,21 @@ class ApiClient {
     Map<String, File> files = const {},
     bool authenticated = false,
   }) async {
-    Object? lastError;
+    final uri = _uri(baseUrl, path, null);
+    final request =
+        http.MultipartRequest('POST', uri)
+          ..headers.addAll(_multipartHeaders(authenticated: authenticated))
+          ..fields.addAll(fields);
 
-    for (var index = 0; index < _backendCandidates.length; index++) {
-      final candidate = _backendCandidates[index];
-
-      try {
-        final uri = _uri(candidate, path, null);
-        final request =
-            http.MultipartRequest('POST', uri)
-              ..headers.addAll(_multipartHeaders(authenticated: authenticated))
-              ..fields.addAll(fields);
-
-        for (final entry in files.entries) {
-          request.files.add(
-            await http.MultipartFile.fromPath(entry.key, entry.value.path),
-          );
-        }
-
-        final streamedResponse = await request.send();
-        final response = await http.Response.fromStream(streamedResponse);
-        _activeBackendIndex = index;
-        return _decode(response, candidate);
-      } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
-        lastError = error;
-      } catch (error) {
-        lastError = error;
-      }
+    for (final entry in files.entries) {
+      request.files.add(
+        await http.MultipartFile.fromPath(entry.key, entry.value.path),
+      );
     }
 
-    if (lastError is ApiException) throw lastError;
-    throw ApiException(
-      'No fue posible conectar con el backend configurado.',
-      cause: lastError,
-    );
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _decode(response, baseUrl);
   }
 
   Future<Map<String, dynamic>> _request(
@@ -1099,35 +1030,15 @@ class ApiClient {
     Map<String, dynamic>? body,
     Map<String, String>? query,
   }) async {
-    Object? lastError;
-
-    for (var index = 0; index < _backendCandidates.length; index++) {
-      final candidate = _backendCandidates[index];
-
-      try {
-        final response = await _send(
-          candidate,
-          path,
-          method: method,
-          authenticated: authenticated,
-          body: body,
-          query: query,
-        );
-        _activeBackendIndex = index;
-        return _decode(response, candidate);
-      } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
-        lastError = error;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (lastError is ApiException) throw lastError;
-    throw ApiException(
-      'No fue posible conectar con el backend configurado.',
-      cause: lastError,
+    final response = await _send(
+      baseUrl,
+      path,
+      method: method,
+      authenticated: authenticated,
+      body: body,
+      query: query,
     );
+    return _decode(response, baseUrl);
   }
 
   Future<http.Response> _send(

@@ -31,11 +31,11 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final search = _query.trim().toUpperCase();
     final filtered =
         widget.airports
             .where((airport) {
-              final search = _query.trim().toUpperCase();
-              if (search.isEmpty) return true;
+              if (search.isEmpty) return false;
               return airport.city.toUpperCase().contains(search) ||
                   airport.name.toUpperCase().contains(search) ||
                   (airport.iata ?? '').toUpperCase().contains(search);
@@ -99,33 +99,54 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
                 ),
               ),
               Expanded(
-                child: ListView.separated(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemBuilder: (context, index) {
-                    final airport = filtered[index];
-                    final code =
-                        airport.iata?.isNotEmpty == true ? airport.iata! : '--';
+                child:
+                    search.isEmpty
+                        ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'Escribe para buscar un aeropuerto.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF6C6258),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        )
+                        : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemBuilder: (context, index) {
+                            final airport = filtered[index];
+                            final code =
+                                airport.iata?.isNotEmpty == true
+                                    ? airport.iata!
+                                    : '--';
 
-                    return ConciergeCard(
-                      padding: const EdgeInsets.all(12),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          airport.city,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                            return ConciergeCard(
+                              padding: const EdgeInsets.all(12),
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  airport.city,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${airport.name}\n$code',
+                                  style: const TextStyle(height: 1.35),
+                                ),
+                                onTap: () => Navigator.pop(context, airport),
+                              ),
+                            );
+                          },
+                          separatorBuilder:
+                              (_, __) => const SizedBox(height: 8),
+                          itemCount: filtered.length,
                         ),
-                        subtitle: Text(
-                          '${airport.name}\n$code',
-                          style: const TextStyle(height: 1.35),
-                        ),
-                        onTap: () => Navigator.pop(context, airport),
-                      ),
-                    );
-                  },
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemCount: filtered.length,
-                ),
               ),
             ],
           ),
