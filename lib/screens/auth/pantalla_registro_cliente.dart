@@ -102,6 +102,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     final optimized = await _optimizeImageForProcessing(selected);
     if (!mounted) return;
 
+    debugPrint(
+      '[INE] Archivo seleccionado: original=${selected.path} optimized=${optimized.path}',
+    );
+
     setState(() {
       _ineFront = optimized;
       _documentScanMessage = 'Escaneando datos de la INE en el dispositivo...';
@@ -110,7 +114,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   Future<void> _recoverLostPickerData() async {
-    final response = await _picker.retrieveLostData();
+    if (!Platform.isAndroid) return;
+
+    LostDataResponse response;
+    try {
+      response = await _picker.retrieveLostData();
+    } on UnimplementedError {
+      return;
+    }
+
     if (!mounted || response.isEmpty) return;
 
     final recoveredFile = response.file;
@@ -188,34 +200,43 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     if (images.isEmpty) return;
 
     setState(() => _scanningDocument = true);
+    debugPrint(
+      '[INE] Iniciando escaneo local. files=${images.map((file) => file.path).join(', ')}',
+    );
     try {
       final result = await RegistrationOcrService.scanIne(images);
+      debugPrint(
+        '[INE] Resultado local: method=${result.method} rawTextLength=${result.rawText.length} fields=${result.fields}',
+      );
       _applyLocalIneResult(result);
-
-      if (!_hasUsefulIneData()) {
-        await _scanIneInBackend(images);
-      }
     } catch (error) {
+      debugPrint('[INE] Error en escaneo local: $error');
+    }
+
+    if (!_hasUsefulIneData()) {
+      debugPrint('[INE] Escaneo local sin datos suficientes. Intentando backend.');
       try {
         await _scanIneInBackend(images);
       } on ApiException catch (apiError) {
         if (!mounted) return;
         setState(() {
-          _ineScanStatus = 'pending_manual_review';
+          _applyIneFallback(images.first);
           _documentScanMessage =
-              '${apiError.message} Usa una foto clara o completa los datos manualmente.';
+              '${apiError.message} La INE ya quedo cargada; completa o corrige los datos manualmente.';
         });
-      } catch (_) {
+        debugPrint('[INE] Error backend: ${apiError.message}');
+      } catch (error) {
         if (!mounted) return;
         setState(() {
-          _ineScanStatus = 'pending_manual_review';
+          _applyIneFallback(images.first);
           _documentScanMessage =
-              'No se pudo leer la INE. Usa una foto clara o completa los datos manualmente.';
+              'La INE ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
         });
+        debugPrint('[INE] Fallo backend sin detalle tipado: $error');
       }
-    } finally {
-      if (mounted) setState(() => _scanningDocument = false);
     }
+
+    if (mounted) setState(() => _scanningDocument = false);
   }
 
   void _applyLocalIneResult(RegistrationOcrResult result) {
@@ -229,6 +250,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       _setIfPresent(_nameController, data['name']);
       _setIfPresent(_birthDateController, data['birth_date']);
       _setIfPresent(_nationalityController, data['nationality']);
+      _setIfPresent(_baseController, data['base']);
       _setIfPresent(_documentNumberController, data['document_number']);
       _setIfPresent(_documentExpirationController, data['document_expiration']);
       _setIfPresent(_ineCurpController, data['curp']);
@@ -252,12 +274,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   Future<void> _scanIneInBackend(List<File> images) async {
     for (final image in images) {
+      debugPrint('[INE] Enviando imagen al backend: ${image.path}');
       final response = await _api.scanRegistrationDocument(
         document: image,
         documentType: 'INE',
       );
+      debugPrint('[INE] Respuesta backend cruda: $response');
       _applyBackendIneResponse(response);
-      if (_hasUsefulIneData()) return;
+      if (_hasUsefulIneData()) {
+        debugPrint(
+          '[INE] Backend detecto datos utiles: document=${_documentNumberController.text} curp=${_ineCurpController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
+        );
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -288,6 +317,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
             .trim();
     final parsedRaw =
         rawText.isEmpty ? const <String, String>{} : RegistrationOcrService.parseIneText(rawText);
+    debugPrint(
+      '[INE] Backend parse: rawTextLength=${rawText.length} parsedRaw=$parsedRaw',
+    );
 
     setState(() {
       if (rawText.isNotEmpty) {
@@ -308,6 +340,14 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       _setIfPresent(
         _nationalityController,
         data['nationality'] ?? data['nacionalidad'] ?? parsedRaw['nationality'],
+      );
+      _setIfPresent(
+        _baseController,
+        data['base'] ??
+            data['city'] ??
+            data['ciudad'] ??
+            data['municipio'] ??
+            parsedRaw['base'],
       );
       _setIfPresent(
         _documentNumberController,
@@ -349,6 +389,34 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               ? 'Escaneo de INE completado. Revisa los datos detectados antes de continuar.'
               : 'Se leyo parcialmente la INE. Completa los campos faltantes manualmente.';
     });
+    debugPrint(
+      '[INE] Estado final tras backend: status=$_ineScanStatus document=${_documentNumberController.text} curp=${_ineCurpController.text} cic=${_ineCicController.text} ocr=${_ineOcrController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
+    );
+  }
+
+  void _applyIneFallback(File document) {
+    _ineScanStatus = 'pending_manual_review';
+    _ineScanRaw = '';
+    if (_documentTypeController.text.trim().isEmpty) {
+      _documentTypeController.text = 'INE';
+    }
+    final fileName = document.path.split(Platform.pathSeparator).last;
+    if (_documentNumberController.text.trim().isEmpty) {
+      final normalizedName = fileName.toUpperCase();
+      final inferred =
+          RegExp(r'\b[A-Z0-9]{8,20}\b').allMatches(normalizedName).map((match) {
+            return match.group(0) ?? '';
+          }).firstWhere(
+            (value) => value.length >= 10,
+            orElse: () => '',
+          );
+      if (inferred.isNotEmpty) {
+        _documentNumberController.text = inferred;
+      }
+    }
+    debugPrint(
+      '[INE] Fallback manual aplicado: file=${document.path} inferredDocument=${_documentNumberController.text}',
+    );
   }
 
   bool _hasUsefulIneData() {
@@ -688,19 +756,13 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       ),
       const _HintText(
         'Completa tus datos, escanea la INE y valida la selfie antes de continuar.',
-      ),
-      _field(_nameController, 'Nombre completo'),
-      _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
-      _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
-      _field(_nationalityController, 'Nacionalidad'),
-      _field(_baseController, 'Ciudad/base', requiredField: false),
-      const SizedBox(height: 14),
+      ),  const SizedBox(height: 14),
       const _SectionLabel(
         icon: Icons.contact_mail_rounded,
         title: 'Identificacion oficial',
       ),
       _FileButton(
-        title: 'INE',
+        title: 'ESCANEA TU INE ',
         value: _ineFront?.path.split(Platform.pathSeparator).last,
         loading: _scanningDocument,
         onTap: _pickIneFront,
@@ -722,6 +784,14 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           ),
         ),
       ],
+            const SizedBox(height: 10),
+
+      _field(_nameController, 'Nombre completo'),
+      _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
+      _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
+      _field(_nationalityController, 'Nacionalidad'),
+      _field(_baseController, 'Ciudad/base', requiredField: false),
+    
       const SizedBox(height: 10),
       _field(_documentTypeController, 'Identificacion'),
       _field(_documentNumberController, 'Numero de documento'),
@@ -1138,7 +1208,7 @@ class _FileButton extends StatelessWidget {
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-              : const Icon(Icons.upload_file_rounded),
+              : const Icon(Icons.document_scanner_rounded),
       label: Text(value == null ? title : '$title: $value'),
       style: OutlinedButton.styleFrom(
         backgroundColor: Colors.white,

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class RegistrationOcrResult {
@@ -18,6 +18,8 @@ class RegistrationOcrResult {
 class RegistrationOcrService {
   RegistrationOcrService._();
 
+  static const MethodChannel _ocrChannel = MethodChannel('redsky/ocr');
+
   static Map<String, String> parseIneText(String rawText) {
     return _parseIne(rawText);
   }
@@ -33,7 +35,6 @@ class RegistrationOcrService {
     );
     final barcodeParts = <String>[];
     final textParts = <String>[];
-    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
     try {
       for (var index = 0; index < images.length; index++) {
@@ -49,10 +50,7 @@ class RegistrationOcrService {
         }
 
         try {
-          final recognized = await textRecognizer.processImage(
-            InputImage.fromFilePath(source.path),
-          );
-          final text = recognized.text.trim();
+          final text = await _scanText(source.path);
           if (text.isNotEmpty) {
             textParts.add(text);
           }
@@ -61,7 +59,6 @@ class RegistrationOcrService {
         }
       }
     } finally {
-      await textRecognizer.close();
       await scanner.dispose();
     }
 
@@ -84,6 +81,15 @@ class RegistrationOcrService {
     );
   }
 
+  static Future<String> _scanText(String path) async {
+    if (!Platform.isAndroid) return '';
+    final response = await _ocrChannel.invokeMapMethod<String, dynamic>(
+      'recognizeText',
+      {'path': path},
+    );
+    return (response?['text'] ?? '').toString().trim();
+  }
+
   static Map<String, String> _parseIne(String rawText) {
     final normalized = rawText.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
     final compact = normalized.replaceAll(RegExp(r'[^A-Z0-9<]'), '');
@@ -91,6 +97,7 @@ class RegistrationOcrService {
     final curp = _findCurp(normalized, compact);
     final electorKey = _findElectorKey(normalized, compact);
     final name = _extractName(rawText);
+    final cityBase = _extractCityBase(rawText);
     final birthDate = _birthDateFromCurp(curp);
     final expiration = _extractExpiration(normalized);
     final cic =
@@ -113,6 +120,7 @@ class RegistrationOcrService {
       'cic': cic,
       'ocr': ocr,
       'name': name.isNotEmpty ? name : (mrz['name'] ?? fallbackName),
+      'base': cityBase,
       'birth_date': birthDate.isNotEmpty ? birthDate : mrz['birth_date'] ?? '',
       'document_expiration':
           expiration.isNotEmpty ? expiration : mrz['document_expiration'] ?? '',
@@ -264,7 +272,7 @@ class RegistrationOcrService {
         .where(
           (line) =>
               !RegExp(
-                r'DOMICILIO|CLAVE|CURP|FECHA|SEXO|VIGENCIA|INSTITUTO',
+                r'DOMICILI[O0]|CLAVE|CURP|FECHA|SEXO|VIGENCIA|INSTITUTO',
               ).hasMatch(line),
         )
         .join(' ')
@@ -286,7 +294,7 @@ class RegistrationOcrService {
           if (RegExp(r'\d').hasMatch(line)) return false;
           if (!RegExp(r'^[A-ZÁÉÍÓÚÑ ]+$').hasMatch(line)) return false;
           if (RegExp(
-            r'CURP|CLAVE|DOMICILIO|SEXO|VIGENCIA|FECHA|INSTITUTO|ESTADO|MUNICIPIO|COLONIA|LOCALIDAD',
+            r'CURP|CLAVE|DOMICILI[O0]|SEXO|VIGENCIA|FECHA|INSTITUTO|ESTADO|MUNICIPIO|COLONIA|LOCALIDAD',
           ).hasMatch(line)) {
             return false;
           }
@@ -295,6 +303,56 @@ class RegistrationOcrService {
 
     if (nameCandidates.isEmpty) return '';
     return nameCandidates.take(3).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static String _extractCityBase(String rawText) {
+    final lines =
+        rawText
+            .split(RegExp(r'\r?\n'))
+            .map((line) => line.trim().toUpperCase())
+            .where((line) => line.isNotEmpty)
+            .toList();
+
+    final addressIndex = lines.indexWhere(
+      (line) => RegExp(r'^DOMICILI[O0]$|^DOMICILI[O0]\b').hasMatch(line),
+    );
+    if (addressIndex < 0) return '';
+
+    final addressLines =
+        lines
+            .skip(addressIndex + 1)
+            .takeWhile(
+              (line) => !RegExp(
+                r'CLAVE|CURP|FECHA|SECCI[O0]N|A[ÑN]O|SEXO|VIGENCIA|ESTADO|MUNICIPIO',
+              ).hasMatch(line),
+            )
+            .toList();
+
+    for (final line in addressLines.reversed) {
+      if (RegExp(r'^[A-ZÁÉÍÓÚÑ ]+,\s*[A-ZÁÉÍÓÚÑ. ]+$').hasMatch(line)) {
+        return _toTitleCase(line);
+      }
+    }
+
+    final fallback = addressLines.lastWhere(
+      (line) => !RegExp(r'\d{4,}').hasMatch(line),
+      orElse: () => '',
+    );
+    return fallback.isEmpty ? '' : _toTitleCase(fallback);
+  }
+
+  static String _toTitleCase(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? word
+                  : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
+        .join(' ');
   }
 
   static Map<String, String> _parseMrz(String rawText) {

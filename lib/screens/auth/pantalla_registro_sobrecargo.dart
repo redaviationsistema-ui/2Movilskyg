@@ -86,8 +86,15 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _applyDocumentResponse(response);
     } on ApiException catch (error) {
       setState(() {
-        _scanStatus = 'pending_manual_review';
-        _documentMessage = '${error.message} Completa los datos manualmente.';
+        _applyDocumentFallback(selected);
+        _documentMessage =
+            '${error.message} La licencia ya quedo cargada; completa o corrige los datos manualmente.';
+      });
+    } catch (_) {
+      setState(() {
+        _applyDocumentFallback(selected);
+        _documentMessage =
+            'La licencia ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
       });
     } finally {
       if (mounted) setState(() => _readingDocument = false);
@@ -266,6 +273,25 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _documentMessage =
           'Escaneo completado. Revisa los datos detectados antes de continuar.';
     });
+  }
+
+  void _applyDocumentFallback(File document) {
+    _scanStatus = 'pending_manual_review';
+    _scanRaw = '';
+    if (_licenseTypeController.text.trim().isEmpty) {
+      _licenseTypeController.text = 'Licencia de sobrecargo';
+    }
+    final fileName = document.path.split(Platform.pathSeparator).last;
+    if (_licenseController.text.trim().isEmpty) {
+      final normalizedName = fileName.toUpperCase();
+      final inferred =
+          RegExp(r'\b[A-Z]{2,5}-?\d{4,12}\b')
+              .firstMatch(normalizedName)
+              ?.group(0);
+      if (inferred != null && inferred.isNotEmpty) {
+        _licenseController.text = inferred;
+      }
+    }
   }
 
   Future<void> _submit() async {

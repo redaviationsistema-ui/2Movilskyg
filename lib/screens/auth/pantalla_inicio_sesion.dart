@@ -137,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     child: Padding(
                                       padding: const EdgeInsets.all(12),
                                       child: Image.asset(
-                                        'assets/Logo.png',
+                                        'assets/LOGOINTERNO.png',
                                         filterQuality: FilterQuality.high,
                                       ),
                                     ),
@@ -154,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'Bienvenidos',
+                                    'Bienvenidos a Red Sky',
                                     textAlign: TextAlign.center,
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: const Color(0xFF5E7082),
