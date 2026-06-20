@@ -53,11 +53,7 @@ class ApiClient {
   String get backendOrigin {
     final uri = Uri.tryParse(baseUrl);
     if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) return '';
-    return Uri(
-      scheme: uri.scheme,
-      host: uri.host,
-      port: uri.hasPort ? uri.port : null,
-    ).toString();
+    return uri.origin;
   }
 
   void setToken(String? token) {
@@ -542,6 +538,23 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> createClientCheckout({
+    required String flightRequestId,
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    final body = {
+      'flight_request_id': flightRequestId,
+      'booking_id': flightRequestId,
+      ...paymentPayload,
+    };
+
+    return postFirstAvailable(
+      const ['/cliente/stripe/checkout/create', '/stripe/checkout/create'],
+      authenticated: true,
+      body: body,
+    );
+  }
+
   Future<Map<String, dynamic>> createClientWireIntent({
     required String flightRequestId,
     required Map<String, dynamic> paymentPayload,
@@ -563,16 +576,40 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> confirmClientPaymentIntent({
+    required String flightRequestId,
+    required Map<String, dynamic> paymentPayload,
+  }) {
+    final body = {
+      'flight_request_id': flightRequestId,
+      'booking_id': flightRequestId,
+      ...paymentPayload,
+    };
+
+    return writeFirstAvailable(
+      const [
+        '/cliente/stripe/payment-intent/confirm',
+        '/stripe/payment-intent/confirm',
+      ],
+      authenticated: true,
+      body: body,
+    );
+  }
+
   Future<Map<String, dynamic>> confirmClientPayment({
     required String reservationId,
     required Map<String, dynamic> paymentPayload,
   }) {
-    return postFirstAvailable(
+    return writeFirstAvailable(
       [
         '/cliente/reservas/$reservationId/pago/confirmar',
         '/cliente/reservas/$reservationId/payment/confirm',
         '/client/reservations/$reservationId/payment/confirm',
         '/client/reservations/$reservationId/payments/confirm',
+        '/cliente/solicitudes/$reservationId/pago/confirmar',
+        '/cliente/solicitudes/$reservationId/payment/confirm',
+        '/client/flight-requests/$reservationId/payment/confirm',
+        '/client/flight-requests/$reservationId/payments/confirm',
       ],
       authenticated: true,
       body: paymentPayload,
@@ -636,6 +673,52 @@ class ApiClient {
     ], authenticated: true);
   }
 
+  Future<Map<String, dynamic>> getCrewDashboard() {
+    return getFirstAvailable(const [
+      '/sobrecargo/dashboard',
+      '/crew/dashboard',
+      '/crew/portal',
+    ], authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> getCrewAssignments() {
+    return getFirstAvailable(const [
+      '/sobrecargo/assignments',
+      '/crew/assignments',
+      '/sobrecargo/operations',
+      '/crew/operations',
+    ], authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> getCrewProfile() {
+    return getFirstAvailable(const [
+      '/sobrecargo/profile',
+      '/crew/profile',
+    ], authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> getCrewDocuments() {
+    return getFirstAvailable(const [
+      '/sobrecargo/documents',
+      '/crew/documents',
+    ], authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> getCrewIncidents({String? operationId}) {
+    return getFirstAvailable(
+      const [
+        '/crew-operation-incidents',
+        '/sobrecargo/incidents',
+        '/sobrecargo/incidencias',
+      ],
+      authenticated: true,
+      query: {
+        if (operationId != null && operationId.trim().isNotEmpty)
+          'crew_operation_id': operationId.trim(),
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> respondCrewAssignment({
     required String assignmentId,
     required String status,
@@ -660,36 +743,84 @@ class ApiClient {
     required String assignmentId,
     required String step,
     String note = '',
-  }) {
+  }) async {
     final normalizedNote = note.trim();
-    final pathStep = switch (step) {
-      'checkin' => 'checkin',
-      'cabin_ready' => 'cabin-ready',
-      'passengers_ready' => 'passengers-ready',
-      'service_started' => 'start-service',
-      'service_finalized' => 'finalize-service',
-      _ => step,
-    };
-    final fallbackStep = switch (step) {
-      'service_started' => 'service-started',
-      'service_finalized' => 'service-finalized',
-      _ => pathStep,
+    final stepVariants = switch (step) {
+      'checkin' => const ['checkin'],
+      'cabin_ready' => const ['cabin-ready', 'cabin_ready'],
+      'passengers_ready' => const ['passengers-ready', 'passengers_ready'],
+      'service_started' => const [
+        'start-service',
+        'service-started',
+        'service_started',
+      ],
+      'service_finalized' => const [
+        'finalize-service',
+        'service-finalized',
+        'service_finalized',
+        'complete-service',
+        'complete_service',
+        'completed',
+      ],
+      _ => [step],
     };
 
-    return postFirstAvailable(
-      [
+    final statusHints = switch (step) {
+      'checkin' => const ['crew_enroute'],
+      'cabin_ready' => const ['cabin_ready', 'cabin ready'],
+      'passengers_ready' => const ['passengers_ready', 'passengers ready'],
+      'service_started' => const [
+        'service_started',
+        'service started',
+        'crew_active',
+      ],
+      'service_finalized' => const [
+        'completed',
+        'service_finalized',
+        'service finalized',
+        'crew_completed',
+        'finalizada',
+      ],
+      _ => [step],
+    };
+
+    ApiException? lastError;
+
+    for (final pathStep in stepVariants) {
+      final paths = [
         '/sobrecargo/operations/$assignmentId/$pathStep',
         '/sobrecargo/assignments/$assignmentId/$pathStep',
         '/crew/operations/$assignmentId/$pathStep',
         '/crew/assignments/$assignmentId/$pathStep',
-        if (fallbackStep != pathStep)
-          '/sobrecargo/operations/$assignmentId/$fallbackStep',
-        if (fallbackStep != pathStep)
-          '/crew/operations/$assignmentId/$fallbackStep',
-      ],
-      authenticated: true,
-      body: {if (normalizedNote.isNotEmpty) 'note': normalizedNote},
-    );
+        '/sobrecargo/operations/$assignmentId/steps/$pathStep',
+        '/sobrecargo/assignments/$assignmentId/steps/$pathStep',
+        '/crew/operations/$assignmentId/steps/$pathStep',
+        '/crew/assignments/$assignmentId/steps/$pathStep',
+      ];
+
+      for (final statusHint in statusHints) {
+        try {
+          return await writeFirstAvailable(
+            paths,
+            authenticated: true,
+            body: {
+              'step': step,
+              'status': statusHint,
+              'crew_status': statusHint,
+              'workflow_status': statusHint,
+              if (normalizedNote.isNotEmpty) 'note': normalizedNote,
+              if (normalizedNote.isNotEmpty) 'notes': normalizedNote,
+              if (normalizedNote.isNotEmpty) 'comment': normalizedNote,
+            },
+          );
+        } on ApiException catch (error) {
+          lastError = error;
+        }
+      }
+    }
+
+    throw lastError ??
+        const ApiException('No fue posible completar la solicitud.');
   }
 
   Future<Map<String, dynamic>> createCrewAvailabilityBlock({
@@ -716,7 +847,10 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getCrewAvailabilityStatuses() {
-    return get('/sobrecargo/availability/statuses', authenticated: true);
+    return getFirstAvailable(
+      const ['/sobrecargo/availability/statuses', '/crew/availability/statuses'],
+      authenticated: true,
+    );
   }
 
   Future<Map<String, dynamic>> saveCrewAvailabilityDay({
@@ -727,18 +861,26 @@ class ApiClient {
     String coverage = '',
   }) {
     final normalizedStatus = statusKey.trim().toUpperCase();
+    final normalizedComment = comment.trim();
+    final statusLabel = _humanizeAvailabilityStatus(normalizedStatus);
     return postFirstAvailable(
       const ['/sobrecargo/availability', '/crew/availability'],
       authenticated: true,
       body: {
         'fecha': _apiDate(date),
+        'date': _apiDate(date),
         'from': _apiDate(date),
         'to': _apiDate(date),
+        'fecha_inicio': _apiDate(date),
+        'fecha_fin': _apiDate(date),
         'status_key': normalizedStatus,
         'clave': normalizedStatus,
-        'motivo': comment.trim(),
-        'comentario': comment.trim(),
-        'notes': comment.trim(),
+        'status': statusLabel,
+        'state': statusLabel,
+        'motivo': normalizedComment,
+        'comentario': normalizedComment,
+        'comment': normalizedComment,
+        'notes': normalizedComment,
         if (base.trim().isNotEmpty) 'base': base.trim(),
         if (coverage.trim().isNotEmpty) 'coverage': coverage.trim(),
       },
@@ -751,17 +893,47 @@ class ApiClient {
     String comment = '',
   }) {
     final normalizedStatus = statusKey.trim().toUpperCase();
+    final normalizedComment = comment.trim();
+    final dateLabel = _apiDate(date);
     return postFirstAvailable(
       const ['/sobrecargo/availability/audit', '/crew/availability/audit'],
       authenticated: true,
       body: {
-        'fecha': _apiDate(date),
+        'fecha': dateLabel,
+        'from': dateLabel,
+        'to': dateLabel,
         'status_key': normalizedStatus,
         'clave': normalizedStatus,
-        'comment': comment.trim(),
-        'comentario': comment.trim(),
+        'comment': normalizedComment,
+        'comentario': normalizedComment,
+        'note':
+            'Disponibilidad $dateLabel: ${_humanizeAvailabilityStatus(normalizedStatus)}.'
+            '${normalizedComment.isEmpty ? '' : ' $normalizedComment'}',
       },
     );
+  }
+
+  String _humanizeAvailabilityStatus(String statusKey) {
+    switch (statusKey.trim().toUpperCase()) {
+      case 'DISPONIBLE':
+        return 'Disponible';
+      case 'NO_DISPONIBLE':
+        return 'No disponible';
+      case 'DESCANSO':
+        return 'Descanso';
+      case 'EN_OPERACION':
+        return 'En operacion';
+      case 'BLOQUEO_SOLICITADO':
+        return 'Bloqueo solicitado';
+      case 'BLOQUEO_APROBADO':
+        return 'Bloqueo aprobado';
+      case 'BLOQUEO_RECHAZADO':
+        return 'Bloqueo rechazado';
+      case 'POR_CONFIRMAR':
+        return 'Por confirmar';
+      default:
+        return statusKey.trim();
+    }
   }
 
   Future<Map<String, dynamic>> deleteCrewAvailability(String availabilityId) {
@@ -887,6 +1059,33 @@ class ApiClient {
         const ApiException('No fue posible completar la solicitud.');
   }
 
+  Future<Map<String, dynamic>> writeFirstAvailable(
+    List<String> paths, {
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    ApiException? lastError;
+
+    for (final path in paths) {
+      for (final method in const ['POST', 'PATCH', 'PUT']) {
+        try {
+          return await _request(
+            path,
+            method: method,
+            authenticated: authenticated,
+            body: body,
+          );
+        } on ApiException catch (error) {
+          if (!_shouldTryAlternative(error)) rethrow;
+          lastError = error;
+        }
+      }
+    }
+
+    throw lastError ??
+        const ApiException('No fue posible completar la solicitud.');
+  }
+
   Future<Map<String, dynamic>> postMultipartFirstAvailable(
     List<String> paths, {
     required Map<String, String> fields,
@@ -1000,6 +1199,32 @@ class ApiClient {
     return _request(path, method: 'DELETE', authenticated: authenticated);
   }
 
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    return _request(
+      path,
+      method: 'PATCH',
+      authenticated: authenticated,
+      body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    return _request(
+      path,
+      method: 'PUT',
+      authenticated: authenticated,
+      body: body,
+    );
+  }
+
   Future<Map<String, dynamic>> postMultipart(
     String path, {
     required Map<String, String> fields,
@@ -1058,6 +1283,18 @@ class ApiClient {
           headers: _headers(authenticated: authenticated),
           body: jsonEncode(body ?? {}),
         );
+      case 'PATCH':
+        return http.patch(
+          uri,
+          headers: _headers(authenticated: authenticated),
+          body: jsonEncode(body ?? {}),
+        );
+      case 'PUT':
+        return http.put(
+          uri,
+          headers: _headers(authenticated: authenticated),
+          body: jsonEncode(body ?? {}),
+        );
       case 'DELETE':
         return http.delete(
           uri,
@@ -1106,10 +1343,16 @@ class ApiClient {
     http.Response response,
     String candidateBaseUrl,
   ) {
-    final decoded =
-        response.body.isEmpty
-            ? <String, dynamic>{}
-            : jsonDecode(response.body) as Map<String, dynamic>;
+    final dynamic decodedRaw =
+        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+    final Map<String, dynamic> decoded =
+        decodedRaw is Map<String, dynamic>
+            ? decodedRaw
+            : decodedRaw is Map
+            ? Map<String, dynamic>.from(decodedRaw)
+            : decodedRaw is List
+            ? <String, dynamic>{'data': decodedRaw}
+            : <String, dynamic>{'data': decodedRaw};
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(

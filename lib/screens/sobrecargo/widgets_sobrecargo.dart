@@ -1,17 +1,18 @@
 part of 'pantalla_espacio_sobrecargo.dart';
 
 class _AssignmentCard extends StatelessWidget {
-  const _AssignmentCard({required this.item, this.actions = const []});
+  const _AssignmentCard({required this.item});
 
   final CrewAssignment item;
-  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
     return _AnimatedEntry(
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(compact ? 14 : 16),
         decoration: _panelDecoration().copyWith(
           gradient: const LinearGradient(
             colors: [Colors.white, Color(0xFFF8FBFD)],
@@ -40,10 +41,12 @@ class _AssignmentCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     item.code,
-                    style: const TextStyle(
-                      fontSize: 18,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: compact ? 16 : 18,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF0E2338),
+                      color: const Color(0xFF0E2338),
                     ),
                   ),
                 ),
@@ -53,29 +56,39 @@ class _AssignmentCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               item.route,
-              style: const TextStyle(
+              maxLines: compact ? 2 : 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF15293A),
+                color: const Color(0xFF15293A),
+                fontSize: compact ? 15 : 16,
+                height: 1.15,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               '${item.provider} | ${item.aircraft} | ${item.showTime}',
-              style: const TextStyle(color: Color(0xFF5F6975), height: 1.35),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF5F6975),
+                height: 1.3,
+                fontSize: compact ? 13 : 14,
+              ),
             ),
             if (item.rejectReason.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 'Motivo: ${item.rejectReason}',
-                style: const TextStyle(
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
                   color: Color(0xFF8D1F1A),
+                  fontSize: compact ? 13 : 14,
                   fontWeight: FontWeight.w700,
+                  height: 1.3,
                 ),
               ),
-            ],
-            if (actions.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Wrap(spacing: 10, runSpacing: 10, children: actions),
             ],
           ],
         ),
@@ -91,52 +104,97 @@ class _MetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: metrics.length,
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.65,
-      ),
-      itemBuilder: (context, index) {
-        final item = metrics[index];
-        return _AnimatedEntry(
-          delay: index * 70,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: _panelDecoration().copyWith(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0E2235), Color(0xFF173B55)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(color: const Color(0x33E0B86E)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 430) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: metrics.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.45,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(item.icon, color: const Color(0xFFE0B86E)),
-                const Spacer(),
-                Text(
-                  item.value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                Text(
-                  item.label,
-                  style: const TextStyle(color: Color(0xFFC9D7E2)),
-                ),
-              ],
-            ),
+            itemBuilder:
+                (context, index) =>
+                    _MetricGridCard(item: metrics[index], delay: index * 70),
+          );
+        }
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: metrics.length,
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: constraints.maxWidth < 430 ? 200 : 220,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: constraints.maxWidth < 430 ? 1.0 : 1.45,
           ),
+          itemBuilder:
+              (context, index) =>
+                  _MetricGridCard(item: metrics[index], delay: index * 70),
         );
       },
+    );
+  }
+}
+
+class _MetricGridCard extends StatelessWidget {
+  const _MetricGridCard({required this.item, required this.delay});
+
+  final _Metric item;
+  final int delay;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return _AnimatedEntry(
+      delay: delay,
+      child: Container(
+        padding: EdgeInsets.all(compact ? 10 : 14),
+        decoration: _panelDecoration().copyWith(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0E2235), Color(0xFF173B55)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: const Color(0x33E0B86E)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(item.icon, color: const Color(0xFFE0B86E)),
+            SizedBox(height: compact ? 10 : 18),
+            Text(
+              item.value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 15 : 22,
+                fontWeight: FontWeight.w900,
+                height: 1.05,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFFC9D7E2),
+                fontSize: compact ? 11 : 14,
+                height: 1.15,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -159,51 +217,120 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _AnimatedEntry(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _panelDecoration(),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E7),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 640;
+          final buttonWidget = FilledButton(
+            onPressed: onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0E2338),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: const Color(0xFF7A5A18)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: Color(0xFF5F6975)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            FilledButton(
-              onPressed: onPressed,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0E2338),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(button),
-            ),
-          ],
-        ),
+            child: Text(button),
+          );
+
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: _panelDecoration(),
+            child:
+                compact
+                    ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF8E7),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(icon, color: const Color(0xFF7A5A18)),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: compact ? 18 : 20,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subtitle,
+                                    maxLines: compact ? 4 : 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Color(0xFF5F6975),
+                                      fontSize: compact ? 13 : 14,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(width: double.infinity, child: buttonWidget),
+                      ],
+                    )
+                    : Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF8E7),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(icon, color: const Color(0xFF7A5A18)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF5F6975),
+                                  fontSize: 14,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        buttonWidget,
+                      ],
+                    ),
+          );
+        },
       ),
     );
   }

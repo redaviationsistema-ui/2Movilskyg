@@ -5,7 +5,11 @@ class _DashboardView extends StatelessWidget {
     required this.assignments,
     required this.incidents,
     required this.documents,
+    required this.currentStatus,
+    required this.baseLabel,
+    required this.profileState,
     required this.onScan,
+    required this.onOpenMissions,
     required this.onOpenAvailability,
     required this.onOpenDocuments,
     required this.onOpenIncidents,
@@ -14,131 +18,474 @@ class _DashboardView extends StatelessWidget {
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
   final List<CrewDocument> documents;
+  final String currentStatus;
+  final String baseLabel;
+  final String profileState;
   final VoidCallback onScan;
+  final VoidCallback onOpenMissions;
   final VoidCallback onOpenAvailability;
   final VoidCallback onOpenDocuments;
   final VoidCallback onOpenIncidents;
 
   @override
   Widget build(BuildContext context) {
-    final active =
-        assignments.where((item) => item.status != 'Finalizada').length;
-    final expiredDocs =
-        documents.where((item) => item.status.contains('Vence')).length;
+    final compact = MediaQuery.of(context).size.width < 430;
+    final sortedAssignments = [...assignments]..sort((left, right) {
+      final leftRank = _missionRank(left.status);
+      final rightRank = _missionRank(right.status);
+      if (leftRank != rightRank) return leftRank.compareTo(rightRank);
+      return left.date.compareTo(right.date);
+    });
+    final active = assignments.where((item) => !item.isFinalized).length;
+    final nextMission = sortedAssignments.firstOrNull;
     final pendingAssignments =
         assignments.where((item) => item.canRespondToAssignment).length;
-    final openIncidents =
-        incidents.where((item) => !item.status.contains('Cerr')).length;
+    final openIncidents = _openIncidentCount(incidents);
+    final approvedDocuments = documents.where(_isDocumentApproved).length;
+    final documentsValidity =
+        documents.isEmpty
+            ? 0
+            : ((approvedDocuments / documents.length) * 100).round();
+    final checklistProgress =
+        nextMission == null ? 0 : _checklistProgress(nextMission.status);
+    final operationalStatus = _operationalStatus(currentStatus, nextMission);
     final readiness = _readinessScore(
-      active: active,
-      expiredDocs: expiredDocs,
+      documentsValidity: documentsValidity,
+      checklistProgress: checklistProgress,
+      operationalStatus: operationalStatus,
+      profileState: profileState,
+    );
+    final readinessLabel = _readinessLabel(readiness);
+    final expiringDocuments = _expiringDocuments(documents);
+    final criticalDocuments =
+        expiringDocuments
+            .where(
+              (item) => item.daysRemaining != null && item.daysRemaining! <= 15,
+            )
+            .length;
+    final alerts = _buildPremiumAlerts(
+      nextMission: nextMission,
+      operationalStatus: operationalStatus,
+      documentsValidity: documentsValidity,
+      expiringDocuments: expiringDocuments,
       openIncidents: openIncidents,
       pendingAssignments: pendingAssignments,
     );
+    final missionTimeline = _buildMissionTimeline(
+      nextMission,
+      documentsValidity: documentsValidity,
+    );
+    final readinessBreakdown = [
+      _BreakdownItem(
+        label: 'Documentos',
+        value: '$documentsValidity%',
+        tone:
+            documentsValidity >= 90
+                ? const Color(0xFF0F8A5F)
+                : const Color(0xFFB7791F),
+      ),
+      _BreakdownItem(
+        label: 'Checklist',
+        value: '$checklistProgress%',
+        tone:
+            checklistProgress >= 80
+                ? const Color(0xFF0F8A5F)
+                : const Color(0xFFB7791F),
+      ),
+      _BreakdownItem(
+        label: 'Estado',
+        value: operationalStatus,
+        tone: _statusTone(operationalStatus),
+      ),
+      _BreakdownItem(
+        label: 'Perfil',
+        value: profileState,
+        tone:
+            profileState.toLowerCase().contains('valid') ||
+                    profileState.toLowerCase().contains('aprobad')
+                ? const Color(0xFF0F8A5F)
+                : const Color(0xFFB7791F),
+      ),
+    ];
+    final dayOfFlightDetails = _dayOfFlightDetails(nextMission, openIncidents);
+    final coordinationLabel =
+        nextMission?.provider.trim().isNotEmpty == true
+            ? nextMission!.provider.trim()
+            : 'Operaciones';
 
     return Column(
       children: [
         _OperationalStrip(
-          title: 'Briefing de cabina',
+          title: 'Centro operativo de cabina',
           subtitle:
-              'Asignaciones, documentos e incidencias sincronizados para operacion segura.',
-          status: active > 0 ? 'Operacion activa' : 'Sin misiones activas',
+              'Checklist, documentos, mision activa y contexto operativo sincronizados para vuelo seguro.',
+          status: operationalStatus,
         ),
-        const SizedBox(height: 14),
-        _ReadinessCard(
-          score: readiness,
-          pendingAssignments: pendingAssignments,
-          expiredDocs: expiredDocs,
-          openIncidents: openIncidents,
+        SizedBox(height: compact ? 12 : 14),
+        _MissionHeroCard(
+          assignment: nextMission,
+          operationalStatus: operationalStatus,
+          checklistProgress: checklistProgress,
+          onOpenMissions: onOpenMissions,
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: compact ? 12 : 14),
         _MetricGrid(
           metrics: [
-            _Metric('Misiones', '$active', Icons.flight_rounded),
+            _Metric('Servicios', '$active', Icons.flight_rounded),
             _Metric(
-              'Incidencias',
-              '${incidents.length}',
-              Icons.warning_rounded,
+              'Checklist',
+              '$checklistProgress%',
+              Icons.checklist_rounded,
             ),
-            _Metric('Docs alerta', '$expiredDocs', Icons.folder_rounded),
-            _Metric('Estado', 'Disponible', Icons.verified_user_rounded),
+
+            _Metric('Alertas', '${alerts.length}', Icons.warning_rounded),
+            _Metric('Estado', operationalStatus, Icons.verified_user_rounded),
           ],
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _QuickActionChip(
-              icon: Icons.event_available_rounded,
-              label: 'Disponibilidad',
-              onTap: onOpenAvailability,
+        SizedBox(height: compact ? 12 : 14),
+        _TimelineCard(items: missionTimeline),
+        SizedBox(height: compact ? 12 : 14),
+        _ReadinessCard(
+          score: readiness,
+          label: readinessLabel,
+          pendingAssignments: pendingAssignments,
+          expiredDocs: criticalDocuments,
+          openIncidents: openIncidents,
+        ),
+        SizedBox(height: compact ? 12 : 14),
+        _SummaryGrid(
+          items: [
+            _SummaryItem(
+              title: 'Servicios completados',
+              value:
+                  '${assignments.where((item) => item.status == 'Finalizada').length}',
+              detail:
+                  nextMission == null
+                      ? 'Sin mision activa en este momento.'
+                      : '1 mision activa o en preparacion.',
             ),
-            _QuickActionChip(
-              icon: Icons.folder_copy_rounded,
-              label: 'Documentos',
-              onTap: onOpenDocuments,
+            _SummaryItem(
+              title: 'Puntualidad',
+              value:
+                  assignments.isEmpty
+                      ? 'Sin dato'
+                      : '${(100 - openIncidents).clamp(0, 100)}%',
+              detail:
+                  assignments.isEmpty
+                      ? 'Sin actividad suficiente para calcularla.'
+                      : 'Calculado con la actividad registrada.',
             ),
-            _QuickActionChip(
-              icon: Icons.report_problem_rounded,
-              label: 'Incidencias',
-              onTap: onOpenIncidents,
+            _SummaryItem(
+              title: 'Base operativa',
+              value: baseLabel.isNotEmpty ? baseLabel : 'Pendiente',
+              detail: 'Coordinacion $coordinationLabel.',
+            ),
+            _SummaryItem(
+              title: 'Documentos por vencer',
+              value: '${expiringDocuments.length}',
+              detail:
+                  expiringDocuments.isEmpty
+                      ? 'Sin vencimientos proximos.'
+                      : expiringDocuments.first.summary,
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        _ActionCard(
-          title: 'Briefing operativo',
-          subtitle:
-              'Revisa proveedor, aeronave, presentacion, pasajeros y codigo de check-in.',
-          icon: Icons.qr_code_scanner_rounded,
-          button: 'Escanear QR',
-          onPressed: onScan,
-        ),
-        const SizedBox(height: 14),
-        ...assignments.take(2).map((item) => _AssignmentCard(item: item)),
+        SizedBox(height: compact ? 12 : 14),
+        _BreakdownCard(items: readinessBreakdown),
+        if (dayOfFlightDetails.isNotEmpty) ...[
+          SizedBox(height: compact ? 12 : 14),
+          _DayOfFlightCard(items: dayOfFlightDetails),
+        ],
+        if (alerts.isNotEmpty) ...[
+          SizedBox(height: compact ? 12 : 14),
+          _AlertStack(alerts: alerts),
+        ],
+        if (expiringDocuments.isNotEmpty) ...[
+          SizedBox(height: compact ? 12 : 14),
+          _ExpiringDocumentsCard(items: expiringDocuments),
+        ],
       ],
     );
   }
 
   int _readinessScore({
-    required int active,
-    required int expiredDocs,
+    required int documentsValidity,
+    required int checklistProgress,
+    required String operationalStatus,
+    required String profileState,
+  }) {
+    final documentWeight = documentsValidity * 0.45;
+    final checklistWeight = checklistProgress * 0.25;
+    final availabilityWeight =
+        operationalStatus == 'Disponible'
+            ? 20
+            : operationalStatus == 'Asignado'
+            ? 14
+            : operationalStatus == 'En mision'
+            ? 14
+            : operationalStatus.isEmpty
+            ? 0
+            : 8;
+    final normalizedProfile = profileState.toLowerCase();
+    final profileWeight =
+        normalizedProfile.isEmpty
+            ? 0
+            : normalizedProfile.contains('valid') ||
+                normalizedProfile.contains('aprobad')
+            ? 10
+            : normalizedProfile.contains('revision')
+            ? 6
+            : 4;
+    return (documentWeight +
+            checklistWeight +
+            availabilityWeight +
+            profileWeight)
+        .round()
+        .clamp(0, 100);
+  }
+
+  String _readinessLabel(int score) {
+    if (score >= 90) return 'Listo para volar';
+    if (score >= 75) return 'Listo con seguimiento';
+    return 'Requiere atencion';
+  }
+
+  int _missionRank(String status) {
+    switch (status) {
+      case 'En servicio':
+        return 0;
+      case 'Pasajeros recibidos':
+        return 1;
+      case 'Cabina revisada':
+        return 2;
+      case 'En aeropuerto/base':
+        return 3;
+      case 'Preparacion':
+        return 4;
+      case 'Confirmado':
+        return 5;
+      case 'Pendiente':
+        return 6;
+      case 'Solicitar revision':
+        return 7;
+      case 'Finalizada':
+        return 8;
+      default:
+        return 9;
+    }
+  }
+
+  int _checklistProgress(String status) {
+    switch (status) {
+      case 'Pendiente':
+        return 36;
+      case 'Confirmado':
+        return 58;
+      case 'Preparacion':
+        return 78;
+      case 'En aeropuerto/base':
+        return 82;
+      case 'Cabina revisada':
+        return 88;
+      case 'Pasajeros recibidos':
+        return 92;
+      case 'En servicio':
+        return 94;
+      case 'Finalizada':
+        return 100;
+      default:
+        return 0;
+    }
+  }
+
+  String _operationalStatus(String currentStatus, CrewAssignment? assignment) {
+    if (assignment == null) {
+      return currentStatus.trim().isNotEmpty
+          ? currentStatus.trim()
+          : 'Sin mision activa';
+    }
+    if (assignment.status == 'En servicio') return 'En mision';
+    if (assignment.status == 'Incidencia') return 'Incidencia';
+    if (const [
+      'Confirmado',
+      'Preparacion',
+      'En aeropuerto/base',
+      'Cabina revisada',
+      'Pasajeros recibidos',
+    ].contains(assignment.status)) {
+      return 'Asignado';
+    }
+    if (currentStatus.trim().isNotEmpty) return currentStatus.trim();
+    if (assignment.status == 'Finalizada') return 'Cierre operativo';
+    if (assignment.status == 'Pendiente') return 'Por confirmar';
+    return 'Disponible';
+  }
+
+  int _openIncidentCount(List<CrewIncident> incidents) {
+    return incidents.where((item) {
+      final normalized = item.status.toLowerCase();
+      return !normalized.contains('cerr') &&
+          !normalized.contains('resuelt') &&
+          !normalized.contains('atendid');
+    }).length;
+  }
+
+  bool _isDocumentApproved(CrewDocument document) {
+    final normalized = document.status.toLowerCase();
+    return normalized.contains('vigente') ||
+        normalized.contains('aprobado') ||
+        normalized.contains('valid');
+  }
+
+  List<_ExpiringDocument> _expiringDocuments(List<CrewDocument> documents) {
+    final now = DateTime.now();
+    final items = <_ExpiringDocument>[];
+    for (final document in documents) {
+      final expiration = DateTime.tryParse(document.expiration);
+      if (expiration == null) continue;
+      final daysRemaining = expiration.difference(now).inDays;
+      if (daysRemaining > 60) continue;
+      items.add(
+        _ExpiringDocument(
+          title: document.title,
+          category: document.category,
+          daysRemaining: daysRemaining,
+        ),
+      );
+    }
+    items.sort((left, right) => left.sortValue.compareTo(right.sortValue));
+    return items.take(3).toList();
+  }
+
+  List<String> _buildPremiumAlerts({
+    required CrewAssignment? nextMission,
+    required String operationalStatus,
+    required int documentsValidity,
+    required List<_ExpiringDocument> expiringDocuments,
     required int openIncidents,
     required int pendingAssignments,
   }) {
-    var score = 100;
-    score -= expiredDocs * 18;
-    score -= openIncidents * 12;
-    score -= pendingAssignments * 10;
-    if (active == 0) score -= 5;
-    return score.clamp(0, 100);
+    final alerts = <String>[];
+
+    if (expiringDocuments.any(
+      (item) => item.daysRemaining != null && item.daysRemaining! <= 15,
+    )) {
+      alerts.add('Tienes documentos criticos por vencer en menos de 15 dias.');
+    }
+    if (pendingAssignments > 0) {
+      final channel =
+          nextMission?.provider.trim().isNotEmpty == true
+              ? nextMission!.provider.trim()
+              : 'operaciones';
+      alerts.add('Tienes asignaciones pendientes de confirmar con $channel.');
+    }
+    if (openIncidents > 0) {
+      alerts.add(
+        'Hay incidencias abiertas que requieren seguimiento operativo.',
+      );
+    }
+
+    return alerts.take(4).toList();
+  }
+
+  List<_TimelineItem> _buildMissionTimeline(
+    CrewAssignment? assignment, {
+    required int documentsValidity,
+  }) {
+    final progress =
+        assignment == null ? 0 : _checklistProgress(assignment.status);
+    final inRoute = assignment != null && progress >= 58;
+    final inMission = assignment != null && progress >= 94;
+    final closed = assignment?.status == 'Finalizada';
+    return [
+      _TimelineItem(label: 'Asignada', done: assignment != null),
+      _TimelineItem(label: 'Preparacion', done: progress >= 55),
+      _TimelineItem(label: 'Documentacion', done: documentsValidity >= 100),
+      _TimelineItem(label: 'En ruta', done: inRoute),
+      _TimelineItem(label: 'En mision', done: inMission),
+      _TimelineItem(label: 'Cierre', done: closed),
+    ];
+  }
+
+  List<_DetailItem> _dayOfFlightDetails(
+    CrewAssignment? assignment,
+    int openIncidents,
+  ) {
+    if (assignment == null) return const [];
+    return [
+      _DetailItem(label: 'Hora reporte', value: assignment.showTime),
+      _DetailItem(
+        label: 'FBO',
+        value:
+            assignment.origin.isEmpty
+                ? 'Pendiente por admin'
+                : assignment.origin,
+      ),
+      _DetailItem(
+        label: 'Catering',
+        value:
+            assignment.catering.isEmpty
+                ? 'Sin detalle cargado'
+                : assignment.catering,
+      ),
+      _DetailItem(
+        label: 'Pasajeros especiales',
+        value:
+            assignment.passengers > 0
+                ? '${assignment.passengers} pasajeros autorizados'
+                : 'Sin dato de pasajeros',
+      ),
+      _DetailItem(
+        label: 'Servicio',
+        value:
+            assignment.serviceLevel.isEmpty
+                ? 'Sin nivel cargado'
+                : assignment.serviceLevel,
+      ),
+      _DetailItem(
+        label: 'Incidencias',
+        value:
+            openIncidents > 0
+                ? '$openIncidents abiertas'
+                : 'Sin alertas criticas',
+      ),
+    ];
+  }
+
+  Color _statusTone(String value) {
+    final normalized = value.toLowerCase();
+    if (normalized.contains('disponible') || normalized.contains('mision')) {
+      return const Color(0xFF0F8A5F);
+    }
+    if (normalized.contains('confirm')) return const Color(0xFF2563EB);
+    if (normalized.contains('sin') || normalized.contains('por')) {
+      return const Color(0xFFB7791F);
+    }
+    return const Color(0xFF64748B);
   }
 }
 
 class _ReadinessCard extends StatelessWidget {
   const _ReadinessCard({
     required this.score,
+    required this.label,
     required this.pendingAssignments,
     required this.expiredDocs,
     required this.openIncidents,
   });
 
   final int score;
+  final String label;
   final int pendingAssignments;
   final int expiredDocs;
   final int openIncidents;
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        score >= 85
-            ? 'Listo para operar'
-            : score >= 65
-            ? 'Atencion requerida'
-            : 'Riesgo operativo';
+    final compact = MediaQuery.of(context).size.width < 430;
+
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(compact ? 14 : 18),
       decoration: _panelDecoration().copyWith(
         gradient: const LinearGradient(
           colors: [Color(0xFF07121D), Color(0xFF173B55)],
@@ -154,18 +501,18 @@ class _ReadinessCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: compact ? 18 : 20,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
               Text(
                 '$score%',
-                style: const TextStyle(
+                style: TextStyle(
                   color: Color(0xFFE0B86E),
-                  fontSize: 28,
+                  fontSize: compact ? 24 : 28,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -183,8 +530,8 @@ class _ReadinessCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _DarkAlertPill(label: '$pendingAssignments por confirmar'),
               _DarkAlertPill(label: '$expiredDocs docs alerta'),
@@ -192,6 +539,634 @@ class _ReadinessCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MissionHeroCard extends StatelessWidget {
+  const _MissionHeroCard({
+    required this.assignment,
+    required this.operationalStatus,
+    required this.checklistProgress,
+    required this.onOpenMissions,
+  });
+
+  final CrewAssignment? assignment;
+  final String operationalStatus;
+  final int checklistProgress;
+  final VoidCallback onOpenMissions;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return _AnimatedEntry(
+      child: Container(
+        padding: EdgeInsets.all(compact ? 14 : 18),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        assignment == null
+                            ? 'Sin vuelo asignado'
+                            : assignment!.route,
+                        maxLines: compact ? 2 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 17 : 20,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF0E2338),
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        assignment == null
+                            ? 'Mantente disponible para recibir una nueva mision.'
+                            : '${assignment!.code} | ${assignment!.showTime} | ${assignment!.aircraft}',
+                        maxLines: compact ? 2 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF5F6975),
+                          height: 1.25,
+                          fontSize: compact ? 12 : 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _StatusPill(operationalStatus),
+              ],
+            ),
+            SizedBox(height: compact ? 10 : 14),
+            if (assignment != null)
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _DarkMetricPill(label: assignment!.provider),
+                  _DarkMetricPill(
+                    label:
+                        assignment!.serviceLevel.isEmpty
+                            ? 'Servicio por confirmar'
+                            : assignment!.serviceLevel,
+                  ),
+                  _DarkMetricPill(
+                    label:
+                        assignment!.passengers > 0
+                            ? '${assignment!.passengers} pax'
+                            : 'Pax por confirmar',
+                  ),
+                ],
+              ),
+            SizedBox(height: compact ? 10 : 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: checklistProgress / 100,
+                minHeight: 9,
+                backgroundColor: const Color(0xFFE8EDF2),
+                valueColor: const AlwaysStoppedAnimation(Color(0xFF0E2338)),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              assignment == null
+                  ? 'Sin checklist activo.'
+                  : 'Checklist operativo al $checklistProgress%.',
+              style: TextStyle(
+                color: Color(0xFF41566A),
+                fontWeight: FontWeight.w700,
+                fontSize: compact ? 13 : 14,
+              ),
+            ),
+            SizedBox(height: compact ? 10 : 14),
+            Align(
+              alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: onOpenMissions,
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: Text(
+                  assignment == null ? 'Ver misiones' : 'Abrir mision',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DarkMetricPill extends StatelessWidget {
+  const _DarkMetricPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 10,
+        vertical: compact ? 6 : 7,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F6F8),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: Color(0xFF0E2338),
+          fontSize: compact ? 11 : 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryItem {
+  const _SummaryItem({
+    required this.title,
+    required this.value,
+    required this.detail,
+  });
+
+  final String title;
+  final String value;
+  final String detail;
+}
+
+class _SummaryGrid extends StatelessWidget {
+  const _SummaryGrid({required this.items});
+
+  final List<_SummaryItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 430) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.02,
+            ),
+            itemBuilder:
+                (context, index) =>
+                    _SummaryGridCard(item: items[index], delay: index * 60),
+          );
+        }
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: constraints.maxWidth < 520 ? 200 : 240,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: constraints.maxWidth < 520 ? 1.0 : 1.18,
+          ),
+          itemBuilder:
+              (context, index) =>
+                  _SummaryGridCard(item: items[index], delay: index * 60),
+        );
+      },
+    );
+  }
+}
+
+class _SummaryGridCard extends StatelessWidget {
+  const _SummaryGridCard({required this.item, required this.delay});
+
+  final _SummaryItem item;
+  final int delay;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return _AnimatedEntry(
+      delay: delay,
+      child: Container(
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              item.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF5F6975),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: compact ? 10 : 18),
+            Text(
+              item.value,
+              maxLines: compact ? 2 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Color(0xFF0E2338),
+                fontSize: compact ? 18 : 24,
+                fontWeight: FontWeight.w900,
+                height: 1.05,
+              ),
+            ),
+            SizedBox(height: compact ? 6 : 6),
+            Text(
+              item.detail,
+              maxLines: compact ? 3 : 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF41566A),
+                height: 1.25,
+                fontSize: compact ? 12 : 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineItem {
+  const _TimelineItem({required this.label, required this.done});
+
+  final String label;
+  final bool done;
+}
+
+class _TimelineCard extends StatelessWidget {
+  const _TimelineCard({required this.items});
+
+  final List<_TimelineItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return _AnimatedEntry(
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Timeline operativo',
+              style: TextStyle(
+                fontSize: compact ? 16 : 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            SizedBox(height: compact ? 10 : 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children:
+                  items
+                      .map(
+                        (item) => Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 10 : 12,
+                            vertical: compact ? 8 : 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                item.done
+                                    ? const Color(0xFFEAF6F0)
+                                    : const Color(0xFFF5F7FA),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color:
+                                  item.done
+                                      ? const Color(0xFFB8E3CA)
+                                      : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                item.done
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                size: 16,
+                                color:
+                                    item.done
+                                        ? const Color(0xFF0F8A5F)
+                                        : const Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                item.label,
+                                style: TextStyle(
+                                  color:
+                                      item.done
+                                          ? const Color(0xFF0F8A5F)
+                                          : const Color(0xFF475569),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: compact ? 12 : 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BreakdownItem {
+  const _BreakdownItem({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+}
+
+class _BreakdownCard extends StatelessWidget {
+  const _BreakdownCard({required this.items});
+
+  final List<_BreakdownItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnimatedEntry(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Breakdown de readiness',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: item.tone,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item.label,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    Text(
+                      item.value,
+                      style: TextStyle(
+                        color: item.tone,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailItem {
+  const _DetailItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _DayOfFlightCard extends StatelessWidget {
+  const _DayOfFlightCard({required this.items});
+
+  final List<_DetailItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnimatedEntry(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Detalle del servicio',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 116,
+                      child: Text(
+                        item.label,
+                        style: const TextStyle(
+                          color: Color(0xFF5F6975),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        item.value,
+                        style: const TextStyle(
+                          color: Color(0xFF0E2338),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlertStack extends StatelessWidget {
+  const _AlertStack({required this.alerts});
+
+  final List<String> alerts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children:
+          alerts
+              .asMap()
+              .entries
+              .map(
+                (entry) => _AnimatedEntry(
+                  delay: entry.key * 50,
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: _panelDecoration().copyWith(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFFBEB), Colors.white],
+                      ),
+                      border: Border.all(color: const Color(0xFFF2D184)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Color(0xFFB7791F),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            entry.value,
+                            style: const TextStyle(
+                              color: Color(0xFF7A5A18),
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+    );
+  }
+}
+
+class _ExpiringDocument {
+  const _ExpiringDocument({
+    required this.title,
+    required this.category,
+    required this.daysRemaining,
+  });
+
+  final String title;
+  final String category;
+  final int? daysRemaining;
+
+  int get sortValue => daysRemaining ?? 99999;
+
+  String get summary {
+    if (daysRemaining == null) return '$category sin fecha registrada';
+    if (daysRemaining! < 0) return '$category vencido';
+    return '$category vence en ${daysRemaining} dias';
+  }
+}
+
+class _ExpiringDocumentsCard extends StatelessWidget {
+  const _ExpiringDocumentsCard({required this.items});
+
+  final List<_ExpiringDocument> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnimatedEntry(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Documentos por vencer',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.description_rounded,
+                      color: Color(0xFFB7791F),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            item.summary,
+                            style: const TextStyle(color: Color(0xFF5F6975)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -335,9 +1310,10 @@ class _OperationalStrip extends StatelessWidget {
   }
 }
 
-class _MissionList extends StatelessWidget {
+class _MissionList extends StatefulWidget {
   const _MissionList({
     required this.assignments,
+    required this.coordinationLabel,
     required this.onAccept,
     required this.onReject,
     required this.onRequestChange,
@@ -345,67 +1321,1072 @@ class _MissionList extends StatelessWidget {
   });
 
   final List<CrewAssignment> assignments;
+  final String coordinationLabel;
   final ValueChanged<CrewAssignment> onAccept;
   final ValueChanged<CrewAssignment> onReject;
   final ValueChanged<CrewAssignment> onRequestChange;
   final void Function(CrewAssignment, CrewMissionAction) onAdvance;
 
   @override
+  State<_MissionList> createState() => _MissionListState();
+}
+
+class _MissionListState extends State<_MissionList> {
+  String? _selectedAssignmentId;
+  String _expandedStageId = 'availability';
+
+  @override
   Widget build(BuildContext context) {
-    if (assignments.isEmpty) {
+    final activeAssignments =
+        widget.assignments.where((item) => !item.isFinalized).toList();
+
+    if (activeAssignments.isEmpty) {
       return const _InfoTile(
         icon: Icons.assignment_turned_in_rounded,
-        title: 'Sin misiones asignadas',
-        subtitle: 'Cuando admin publique una operacion aparecera aqui.',
+        title: 'Sin misiones activas',
+        subtitle: 'Cuando admin publique una operacion activa aparecera aqui.',
       );
     }
 
+    final selected = _selectedAssignment(activeAssignments);
+    final primaryAction = _primaryActionFor(selected);
+    final secondaryActions = _secondaryActionsFor(selected);
+    final stages =
+        selected == null ? const <_MissionStage>[] : _buildStages(selected);
+    final progress = _buildProgress(stages);
+    final actionTitle =
+        selected == null
+            ? 'Acciones principales'
+            : selected.canRespondToAssignment
+            ? 'Confirma disponibilidad'
+            : 'Siguiente paso operativo';
+
     return Column(
-      children:
-          assignments.map((item) {
-            final nextAction = item.nextAction;
-            return _AssignmentCard(
-              item: item,
-              actions:
-                  item.canRespondToAssignment
-                      ? [
-                        OutlinedButton.icon(
-                          onPressed: () => onReject(item),
-                          icon: const Icon(Icons.close_rounded),
-                          label: const Text('Rechazar'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _MissionSelectorStrip(
+          assignments: activeAssignments,
+          selectedId: selected?.id,
+          onSelected:
+              (assignment) =>
+                  setState(() => _selectedAssignmentId = assignment.id),
+        ),
+        if (selected != null) ...[
+          const SizedBox(height: 14),
+          _MissionHero(assignment: selected),
+          const SizedBox(height: 14),
+          _ActionCard(
+            title: actionTitle,
+            subtitle: _primaryDetail(selected),
+            icon: Icons.assignment_turned_in_rounded,
+            button: primaryAction?.label ?? 'Sin accion',
+            onPressed:
+                primaryAction == null
+                    ? () {}
+                    : () => _runPrimaryAction(selected, primaryAction),
+          ),
+          if (secondaryActions.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _MissionSecondaryActions(
+              actions: secondaryActions,
+              onTap: (action) => _runSecondaryAction(selected, action),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _MissionChecklistCard(
+            stages: stages,
+            expandedStageId: _expandedStageId,
+            onToggle:
+                (stageId) => setState(() {
+                  _expandedStageId = _expandedStageId == stageId ? '' : stageId;
+                }),
+          ),
+          const SizedBox(height: 14),
+          _MissionProgressCard(items: progress),
+        ],
+      ],
+    );
+  }
+
+  CrewAssignment? _selectedAssignment(List<CrewAssignment> assignments) {
+    if (assignments.isEmpty) return null;
+    final selected = assignments.where(
+      (item) => item.id == _selectedAssignmentId,
+    );
+    if (selected.isNotEmpty) return selected.first;
+    _selectedAssignmentId = assignments.first.id;
+    return assignments.first;
+  }
+
+  _MissionPrimaryAction? _primaryActionFor(CrewAssignment? assignment) {
+    if (assignment == null) return null;
+    if (assignment.canRespondToAssignment) {
+      return const _MissionPrimaryAction(
+        label: 'Confirmar disponibilidad',
+        kind: _MissionActionKind.accept,
+      );
+    }
+    final nextAction = assignment.nextAction;
+    if (nextAction == null) return null;
+    return _MissionPrimaryAction(
+      label: nextAction.label,
+      kind: _MissionActionKind.advance,
+      missionAction: nextAction,
+    );
+  }
+
+  List<_MissionSecondaryAction> _secondaryActionsFor(
+    CrewAssignment? assignment,
+  ) {
+    if (assignment == null || !assignment.canRespondToAssignment)
+      return const [];
+    return const [
+      _MissionSecondaryAction(
+        label: 'Solicitar cambio',
+        icon: Icons.edit_note_rounded,
+        kind: _MissionActionKind.requestChange,
+      ),
+      _MissionSecondaryAction(
+        label: 'Rechazar',
+        icon: Icons.close_rounded,
+        kind: _MissionActionKind.reject,
+      ),
+    ];
+  }
+
+  String _primaryDetail(CrewAssignment assignment) {
+    if (assignment.canRespondToAssignment) {
+      return 'Confirma disponibilidad con ${widget.coordinationLabel} y revisa ruta, horario de presentacion y briefing.';
+    }
+    if (assignment.canCheckin) {
+      return 'Presentate en aeropuerto/base. Hora limite: ${assignment.showTime} · Lugar: ${assignment.origin.isEmpty ? 'Pendiente por admin' : assignment.origin}.';
+    }
+    if (assignment.canMarkCabinReady) {
+      return 'Revisa cabina, catering, limpieza e insumos antes del abordaje.';
+    }
+    if (assignment.canReceivePassengers) {
+      return 'Recibe pasajeros, valida necesidades especiales y confirma lista de abordaje.';
+    }
+    if (assignment.canStartService) {
+      return 'Inicia el servicio a bordo y mantente en coordinacion con ${widget.coordinationLabel} si surge una incidencia.';
+    }
+    if (assignment.canFinalizeService) {
+      return 'Cierra el servicio, registra observaciones y deja trazabilidad del vuelo.';
+    }
+    return 'La operacion ya completo su flujo principal. Solo queda consulta y seguimiento administrativo.';
+  }
+
+  void _runPrimaryAction(
+    CrewAssignment assignment,
+    _MissionPrimaryAction action,
+  ) {
+    switch (action.kind) {
+      case _MissionActionKind.accept:
+        widget.onAccept(assignment);
+        break;
+      case _MissionActionKind.reject:
+        widget.onReject(assignment);
+        break;
+      case _MissionActionKind.requestChange:
+        widget.onRequestChange(assignment);
+        break;
+      case _MissionActionKind.advance:
+        final missionAction = action.missionAction;
+        if (missionAction != null) {
+          widget.onAdvance(assignment, missionAction);
+        }
+        break;
+    }
+  }
+
+  void _runSecondaryAction(
+    CrewAssignment assignment,
+    _MissionSecondaryAction action,
+  ) {
+    switch (action.kind) {
+      case _MissionActionKind.accept:
+        widget.onAccept(assignment);
+        break;
+      case _MissionActionKind.reject:
+        widget.onReject(assignment);
+        break;
+      case _MissionActionKind.requestChange:
+        widget.onRequestChange(assignment);
+        break;
+      case _MissionActionKind.advance:
+        final missionAction = action.missionAction;
+        if (missionAction != null) {
+          widget.onAdvance(assignment, missionAction);
+        }
+        break;
+    }
+  }
+
+  List<_MissionStage> _buildStages(CrewAssignment assignment) {
+    final missionState = assignment.status.trim();
+    return [
+      _MissionStage(
+        id: 'availability',
+        label: 'Disponibilidad',
+        state: assignment.canRespondToAssignment ? 'Pendiente' : 'Confirmado',
+        points: const [
+          'Confirmar disponibilidad con operaciones',
+          'Revisar fecha, hora y ruta asignada',
+          'Confirmar horario de presentacion',
+        ],
+      ),
+      _MissionStage(
+        id: 'itinerary',
+        label: 'Itinerario',
+        state: assignment.route.isNotEmpty ? 'Recibido' : 'Pendiente de carga',
+        points: [
+          assignment.route.isEmpty
+              ? 'Ruta pendiente de carga'
+              : 'Ruta asignada: ${assignment.route}',
+          assignment.origin.isEmpty
+              ? 'Confirmar aeropuerto/base de salida'
+              : 'Salida registrada: ${assignment.origin}',
+          assignment.aircraft.isEmpty
+              ? 'Validar aeronave asignada'
+              : 'Aeronave asignada: ${assignment.aircraft}',
+        ],
+      ),
+      _MissionStage(
+        id: 'presentation',
+        label: 'Presentacion',
+        state:
+            assignment.canCheckin
+                ? 'Pendiente'
+                : [
+                  'En aeropuerto/base',
+                  'Cabina revisada',
+                  'Pasajeros recibidos',
+                  'En servicio',
+                  'Finalizada',
+                ].contains(missionState)
+                ? 'Completado'
+                : 'Pendiente',
+        points: [
+          'Llegar a aeropuerto/base',
+          'Presentarse con personal operativo',
+          'Briefing: ${assignment.showTime}',
+        ],
+      ),
+      _MissionStage(
+        id: 'cabin',
+        label: 'Cabina y catering',
+        state:
+            assignment.canMarkCabinReady
+                ? 'Pendiente'
+                : [
+                  'Cabina revisada',
+                  'Pasajeros recibidos',
+                  'En servicio',
+                  'Finalizada',
+                ].contains(missionState)
+                ? 'Completado'
+                : 'Pendiente',
+        points: [
+          'Revisar limpieza de cabina',
+          assignment.catering.isEmpty
+              ? 'Verificar catering y bebidas'
+              : 'Catering asignado: ${assignment.catering}',
+          assignment.serviceLevel.isEmpty
+              ? 'Confirmar insumos y amenidades'
+              : 'Servicio previsto: ${assignment.serviceLevel}',
+          'Reportar faltantes a ${widget.coordinationLabel}, si aplica',
+        ],
+      ),
+      _MissionStage(
+        id: 'passengers',
+        label: 'Pasajeros',
+        state:
+            assignment.canReceivePassengers
+                ? 'Pendiente'
+                : [
+                  'Pasajeros recibidos',
+                  'En servicio',
+                  'Finalizada',
+                ].contains(missionState)
+                ? 'Completado'
+                : 'Pendiente',
+        points: [
+          'Recibir pasajeros',
+          assignment.passengers > 0
+              ? 'Validar ${assignment.passengers} pasajeros autorizados'
+              : 'Validar cantidad contra lista',
+          assignment.specialRequirements.isEmpty
+              ? 'Confirmar necesidades especiales'
+              : 'Necesidades especiales: ${assignment.specialRequirements}',
+          'Dar indicaciones basicas de seguridad',
+        ],
+      ),
+      _MissionStage(
+        id: 'service',
+        label: 'Servicio en vuelo',
+        state:
+            assignment.canStartService
+                ? 'Pendiente'
+                : ['En servicio', 'Finalizada'].contains(missionState)
+                ? 'Completado'
+                : 'Pendiente',
+        points: [
+          'Atender servicio durante el vuelo',
+          'Mantener cabina limpia y ordenada',
+          assignment.client.isEmpty
+              ? 'Atender solicitudes del cliente'
+              : 'Cliente asignado: ${assignment.client}',
+          'Supervisar seguridad y cinturones',
+        ],
+      ),
+      _MissionStage(
+        id: 'layover',
+        label: 'Escala / siguiente tramo',
+        state: missionState == 'Finalizada' ? 'Completado' : 'Pendiente',
+        points: [
+          'Apoya en desembarque / escala / siguiente tramo',
+          assignment.destination.isEmpty
+              ? 'Verificar pasajeros que bajan o suben'
+              : 'Destino actual: ${assignment.destination}',
+          'Revisar cabina despues del tramo',
+          'Reponer insumos, si aplica',
+          'Confirmar catering del siguiente tramo',
+        ],
+      ),
+      _MissionStage(
+        id: 'closing',
+        label: 'Cierre',
+        state:
+            assignment.canFinalizeService
+                ? 'Pendiente'
+                : missionState == 'Finalizada'
+                ? 'Completado'
+                : 'Pendiente',
+        points: [
+          'Apoyar en desembarque',
+          'Revisar objetos olvidados',
+          'Registrar faltantes o danos',
+          'Reporta incidencias y cierre a ${widget.coordinationLabel}',
+        ],
+      ),
+      _MissionStage(
+        id: 'admin-closing',
+        label: 'Cierre administrativo',
+        state: missionState == 'Finalizada' ? 'Completado' : 'Pendiente admin',
+        points: [
+          '${widget.coordinationLabel} cierra la operacion',
+          'Se resguarda la trazabilidad final del servicio',
+          'La asignacion queda lista para consulta e historial',
+        ],
+      ),
+    ];
+  }
+
+  List<_MissionProgressItem> _buildProgress(List<_MissionStage> stages) {
+    const baseSteps = [
+      ('availability', 'Disponibilidad'),
+      ('itinerary', 'Itinerario'),
+      ('presentation', 'Presentacion'),
+      ('cabin', 'Cabina'),
+      ('passengers', 'Pasajeros'),
+      ('service', 'Servicio'),
+      ('layover', 'Escala / tramo'),
+      ('closing', 'Cierre'),
+      ('admin-closing', 'Cierre admin'),
+    ];
+    return baseSteps.map((step) {
+      final stage = stages.where((item) => item.id == step.$1).firstOrNull;
+      return _MissionProgressItem(
+        label: step.$2,
+        state: stage?.state ?? 'Pendiente',
+        tone: _stageTone(stage?.state ?? 'Pendiente'),
+      );
+    }).toList();
+  }
+
+  _MissionStageTone _stageTone(String value) {
+    final normalized = value.toLowerCase();
+    if (normalized.contains('completado') ||
+        normalized.contains('confirmado') ||
+        normalized.contains('recibido')) {
+      return _MissionStageTone.done;
+    }
+    if (normalized.contains('admin')) return _MissionStageTone.neutral;
+    return _MissionStageTone.pending;
+  }
+}
+
+enum _MissionActionKind { accept, reject, requestChange, advance }
+
+class _MissionPrimaryAction {
+  const _MissionPrimaryAction({
+    required this.label,
+    required this.kind,
+    this.missionAction,
+  });
+
+  final String label;
+  final _MissionActionKind kind;
+  final CrewMissionAction? missionAction;
+}
+
+class _MissionSecondaryAction {
+  const _MissionSecondaryAction({
+    required this.label,
+    required this.icon,
+    required this.kind,
+    this.missionAction,
+  });
+
+  final String label;
+  final IconData icon;
+  final _MissionActionKind kind;
+  final CrewMissionAction? missionAction;
+}
+
+class _MissionStage {
+  const _MissionStage({
+    required this.id,
+    required this.label,
+    required this.state,
+    required this.points,
+  });
+
+  final String id;
+  final String label;
+  final String state;
+  final List<String> points;
+}
+
+enum _MissionStageTone { done, pending, neutral }
+
+class _MissionProgressItem {
+  const _MissionProgressItem({
+    required this.label,
+    required this.state,
+    required this.tone,
+  });
+
+  final String label;
+  final String state;
+  final _MissionStageTone tone;
+}
+
+class _MissionSelectorStrip extends StatelessWidget {
+  const _MissionSelectorStrip({
+    required this.assignments,
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  final List<CrewAssignment> assignments;
+  final String? selectedId;
+  final ValueChanged<CrewAssignment> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return SizedBox(
+      height: compact ? 128 : 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: assignments.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final item = assignments[index];
+          final isSelected = item.id == selectedId;
+          return GestureDetector(
+            onTap: () => onSelected(item),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: compact ? 208 : 220,
+              padding: EdgeInsets.all(compact ? 12 : 14),
+              decoration: _panelDecoration().copyWith(
+                gradient:
+                    isSelected
+                        ? const LinearGradient(
+                          colors: [Color(0xFF0E2235), Color(0xFF173B55)],
+                        )
+                        : const LinearGradient(
+                          colors: [Colors.white, Color(0xFFF8FBFD)],
                         ),
-                        OutlinedButton.icon(
-                          onPressed: () => onRequestChange(item),
-                          icon: const Icon(Icons.edit_note_rounded),
-                          label: const Text('Revision'),
-                        ),
-                        FilledButton.icon(
-                          onPressed: () => onAccept(item),
-                          icon: const Icon(Icons.check_rounded),
-                          label: const Text('Confirmar'),
-                        ),
-                      ]
-                      : nextAction == null
-                      ? const []
-                      : [
-                        FilledButton.icon(
-                          onPressed: () => onAdvance(item, nextAction),
-                          icon: Icon(nextAction.icon),
-                          label: Text(nextAction.label),
-                        ),
-                      ],
-            );
-          }).toList(),
+                border: Border.all(
+                  color:
+                      isSelected
+                          ? const Color(0x33E0B86E)
+                          : const Color(0xFFE5EAF0),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.code,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color:
+                          isSelected ? Colors.white : const Color(0xFF0E2338),
+                      fontSize: compact ? 13 : 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Text(
+                      item.route,
+                      maxLines: compact ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color:
+                            isSelected
+                                ? const Color(0xFFD8E2EA)
+                                : const Color(0xFF5F6975),
+                        height: 1.25,
+                        fontSize: compact ? 12 : 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _StatusPill(item.status),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
-class _CalendarView extends StatelessWidget {
+class _MissionHero extends StatelessWidget {
+  const _MissionHero({required this.assignment});
+
+  final CrewAssignment assignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return _AnimatedEntry(
+      child: Container(
+        padding: EdgeInsets.all(compact ? 14 : 18),
+        decoration: _panelDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: compact ? 42 : 48,
+                  height: compact ? 42 : 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF2F8),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.flight_takeoff_rounded,
+                    color: Color(0xFF0E2338),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        assignment.code,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFFB7791F),
+                          fontSize: compact ? 12 : 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        assignment.route,
+                        maxLines: compact ? 2 : 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 22 : 26,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF0E2338),
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        assignment.provider,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF5F6975),
+                          height: 1.3,
+                          fontSize: compact ? 13 : 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        assignment.aircraft,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF41566A),
+                          height: 1.25,
+                          fontSize: compact ? 13 : 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(child: _StatusPill(assignment.status)),
+              ],
+            ),
+            SizedBox(height: compact ? 12 : 14),
+            Wrap(
+              spacing: compact ? 6 : 8,
+              runSpacing: compact ? 6 : 8,
+              children: [
+                _DarkMetricPill(label: assignment.showTime),
+                _DarkMetricPill(
+                  label:
+                      assignment.origin.isEmpty
+                          ? 'Origen por definir'
+                          : assignment.origin,
+                ),
+                _DarkMetricPill(
+                  label:
+                      assignment.passengers > 0
+                          ? '${assignment.passengers} pasajeros'
+                          : 'Pasajeros sin dato',
+                ),
+                if (assignment.serviceLevel.isNotEmpty)
+                  _DarkMetricPill(label: assignment.serviceLevel),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _MissionInfoList(assignment: assignment),
+            if (assignment.rejectReason.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Motivo registrado: ${assignment.rejectReason}',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Color(0xFF8D1F1A),
+                  fontSize: compact ? 13 : 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MissionInfoList extends StatelessWidget {
+  const _MissionInfoList({required this.assignment});
+
+  final CrewAssignment assignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+    final rows = [
+      ('Folio', assignment.code),
+      ('Ruta', assignment.route),
+      ('Empresa', assignment.provider),
+      ('Aeronave', assignment.aircraft),
+      ('Presentacion', assignment.showTime),
+      (
+        'Pasajeros',
+        assignment.passengers > 0 ? '${assignment.passengers} pax' : 'Sin dato',
+      ),
+      ('Estado', assignment.status),
+    ];
+
+    return Column(
+      children: [
+        for (var index = 0; index < rows.length; index++) ...[
+          _MissionInfoRow(
+            label: rows[index].$1,
+            value: rows[index].$2.isEmpty ? 'Pendiente por admin' : rows[index].$2,
+            compact: compact,
+          ),
+          if (index != rows.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _MissionInfoRow extends StatelessWidget {
+  const _MissionInfoRow({
+    required this.label,
+    required this.value,
+    required this.compact,
+  });
+
+  final String label;
+  final String value;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: compact ? 88 : 96,
+          child: Text(
+            '$label:',
+            style: TextStyle(
+              color: const Color(0xFF5F6975),
+              fontSize: compact ? 12 : 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: const Color(0xFF0E2338),
+              fontSize: compact ? 13 : 14,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MissionProgressCard extends StatelessWidget {
+  const _MissionProgressCard({required this.items});
+
+  final List<_MissionProgressItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 14 : 16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Progreso de la mision',
+            style: TextStyle(
+              fontSize: compact ? 16 : 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(items.length, (index) {
+            final item = items[index];
+            final colors = _colorsFor(item.tone);
+            return Padding(
+              padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.$1,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.$2),
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: TextStyle(
+                        color: colors.$3,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFF0E2338),
+                            fontSize: compact ? 14 : 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.state,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.$3,
+                            fontSize: compact ? 12 : 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  (Color, Color, Color) _colorsFor(_MissionStageTone tone) {
+    return switch (tone) {
+      _MissionStageTone.done => (
+        const Color(0xFFEAF6F0),
+        const Color(0xFFB8E3CA),
+        const Color(0xFF0F8A5F),
+      ),
+      _MissionStageTone.neutral => (
+        const Color(0xFFEAF2F8),
+        const Color(0xFFBFDBFE),
+        const Color(0xFF1D4ED8),
+      ),
+      _MissionStageTone.pending => (
+        const Color(0xFFFFF8E7),
+        const Color(0xFFF2D184),
+        const Color(0xFFB7791F),
+      ),
+    };
+  }
+}
+
+class _MissionSecondaryActions extends StatelessWidget {
+  const _MissionSecondaryActions({required this.actions, required this.onTap});
+
+  final List<_MissionSecondaryAction> actions;
+  final ValueChanged<_MissionSecondaryAction> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return Wrap(
+      spacing: compact ? 8 : 10,
+      runSpacing: compact ? 8 : 10,
+      children:
+          actions
+              .map(
+                (action) => OutlinedButton.icon(
+                  onPressed: () => onTap(action),
+                  icon: Icon(action.icon),
+                  label: Text(
+                    action.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(),
+    );
+  }
+}
+
+class _MissionChecklistCard extends StatelessWidget {
+  const _MissionChecklistCard({
+    required this.stages,
+    required this.expandedStageId,
+    required this.onToggle,
+  });
+
+  final List<_MissionStage> stages;
+  final String expandedStageId;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 14 : 16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Checklist operativo',
+            style: TextStyle(
+              fontSize: compact ? 16 : 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...stages.map((stage) {
+            final expanded = stage.id == expandedStageId;
+            final colors = _pillColors(stage.state);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FBFD),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      onTap: () => onToggle(stage.id),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: compact ? 12 : 14,
+                        vertical: compact ? 0 : 2,
+                      ),
+                      title: Text(
+                        stage.label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: compact ? 14 : 15,
+                        ),
+                      ),
+                      subtitle: Text(
+                        stage.state,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: compact ? 12 : 13),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.$1,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              stage.state,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.$2,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            expanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (expanded)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            stage.points
+                                .map(
+                                  (point) => Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Padding(
+                                          padding: EdgeInsets.only(top: 3),
+                                          child: Icon(
+                                            Icons.check_circle_outline_rounded,
+                                            size: 16,
+                                            color: Color(0xFF173B55),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            point,
+                                            maxLines: 4,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Color(0xFF41566A),
+                                              height: 1.35,
+                                              fontSize: compact ? 13 : 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  (Color, Color) _pillColors(String value) {
+    final normalized = value.toLowerCase();
+    if (normalized.contains('completado') ||
+        normalized.contains('confirmado') ||
+        normalized.contains('recibido')) {
+      return (const Color(0xFFEAF6F0), const Color(0xFF0F8A5F));
+    }
+    if (normalized.contains('admin')) {
+      return (const Color(0xFFEAF2F8), const Color(0xFF173B55));
+    }
+    return (const Color(0xFFFFF8E7), const Color(0xFFB7791F));
+  }
+}
+
+class _CalendarView extends StatefulWidget {
   const _CalendarView({
     required this.selectedDate,
     required this.assignments,
     required this.blocks,
+    required this.blockForm,
+    required this.statuses,
+    required this.coordinationLabel,
     required this.onDateSelected,
+    required this.onBlockFormChanged,
     required this.onBlock,
     required this.onAdvance,
     required this.onAccept,
@@ -414,19 +2395,91 @@ class _CalendarView extends StatelessWidget {
   final DateTime selectedDate;
   final List<CrewAssignment> assignments;
   final List<CrewBlock> blocks;
+  final Map<String, dynamic> blockForm;
+  final List<CrewAvailabilityStatus> statuses;
+  final String coordinationLabel;
   final ValueChanged<DateTime> onDateSelected;
+  final void Function(String, dynamic) onBlockFormChanged;
   final VoidCallback onBlock;
   final void Function(CrewAssignment, CrewMissionAction) onAdvance;
   final ValueChanged<CrewAssignment> onAccept;
 
   @override
+  State<_CalendarView> createState() => _CalendarViewState();
+}
+
+class _CalendarViewState extends State<_CalendarView> {
+  late final TextEditingController _reasonController;
+
+  @override
+  void initState() {
+    super.initState();
+    _reasonController = TextEditingController(
+      text: widget.blockForm['reason']?.toString() ?? '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _CalendarView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentReason = widget.blockForm['reason']?.toString() ?? '';
+    if (_reasonController.text != currentReason) {
+      _reasonController.value = TextEditingValue(
+        text: currentReason,
+        selection: TextSelection.collapsed(offset: currentReason.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final dayItems =
-        assignments
-            .where((item) => isSameDay(item.date, selectedDate))
+        widget.assignments
+            .where((item) => isSameDay(item.date, widget.selectedDate))
             .toList();
     final dayBlocks =
-        blocks.where((item) => isSameDay(item.date, selectedDate)).toList();
+        widget.blocks
+            .where((item) => isSameDay(item.date, widget.selectedDate))
+            .toList();
+    final hasConfirmedConflict = widget.assignments.any(
+      (item) =>
+          isSameDay(item.date, widget.selectedDate) &&
+          [
+            'Confirmado',
+            'En aeropuerto/base',
+            'Cabina revisada',
+            'Pasajeros recibidos',
+            'En servicio',
+          ].contains(item.status),
+    );
+    final selectableStates =
+        widget.statuses.where((item) => item.selectable).toList();
+    final fallbackState =
+        selectableStates.isEmpty ? 'NO_DISPONIBLE' : selectableStates.first.key;
+    final stateValue = widget.blockForm['state']?.toString() ?? fallbackState;
+    final blockTypeValue = widget.blockForm['blockType']?.toString() ?? '';
+    final agendaErrors = <String>[];
+    final normalizedState = stateValue.toUpperCase();
+    if (normalizedState == 'NO_DISPONIBLE' &&
+        _reasonController.text.trim().isEmpty) {
+      agendaErrors.add(
+        'Describe el motivo del bloqueo para que ${widget.coordinationLabel} lo audite.',
+      );
+    }
+    if (blockTypeValue.trim().isEmpty) {
+      agendaErrors.add('Selecciona el tipo de bloqueo.');
+    }
+    if (hasConfirmedConflict && normalizedState == 'NO_DISPONIBLE') {
+      agendaErrors.add(
+        'Ya tienes una mision confirmada ese dia; el bloqueo debe revisarlo ${widget.coordinationLabel}.',
+      );
+    }
 
     return Column(
       children: [
@@ -436,12 +2489,12 @@ class _CalendarView extends StatelessWidget {
           child: TableCalendar<CrewAssignment>(
             firstDay: DateTime.now().subtract(const Duration(days: 90)),
             lastDay: DateTime.now().add(const Duration(days: 365)),
-            focusedDay: selectedDate,
-            selectedDayPredicate: (day) => isSameDay(day, selectedDate),
-            onDaySelected: (selected, _) => onDateSelected(selected),
+            focusedDay: widget.selectedDate,
+            selectedDayPredicate: (day) => isSameDay(day, widget.selectedDate),
+            onDaySelected: (selected, _) => widget.onDateSelected(selected),
             eventLoader:
                 (day) =>
-                    assignments
+                    widget.assignments
                         .where((item) => isSameDay(item.date, day))
                         .toList(),
             calendarStyle: const CalendarStyle(
@@ -453,39 +2506,126 @@ class _CalendarView extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        _ActionCard(
-          title: 'Disponibilidad personal',
-          subtitle: 'Bloquea agenda para descanso, capacitacion o restriccion.',
-          icon: Icons.event_busy_rounded,
-          button: 'Bloquear dia',
-          onPressed: onBlock,
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: _panelDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Bloqueo de disponibilidad',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Puedes bloquear agenda propia para descanso, capacitacion o restriccion, pero no eliminar vuelos asignados.',
+                style: TextStyle(color: Color(0xFF5F6975), height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                value: stateValue,
+                decoration: const InputDecoration(
+                  labelText: 'Estado de agenda',
+                ),
+                items:
+                    selectableStates
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item.key,
+                            child: Text(item.label),
+                          ),
+                        )
+                        .toList(),
+                onChanged:
+                    (value) =>
+                        widget.onBlockFormChanged('state', value ?? stateValue),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: blockTypeValue.isEmpty ? null : blockTypeValue,
+                decoration: const InputDecoration(labelText: 'Tipo de bloqueo'),
+                items:
+                    const [
+                          'Descanso',
+                          'Capacitacion',
+                          'Medico',
+                          'Personal',
+                          'Restriccion operativa',
+                        ]
+                        .map(
+                          (item) =>
+                              DropdownMenuItem(value: item, child: Text(item)),
+                        )
+                        .toList(),
+                onChanged:
+                    (value) =>
+                        widget.onBlockFormChanged('blockType', value ?? ''),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reasonController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo',
+                  hintText: 'Describe el motivo del bloqueo',
+                ),
+                onChanged:
+                    (value) => widget.onBlockFormChanged('reason', value),
+              ),
+              if (agendaErrors.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ...agendaErrors.map(
+                  (error) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      error,
+                      style: const TextStyle(
+                        color: Color(0xFF8D1F1A),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: agendaErrors.isEmpty ? widget.onBlock : null,
+                  icon: const Icon(Icons.event_busy_rounded),
+                  label: const Text('Solicitar bloqueo'),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         ...dayBlocks.map(
           (item) => _InfoTile(
             icon: Icons.block_rounded,
-            title: 'Bloqueo de agenda',
+            title: '${item.blockType} | ${item.state}',
             subtitle: item.reason,
           ),
         ),
         ...dayItems.map((item) {
           final nextAction = item.nextAction;
-          return _AssignmentCard(
+          return _CalendarFlightCard(
             item: item,
             actions:
                 item.canRespondToAssignment
                     ? [
                       FilledButton.icon(
-                        onPressed: () => onAccept(item),
+                        onPressed: () => widget.onAccept(item),
                         icon: const Icon(Icons.check_rounded),
-                        label: const Text('Confirmar'),
+                        label: const Text('Confirmar vuelo'),
                       ),
                     ]
                     : nextAction == null
                     ? const []
                     : [
                       FilledButton.icon(
-                        onPressed: () => onAdvance(item, nextAction),
+                        onPressed: () => widget.onAdvance(item, nextAction),
                         icon: Icon(nextAction.icon),
                         label: Text(nextAction.label),
                       ),
@@ -497,12 +2637,138 @@ class _CalendarView extends StatelessWidget {
   }
 }
 
+class _CalendarFlightCard extends StatelessWidget {
+  const _CalendarFlightCard({required this.item, required this.actions});
+
+  final CrewAssignment item;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = _flowSteps(item.status);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${item.code} - ${item.route}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0E2338),
+                  ),
+                ),
+              ),
+              _StatusPill(item.status),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${item.showTime} | ${item.aircraft}',
+            style: const TextStyle(color: Color(0xFF5F6975)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${item.provider}${item.serviceLevel.isEmpty ? '' : ' | ${item.serviceLevel}'}',
+            style: const TextStyle(color: Color(0xFF5F6975)),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                steps
+                    .map(
+                      (step) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              step.$2
+                                  ? const Color(0xFFEAF6F0)
+                                  : step.$3
+                                  ? const Color(0xFFFFF8E7)
+                                  : const Color(0xFFF5F7FA),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color:
+                                step.$2
+                                    ? const Color(0xFFB8E3CA)
+                                    : step.$3
+                                    ? const Color(0xFFF2D184)
+                                    : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                        child: Text(
+                          step.$1,
+                          style: TextStyle(
+                            color:
+                                step.$2
+                                    ? const Color(0xFF0F8A5F)
+                                    : step.$3
+                                    ? const Color(0xFFB7791F)
+                                    : const Color(0xFF64748B),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(spacing: 10, runSpacing: 10, children: actions),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<(String, bool, bool)> _flowSteps(String status) {
+    final labels = [
+      'Asignada',
+      'Confirmada por sobrecargo',
+      'En aeropuerto/base',
+      'Cabina revisada',
+      'Pasajeros recibidos',
+      'En vuelo',
+      'Cierre operativo',
+    ];
+    final index = switch (status) {
+      'Pendiente' => 0,
+      'Confirmado' => 1,
+      'Preparacion' => 2,
+      'En aeropuerto/base' => 2,
+      'Cabina revisada' => 3,
+      'Pasajeros recibidos' => 4,
+      'En servicio' => 5,
+      'Finalizada' => 6,
+      _ => 0,
+    };
+    return labels.asMap().entries.map((entry) {
+      final done = entry.key < index;
+      final active = entry.key == index;
+      return (entry.value, done, active);
+    }).toList();
+  }
+}
+
 class _AvailabilityView extends StatefulWidget {
   const _AvailabilityView({
     required this.selectedDate,
     required this.assignments,
     required this.records,
     required this.statuses,
+    required this.baseLabel,
+    required this.coverageLabel,
     required this.isLoading,
     required this.onDateSelected,
     required this.onMonthChanged,
@@ -514,6 +2780,8 @@ class _AvailabilityView extends StatefulWidget {
   final List<CrewAssignment> assignments;
   final List<CrewAvailabilityRecord> records;
   final List<CrewAvailabilityStatus> statuses;
+  final String baseLabel;
+  final String coverageLabel;
   final bool isLoading;
   final ValueChanged<DateTime> onDateSelected;
   final ValueChanged<DateTime> onMonthChanged;
@@ -581,6 +2849,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
     final selectedRecord = _selectedRecord;
     final operation = _operationFor(widget.selectedDate);
     final locked = selectedRecord?.isOperation == true;
@@ -607,8 +2876,10 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
         const SizedBox(height: 14),
         _availabilitySummary(),
         const SizedBox(height: 14),
+        _availabilityQuickActions(locked),
+        const SizedBox(height: 14),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(compact ? 12 : 14),
           decoration: _panelDecoration(),
           child: TableCalendar<CrewAvailabilityRecord>(
             locale: 'es_MX',
@@ -628,8 +2899,16 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
               todayBuilder: (context, day, focusedDay) => _dayCell(day, false),
               selectedBuilder:
                   (context, day, focusedDay) => _dayCell(day, true),
+              outsideBuilder:
+                  (context, day, focusedDay) => _dayCell(
+                    day,
+                    false,
+                    isOutsideMonth: true,
+                  ),
               markerBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
+            rowHeight: compact ? 78 : 90,
+            daysOfWeekHeight: 28,
             headerStyle: const HeaderStyle(
               formatButtonVisible: false,
               titleCentered: true,
@@ -643,23 +2922,35 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           _availabilityEditor(selectedRecord),
         if (activity.isNotEmpty) ...[
           const SizedBox(height: 18),
-          const Text(
-            'Actividad reciente',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 10),
-          ...activity
-              .take(6)
-              .map(
-                (item) => _InfoTile(
-                  icon: Icons.history_rounded,
-                  title: '${_dateLabel(item.date)} | ${item.label}',
-                  subtitle:
-                      item.comment.isEmpty
-                          ? 'Actualizado desde ${item.origin.toLowerCase()}.'
-                          : item.comment,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: _panelDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Mi bitacora',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                 ),
-              ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Ultimos movimientos de disponibilidad',
+                  style: TextStyle(color: Color(0xFF5F6975)),
+                ),
+                const SizedBox(height: 12),
+                ...activity.take(6).map(
+                  (item) => _InfoTile(
+                    icon: Icons.history_rounded,
+                    title: '${_dateLabel(item.date)} | ${item.label}',
+                    subtitle:
+                        item.comment.isEmpty
+                            ? 'Actualizado desde ${item.origin.toLowerCase()}.'
+                            : item.comment,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ],
     );
@@ -668,76 +2959,242 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
   Widget _availabilitySummary() {
     final keys = [
       'DISPONIBLE',
-      'DESCANSO',
       'NO_DISPONIBLE',
+      'DESCANSO',
+      'EN_OPERACION',
       'BLOQUEO_SOLICITADO',
     ];
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children:
-          keys.map((key) {
-            final status = _statusFor(key);
-            final count =
-                widget.records.where((item) => item.statusKey == key).length;
-            return Container(
-              width: 155,
-              padding: const EdgeInsets.all(13),
-              decoration: _panelDecoration(),
-              child: Row(
-                children: [
-                  CircleAvatar(radius: 7, backgroundColor: status.color),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$count dias',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 430;
+        final cardWidth = compact ? (constraints.maxWidth - 10) / 2 : 155.0;
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children:
+              keys.map((key) {
+                final status = _statusFor(key);
+                final count =
+                    widget.records.where((item) => item.statusKey == key).length;
+                return Container(
+                  width: cardWidth,
+                  padding: const EdgeInsets.all(13),
+                  decoration: _panelDecoration(),
+                  child: Row(
+                    children: [
+                      CircleAvatar(radius: 7, backgroundColor: status.color),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$count dias',
+                              style: const TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            Text(
+                              _summaryLabelForKey(key),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF5F6975),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          status.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF5F6975),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
+        );
+      },
     );
   }
 
-  Widget _dayCell(DateTime day, bool selected) {
+  Widget _availabilityQuickActions(bool locked) {
+    final actions = [
+      ('DISPONIBLE', 'Marcar disponible'),
+      ('DESCANSO', 'Marcar descanso'),
+      ('NO_DISPONIBLE', 'Marcar no disponible'),
+      ('BLOQUEO_SOLICITADO', 'Solicitar bloqueo'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _panelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Acciones rapidas',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                actions.map((item) {
+                  final enabled =
+                      !locked &&
+                      widget.statuses.any(
+                        (status) => status.selectable && status.key == item.$1,
+                      );
+                  return OutlinedButton(
+                    onPressed:
+                        enabled
+                            ? () => setState(() => _selectedStatus = item.$1)
+                            : null,
+                    child: Text(item.$2),
+                  );
+                }).toList(),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  locked || widget.isLoading
+                      ? null
+                      : () => widget.onSave(
+                        widget.selectedDate,
+                        _selectedStatus,
+                        _commentController.text.trim(),
+                      ),
+              icon: const Icon(Icons.save_rounded),
+              label: const Text('Guardar disponibilidad'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dayCell(DateTime day, bool selected, {bool isOutsideMonth = false}) {
     final record = _recordFor(widget.records, day);
-    final color = record?.color ?? const Color(0xFFE2E8F0);
+    final operation = _operationFor(day);
+    final displayStatus = _displayStatusForDay(day, record, operation);
+    final status = _statusFor(displayStatus.$1);
+    final color = displayStatus.$1 == 'POR_CONFIRMAR'
+        ? const Color(0xFFF8E2BD)
+        : status.color;
     return Center(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
+        width: 44,
+        height: 66,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: selected ? 1 : 0.18),
-          shape: BoxShape.circle,
-          border:
-              selected
-                  ? Border.all(color: const Color(0xFF0E2338), width: 2)
-                  : null,
-        ),
-        child: Text(
-          '${day.day}',
-          style: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF15293A),
-            fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+          color: isOutsideMonth
+              ? const Color(0xFFF8F4EC)
+              : color.withValues(
+                  alpha: displayStatus.$1 == 'POR_CONFIRMAR' ? 0.9 : 0.18,
+                ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF0E2338)
+                : const Color(0xFFE8EDF2),
+            width: selected ? 2 : 1,
           ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${day.day}',
+              style: TextStyle(
+                color: isOutsideMonth
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF15293A),
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Text(
+                displayStatus.$2,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isOutsideMonth
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF41566A),
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 10,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  (String, String) _displayStatusForDay(
+    DateTime day,
+    CrewAvailabilityRecord? record,
+    CrewAssignment? operation,
+  ) {
+    if (operation != null) {
+      return ('EN_OPERACION', 'En\noperacion');
+    }
+    if (record == null) return ('POR_CONFIRMAR', 'Por\nconfirmar');
+    return switch (record.statusKey) {
+      'DISPONIBLE' => ('DISPONIBLE', 'Disponible'),
+      'DESCANSO' => ('DESCANSO', 'Descanso'),
+      'NO_DISPONIBLE' => ('NO_DISPONIBLE', 'No\ndisponible'),
+      'BLOQUEO_SOLICITADO' => ('BLOQUEO_SOLICITADO', 'Bloqueo'),
+      'EN_OPERACION' => ('EN_OPERACION', 'En\noperacion'),
+      _ => (record.statusKey, record.label),
+    };
+  }
+
+  String _summaryLabelForKey(String key) {
+    return switch (key) {
+      'DISPONIBLE' => 'Disponible este mes',
+      'NO_DISPONIBLE' => 'No disponible',
+      'DESCANSO' => 'Descanso',
+      'EN_OPERACION' => 'En operacion',
+      'BLOQUEO_SOLICITADO' => 'Bloqueos pendientes',
+      _ => _statusFor(key).label,
+    };
+  }
+
+  Widget _availabilityMeta() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Base: ${widget.baseLabel.isEmpty ? 'Sin base' : widget.baseLabel}',
+          style: const TextStyle(color: Color(0xFF41566A), height: 1.35),
+        ),
+        Text(
+          'Cobertura: ${widget.coverageLabel.isEmpty ? 'Sin cobertura' : widget.coverageLabel}',
+          style: const TextStyle(color: Color(0xFF41566A), height: 1.35),
+        ),
+      ],
+    );
+  }
+
+  Widget _availabilityStatusBadge(String key) {
+    final status = _statusFor(key);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        status.label,
+        style: TextStyle(
+          color: status.color,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -752,45 +3209,73 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Disponibilidad del ${_dateLabel(widget.selectedDate)}',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          const Text(
+            'Detalle del dia',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            record?.label ?? 'Sin estado registrado',
-            style: TextStyle(
-              color: record?.color ?? const Color(0xFF5F6975),
+            _dateLabel(widget.selectedDate),
+            style: const TextStyle(
+              color: Color(0xFF0E2338),
               fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  record?.label ?? 'Sin estado registrado',
+                  style: TextStyle(
+                    color: record?.color ?? const Color(0xFF5F6975),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              _availabilityStatusBadge(_selectedStatus),
+            ],
+          ),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                selectable.map((status) {
-                  return ChoiceChip(
-                    selected: _selectedStatus == status.key,
-                    label: Text(status.label),
-                    avatar: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: status.color,
-                    ),
-                    onSelected:
-                        (_) => setState(() => _selectedStatus = status.key),
-                  );
-                }).toList(),
+          DropdownButtonFormField<String>(
+            value: _selectedStatus,
+            decoration: const InputDecoration(
+              labelText: 'Estado',
+              border: OutlineInputBorder(),
+            ),
+            items:
+                selectable
+                    .map(
+                      (status) => DropdownMenuItem(
+                        value: status.key,
+                        child: Text(status.label),
+                      ),
+                    )
+                    .toList(),
+            onChanged:
+                widget.isLoading
+                    ? null
+                    : (value) {
+                      if (value == null) return;
+                      setState(() => _selectedStatus = value);
+                    },
           ),
           const SizedBox(height: 14),
           TextField(
             controller: _commentController,
-            maxLines: 3,
+            maxLines: 4,
             decoration: const InputDecoration(
-              labelText: 'Comentario o motivo',
-              hintText: 'Agrega contexto para operaciones',
+              labelText: 'Comentario',
+              hintText: 'Escribe un comentario para Admin / Red Sky',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
+          _availabilityMeta(),
+          const SizedBox(height: 12),
+          Text(
+            'Origen: ${record?.origin ?? 'SISTEMA'}',
+            style: const TextStyle(color: Color(0xFF5F6975)),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -826,24 +3311,52 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Dia asignado a operacion',
+            'Detalle del dia',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
+          Text(
+            _dateLabel(widget.selectedDate),
+            style: const TextStyle(
+              color: Color(0xFF0E2338),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
           Text(
             operation == null
                 ? record?.comment ?? 'La operacion fue asignada por admin.'
                 : '${operation.code} | ${operation.route} | ${operation.showTime}',
             style: const TextStyle(color: Color(0xFF41566A), height: 1.4),
           ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFDBEAFE),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text(
+              'En operacion',
+              style: TextStyle(
+                color: Color(0xFF1D4ED8),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _availabilityMeta(),
           const SizedBox(height: 14),
-          OutlinedButton.icon(
-            onPressed:
-                widget.isLoading
-                    ? null
-                    : () => widget.onRequestChange(widget.selectedDate),
-            icon: const Icon(Icons.edit_calendar_rounded),
-            label: const Text('Solicitar cambio'),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  widget.isLoading
+                      ? null
+                      : () => widget.onRequestChange(widget.selectedDate),
+              icon: const Icon(Icons.edit_calendar_rounded),
+              label: const Text('Solicitar cambio'),
+            ),
           ),
         ],
       ),
@@ -895,6 +3408,11 @@ class _ProfileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const profileStates = ['Pendiente', 'Validado', 'En revision', 'Rechazado'];
+    final rawProfileState = form['profileState']?.toString().trim() ?? '';
+    final selectedProfileState =
+        profileStates.contains(rawProfileState) ? rawProfileState : null;
+
     return Column(
       children: [
         const _InfoTile(
@@ -932,10 +3450,10 @@ class _ProfileView extends StatelessWidget {
               onChanged: (value) => onChanged('coverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: form['profileState']?.toString() ?? 'Pendiente',
+              initialValue: selectedProfileState,
               decoration: const InputDecoration(labelText: 'Estado perfil'),
               items:
-                  const ['Pendiente', 'Validado', 'En revision', 'Rechazado']
+                  profileStates
                       .map(
                         (item) =>
                             DropdownMenuItem(value: item, child: Text(item)),

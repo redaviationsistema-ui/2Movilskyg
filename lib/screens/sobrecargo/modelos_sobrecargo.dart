@@ -54,6 +54,7 @@ class CrewAssignment {
       json['detail'] ?? json['operation'] ?? json['detalle'],
     );
     final briefing = _asMap(detail['briefing'] ?? json['briefing']);
+    final timeline = _asList(detail['timeline'] ?? json['timeline']);
     final origin =
         _firstString([
           briefing['origen'],
@@ -92,18 +93,33 @@ class CrewAssignment {
         departure.contains('T') && departure.length >= 16
             ? departure.substring(11, 16)
             : '';
-    final rawStatus =
+    final operationStatus =
+        _latestTimelineStatus(timeline) ??
         _firstString([
+          detail['status'],
           json['missionStatus'],
           json['mission_status'],
-          json['crew_status'],
+          json['status'],
+        ]) ??
+        '';
+    final crewLifecycleStatus =
+        _firstString([
           detail['crew_status'],
+          json['crew_status'],
+          json['crewStatus'],
           json['crew_status_label'],
-          detail['status'],
+        ]) ??
+        '';
+    final rawStatus =
+        _resolveMissionStatus(
+          operationStatus: operationStatus,
+          crewLifecycleStatus: crewLifecycleStatus,
+          timeline: timeline,
+        ) ??
+        _firstString([
           json['response_status'],
           json['assignment_response'],
           json['response'],
-          json['status'],
         ]) ??
         'Pendiente';
 
@@ -159,9 +175,7 @@ class CrewAssignment {
             json['report_time'],
             json['time'],
           ]) ??
-          (timeFromDeparture.isEmpty
-              ? null
-              : 'Presentacion $timeFromDeparture') ??
+          (timeFromDeparture.isEmpty ? null : timeFromDeparture) ??
           'TBD',
       status: normalizeStatus(rawStatus),
       client:
@@ -218,11 +232,10 @@ class CrewAssignment {
   }
 
   bool get canRespondToAssignment {
-    final normalized = status.toLowerCase();
-    return normalized.contains('pend') || normalized.contains('recib');
+    return status == 'Pendiente';
   }
 
-  bool get canCheckin => status == 'Confirmado';
+  bool get canCheckin => status == 'Confirmado' || status == 'Preparacion';
   bool get canMarkCabinReady => status == 'En aeropuerto/base';
   bool get canReceivePassengers => status == 'Cabina revisada';
   bool get canStartService => status == 'Pasajeros recibidos';
@@ -319,7 +332,8 @@ class CrewAssignment {
     if (normalized.contains('pasajeros')) return 'Pasajeros recibidos';
     if (normalized.contains('active') ||
         normalized.contains('servicio') ||
-        normalized.contains('in progress')) {
+        normalized.contains('in progress') ||
+        normalized.contains('en vuelo')) {
       return 'En servicio';
     }
     if (normalized.contains('completed') ||
@@ -327,45 +341,13 @@ class CrewAssignment {
         normalized.contains('cerrad')) {
       return 'Finalizada';
     }
+    if (normalized.contains('incidencia') || normalized.contains('incident')) {
+      return 'Incidencia';
+    }
     if (normalized.contains('prepar')) return 'Preparacion';
     return value.trim().isEmpty ? 'Pendiente' : value.trim();
   }
 
-  static final demo = [
-    CrewAssignment(
-      id: 'crew-1',
-      operationId: 'crew-1',
-      code: 'RSK-2401',
-      route: 'MMTO -> MMUN',
-      provider: 'Red Sky Operador Toluca',
-      aircraft: 'Citation Latitude XA-RSK',
-      date: DateTime.now(),
-      showTime: 'Presentacion 07:10',
-      status: 'Pendiente',
-    ),
-    CrewAssignment(
-      id: 'crew-2',
-      operationId: 'crew-2',
-      code: 'RSK-2407',
-      route: 'MMMX -> MMSD',
-      provider: 'Proveedor Bajio',
-      aircraft: 'Learjet 75 XA-LRJ',
-      date: DateTime.now().add(const Duration(days: 1)),
-      showTime: 'Presentacion 13:40',
-      status: 'Confirmado',
-    ),
-    CrewAssignment(
-      id: 'crew-3',
-      operationId: 'crew-3',
-      code: 'RSK-2318',
-      route: 'MMGL -> MMPR',
-      provider: 'Operador Pacifico',
-      aircraft: 'Phenom 300 XA-PHN',
-      date: DateTime.now().subtract(const Duration(days: 6)),
-      showTime: 'Finalizada 18:20',
-      status: 'Finalizada',
-    ),
-  ];
 }
 
 class CrewMissionAction {
@@ -405,16 +387,41 @@ class CrewIncident {
 
   factory CrewIncident.fromJson(Map<String, dynamic> json) {
     final comments = json['comments'] ?? json['comentarios'] ?? json['notes'];
+    final files = json['files'];
+    final evidenceFromFiles =
+        files is List
+            ? files
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      item['original_name']?.toString() ??
+                      item['file_path']?.toString() ??
+                      '',
+                )
+                .where((item) => item.trim().isNotEmpty)
+                .join(', ')
+            : '';
     return CrewIncident(
-      title: json['title']?.toString() ?? 'Incidencia',
+      title:
+          json['title']?.toString() ??
+          json['category']?.toString() ??
+          json['type']?.toString() ??
+          'Incidencia',
       assignment:
           json['assignment']?.toString() ??
           json['operation_code']?.toString() ??
+          json['flight']?.toString() ??
+          json['reference']?.toString() ??
           'Operacion',
-      status: json['status']?.toString() ?? 'Abierta',
-      evidence: json['evidence']?.toString() ?? 'Sin evidencia',
+      status:
+          json['status']?.toString() ?? json['state']?.toString() ?? 'Abierta',
+      evidence:
+          evidenceFromFiles.isNotEmpty
+              ? evidenceFromFiles
+              : json['evidence']?.toString() ?? 'Sin evidencia',
       description:
           json['description']?.toString() ??
+          json['comment']?.toString() ??
           json['descripcion']?.toString() ??
           '',
       priority:
@@ -428,16 +435,6 @@ class CrewIncident {
     );
   }
 
-  static final demo = [
-    CrewIncident(
-      title: 'Catering pendiente',
-      assignment: 'RSK-2401',
-      status: 'Abierta',
-      evidence: 'foto_catering.jpg',
-      description: 'Proveedor de catering pendiente de confirmar entrega.',
-      priority: 'Alta',
-    ),
-  ];
 }
 
 class CrewDocument {
@@ -460,31 +457,31 @@ class CrewDocument {
   factory CrewDocument.fromJson(Map<String, dynamic> json) {
     return CrewDocument(
       title:
-          json['title']?.toString() ?? json['name']?.toString() ?? 'Documento',
-      status: json['status']?.toString() ?? 'Vigente',
+          json['title']?.toString() ??
+          json['name']?.toString() ??
+          json['document_name']?.toString() ??
+          json['file_name']?.toString() ??
+          'Documento',
+      status:
+          json['status']?.toString() ?? json['state']?.toString() ?? 'Vigente',
       expiration:
           json['expiration']?.toString() ??
           json['expires_at']?.toString() ??
+          json['expiration_date']?.toString() ??
           'Sin vigencia',
-      category: json['category']?.toString() ?? 'Certificacion',
-      note: json['note']?.toString() ?? json['notes']?.toString() ?? '',
+      category:
+          json['category']?.toString() ??
+          json['type']?.toString() ??
+          'Certificacion',
+      note:
+          json['note']?.toString() ??
+          json['notes']?.toString() ??
+          json['admin_notes']?.toString() ??
+          json['observations']?.toString() ??
+          '',
     );
   }
 
-  static final demo = [
-    CrewDocument(
-      title: 'Licencia sobrecargo',
-      status: 'Vigente',
-      expiration: '2027-12-31',
-      category: 'Licencia',
-    ),
-    CrewDocument(
-      title: 'Primeros auxilios',
-      status: 'Vence pronto',
-      expiration: '2026-08-15',
-      category: 'Certificacion',
-    ),
-  ];
 }
 
 class CrewPaymentRecord {
@@ -499,6 +496,44 @@ class CrewPaymentRecord {
   final String assignment;
   final String amount;
   final String status;
+
+  factory CrewPaymentRecord.fromJson(Map<String, dynamic> json) {
+    return CrewPaymentRecord(
+      concept:
+          _firstString([
+            json['concept'],
+            json['concepto'],
+            json['title'],
+            json['descripcion'],
+          ]) ??
+          'Pago',
+      assignment:
+          _firstString([
+            json['assignment'],
+            json['assignment_code'],
+            json['operation_code'],
+            json['flight'],
+            json['referencia'],
+          ]) ??
+          'Sin referencia',
+      amount:
+          _firstString([
+            json['amount_label'],
+            json['formatted_amount'],
+            json['monto_formateado'],
+            json['amount'],
+            json['monto'],
+          ]) ??
+          'Sin monto',
+      status:
+          _firstString([
+            json['status'],
+            json['estado'],
+            json['payment_status'],
+          ]) ??
+          'Pendiente',
+    );
+  }
 
   static const demo = [
     CrewPaymentRecord(
@@ -517,9 +552,16 @@ class CrewPaymentRecord {
 }
 
 class CrewBlock {
-  const CrewBlock({required this.date, required this.reason});
+  const CrewBlock({
+    required this.date,
+    required this.state,
+    required this.blockType,
+    required this.reason,
+  });
 
   final DateTime date;
+  final String state;
+  final String blockType;
   final String reason;
 }
 
@@ -651,6 +693,14 @@ Map<String, dynamic> _asMap(dynamic value) {
   return const {};
 }
 
+List<Map<String, dynamic>> _asList(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList();
+}
+
 String? _firstString(Iterable<dynamic> values) {
   for (final value in values) {
     if (value == null) continue;
@@ -658,6 +708,109 @@ String? _firstString(Iterable<dynamic> values) {
     if (text.isNotEmpty && text != 'null') return text;
   }
   return null;
+}
+
+String? _latestTimelineStatus(List<Map<String, dynamic>> timeline) {
+  if (timeline.isEmpty) return null;
+  final latest = [...timeline]..sort((left, right) {
+    final leftTime =
+        DateTime.tryParse(
+          _firstString([left['created_at'], left['updated_at']]) ?? '',
+        )?.millisecondsSinceEpoch ??
+        0;
+    final rightTime =
+        DateTime.tryParse(
+          _firstString([right['created_at'], right['updated_at']]) ?? '',
+        )?.millisecondsSinceEpoch ??
+        0;
+    return rightTime.compareTo(leftTime);
+  });
+  return _firstString([latest.first['status']]);
+}
+
+String? _resolveMissionStatus({
+  required String operationStatus,
+  required String crewLifecycleStatus,
+  required List<Map<String, dynamic>> timeline,
+}) {
+  final timelineStatuses =
+      timeline
+          .map(
+            (item) => (_firstString([item['status']]) ?? '')
+                .toLowerCase()
+                .replaceAll(RegExp(r'[_-]+'), ' '),
+          )
+          .where((item) => item.isNotEmpty)
+          .toSet();
+  final normalizedOperation = operationStatus.trim().toLowerCase().replaceAll(
+    RegExp(r'[_-]+'),
+    ' ',
+  );
+  final normalizedCrew = crewLifecycleStatus.trim().toLowerCase().replaceAll(
+    RegExp(r'[_-]+'),
+    ' ',
+  );
+
+  final hasCheckin =
+      timelineStatuses.contains('crew checkin') ||
+      timelineStatuses.contains('checkin') ||
+      timelineStatuses.contains('crew enroute') ||
+      normalizedCrew == 'crew enroute';
+  final hasCabinReady =
+      timelineStatuses.contains('cabina lista') ||
+      timelineStatuses.contains('cabin ready') ||
+      normalizedCrew == 'cabin ready' ||
+      normalizedCrew == 'cabin_ready';
+  final hasPassengersReady =
+      timelineStatuses.contains('pasajeros recibidos') ||
+      timelineStatuses.contains('passengers ready') ||
+      normalizedCrew == 'passengers ready' ||
+      normalizedCrew == 'passengers_ready';
+  final hasServiceStarted =
+      timelineStatuses.contains('servicio iniciado') ||
+      timelineStatuses.contains('service started') ||
+      const ['crew active', 'crew completed'].contains(normalizedCrew) ||
+      const [
+        'in progress',
+        'completed',
+        'tracking live',
+        'service started',
+      ].contains(normalizedOperation);
+  final hasServiceCompleted =
+      timelineStatuses.contains('servicio finalizado') ||
+      timelineStatuses.contains('service finalized') ||
+      normalizedCrew == 'crew completed' ||
+      normalizedCrew == 'service finalized' ||
+      normalizedOperation == 'completed';
+  final hasIncidentReported =
+      normalizedCrew == 'crew incident reported' ||
+      normalizedOperation == 'incidencia' ||
+      timelineStatuses.contains('incidencia');
+
+  if (hasIncidentReported) return 'Incidencia';
+  if (hasServiceCompleted) return 'Finalizada';
+  if (hasServiceStarted) return 'En servicio';
+  if (hasPassengersReady) return 'Pasajeros recibidos';
+  if (hasCabinReady) return 'Cabina revisada';
+  if (hasCheckin) return 'En aeropuerto/base';
+
+  final lifecycleStatus = switch (normalizedCrew) {
+    'pending crew response' => 'Pendiente',
+    'crew confirmed' => 'Confirmado',
+    'crew declined' => 'Rechazado',
+    'crew change requested' => 'Solicitar revision',
+    'crew enroute' => 'Preparacion',
+    'cabin ready' => 'Cabina revisada',
+    'passengers ready' => 'Pasajeros recibidos',
+    'service started' => 'En servicio',
+    'service finalized' => 'Finalizada',
+    'crew active' => 'En servicio',
+    'crew completed' => 'Finalizada',
+    'crew incident reported' => 'Incidencia',
+    _ => '',
+  };
+  if (lifecycleStatus.isNotEmpty) return lifecycleStatus;
+  return CrewAssignment.normalizeStatus(operationStatus);
 }
 
 String _normalizeAvailabilityKey(String value) {

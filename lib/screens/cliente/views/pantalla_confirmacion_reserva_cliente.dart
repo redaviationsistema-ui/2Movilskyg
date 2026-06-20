@@ -16,13 +16,18 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final paymentConfirmed = _isPaymentConfirmed(request);
+
     return ClientExperienceShell(
       title: 'Confirmacion',
-      subtitle: 'Tu solicitud ya entro al flujo comercial y operativo.',
+      subtitle:
+          paymentConfirmed
+              ? 'El pago fue validado y la reserva sigue al siguiente paso operativo.'
+              : 'Tu solicitud ya entro al flujo comercial y operativo.',
       showBackButton: showBackButton,
-      trailing: const StatusBadge(
-        label: 'Reserva registrada',
-        color: Color(0xFF2D6A4F),
+      trailing: StatusBadge(
+        label: paymentConfirmed ? 'Pago confirmado' : 'Reserva registrada',
+        color: const Color(0xFF2D6A4F),
       ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -48,10 +53,12 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
                   size: 84,
                 ),
                 const SizedBox(height: 18),
-                const Text(
-                  'Tu solicitud fue enviada al proveedor',
+                Text(
+                  paymentConfirmed
+                      ? 'Tu pago fue confirmado'
+                      : 'Tu solicitud fue enviada al proveedor',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF111111),
@@ -69,10 +76,12 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Text(
-                  'Ya puedes dar seguimiento desde Mis vuelos. Cuando el proveedor acepte la operacion veras el avance a contrato, pago y confirmacion final del vuelo.',
+                Text(
+                  paymentConfirmed
+                      ? 'Ya registramos el pago en tu flujo local. Revisa Mis vuelos para seguir el avance hacia confirmacion de vuelo y salida operativa.'
+                      : 'Ya puedes dar seguimiento desde Mis vuelos. Cuando el proveedor acepte la operacion veras el avance a contrato, pago y confirmacion final del vuelo.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
+                  style: const TextStyle(color: Color(0xFF3B3428), height: 1.4),
                 ),
                 const SizedBox(height: 22),
                 FilledButton(
@@ -98,5 +107,20 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
         'Origen';
     final destination = request['destination']?.toString() ?? 'Destino';
     return '$origin -> $destination';
+  }
+
+  bool _isPaymentConfirmed(Map<String, dynamic> request) {
+    final workflow =
+        request['workflow_status']?.toString().trim().toLowerCase() ?? '';
+    final status = request['status']?.toString().trim().toLowerCase() ?? '';
+    final paymentStatus =
+        request['payment_status']?.toString().trim().toLowerCase() ?? '';
+
+    return workflow.contains('pago confirmado') ||
+        workflow.contains('payment_confirmed') ||
+        paymentStatus == 'paid' ||
+        paymentStatus == 'pagado' ||
+        status == 'payment_confirmed' ||
+        status == 'paid';
   }
 }

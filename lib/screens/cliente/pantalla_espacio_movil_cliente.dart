@@ -40,7 +40,7 @@ class _ClientMobileWorkspaceScreenState
       if (!mounted) return;
       context.read<ReservationProvider>().loadClientWorkspaceData();
     });
-    _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 35), (_) {
+    _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
       if (!auth.isAuthenticated) return;
@@ -146,6 +146,11 @@ class _ClientMobileWorkspaceScreenState
         return ClientContractScreen(
           request: activeRequest ?? const {},
           showBackButton: false,
+          onOpenTrips: () {
+            setState(() {
+              _tripsStage = _TripsStage.list;
+            });
+          },
           onConfirm: () async {
             await context.read<ReservationProvider>().loadClientWorkspaceData(
               force: true,
@@ -166,10 +171,23 @@ class _ClientMobileWorkspaceScreenState
             });
           },
           onPaymentComplete: () async {
+            final flightRequestId =
+                activeRequest?['flight_request_id']?.toString() ??
+                activeRequest?['request_id']?.toString() ??
+                activeRequest?['id']?.toString() ??
+                '';
+            final reservationId =
+                activeRequest?['reservation_id']?.toString() ??
+                activeRequest?['booking_id']?.toString() ??
+                '';
             await context.read<ReservationProvider>().loadClientWorkspaceData(
               force: true,
             );
             if (!mounted) return;
+            context.read<ReservationProvider>().markPaymentConfirmed(
+              flightRequestId: flightRequestId,
+              reservationId: reservationId,
+            );
             setState(() {
               _tripsStage = _TripsStage.confirmation;
             });

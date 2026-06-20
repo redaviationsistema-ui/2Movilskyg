@@ -32,11 +32,13 @@ class ClientContractScreen extends StatefulWidget {
     super.key,
     required this.request,
     required this.onConfirm,
+    this.onOpenTrips,
     this.showBackButton = true,
   });
 
   final Map<String, dynamic> request;
   final VoidCallback onConfirm;
+  final VoidCallback? onOpenTrips;
   final bool showBackButton;
 
   @override
@@ -562,6 +564,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
             canSign: _canContinue && !_submitting,
             isSigning: _submitting,
             isDownloading: _downloading,
+            onOpenTrips: widget.onOpenTrips,
             onDownload:
                 _downloading || _submitting ? null : _downloadContractPdf,
             onSign: _canContinue && !_submitting ? _signAndContinue : null,
@@ -1224,7 +1227,7 @@ class _ClientContractReplicaDocument extends StatelessWidget {
             color: const Color(0xFF17212B),
             child: Center(
               child: Image.asset(
-                'assets/logo.png',
+                'assets/Logo.png',
                 height: 34,
                 fit: BoxFit.contain,
               ),
@@ -2443,6 +2446,7 @@ class _ContractActionBar extends StatelessWidget {
     required this.canSign,
     required this.isSigning,
     required this.isDownloading,
+    required this.onOpenTrips,
     required this.onDownload,
     required this.onSign,
   });
@@ -2450,6 +2454,7 @@ class _ContractActionBar extends StatelessWidget {
   final bool canSign;
   final bool isSigning;
   final bool isDownloading;
+  final VoidCallback? onOpenTrips;
   final VoidCallback? onDownload;
   final VoidCallback? onSign;
 
@@ -2470,65 +2475,89 @@ class _ContractActionBar extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: 54,
-              height: 54,
-              child: OutlinedButton(
-                onPressed: onDownload,
-                style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  foregroundColor: kBlack,
-                  side: const BorderSide(color: Color(0xFFDCD2C3)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            Row(
+              children: [
+                SizedBox(
+                  width: 54,
+                  height: 54,
+                  child: OutlinedButton(
+                    onPressed: onDownload,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      foregroundColor: kBlack,
+                      side: const BorderSide(color: Color(0xFFDCD2C3)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child:
+                        isDownloading
+                            ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.download_rounded),
                   ),
                 ),
-                child:
-                    isDownloading
-                        ? const SizedBox(
-                          width: 17,
-                          height: 17,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : const Icon(Icons.download_rounded),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onSign,
-                icon:
-                    isSigning
-                        ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: kWhite,
-                          ),
-                        )
-                        : const Icon(Icons.check_rounded),
-                label: Text(
-                  isSigning
-                      ? 'Firmando...'
-                      : canSign
-                      ? 'Firmar y continuar'
-                      : 'Completa firma local',
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onSign,
+                    icon:
+                        isSigning
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: kWhite,
+                              ),
+                            )
+                            : const Icon(Icons.check_rounded),
+                    label: Text(
+                      isSigning
+                          ? 'Firmando...'
+                          : canSign
+                          ? 'Firmar y continuar'
+                          : 'Completa firma local',
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      backgroundColor: kBlack,
+                      foregroundColor: kWhite,
+                      disabledBackgroundColor: const Color(0xFFE5E1DA),
+                      disabledForegroundColor: const Color(0xFF8A8174),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
                 ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  backgroundColor: kBlack,
-                  foregroundColor: kWhite,
-                  disabledBackgroundColor: const Color(0xFFE5E1DA),
-                  disabledForegroundColor: const Color(0xFF8A8174),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+              ],
+            ),
+            if (onOpenTrips != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onOpenTrips,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('Volver a tus vuelos'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: kBlack,
+                    side: const BorderSide(color: Color(0xFFDCD2C3)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),

@@ -23,6 +23,9 @@ class RoleDashboardScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).viewPadding.top;
+    final compact = MediaQuery.of(context).size.width < 420;
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -32,10 +35,16 @@ class RoleDashboardScaffold extends StatelessWidget {
         ),
       ),
       child: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 16 : 20,
+                compact ? (topInset > 0 ? 10 : 16) : 18,
+                compact ? 16 : 20,
+                compact ? 10 : 12,
+              ),
               child: _HeaderCard(
                 title: title,
                 subtitle: subtitle,
@@ -71,12 +80,13 @@ class _HeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 960;
+    final isCompact = MediaQuery.of(context).size.width < 420;
     final scaffold = Scaffold.maybeOf(context);
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: EdgeInsets.all(isCompact ? 16 : 22),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(isCompact ? 24 : 28),
         gradient: const LinearGradient(
           colors: [Color(0xFF0E2235), Color(0xFF132E45)],
           begin: Alignment.topLeft,
@@ -97,8 +107,8 @@ class _HeaderCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: isCompact ? 48 : 52,
+                height: isCompact ? 48 : 52,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFFE2BD79), Color(0xFFF0D49D)],
@@ -117,6 +127,8 @@ class _HeaderCard extends StatelessWidget {
                   children: [
                     Text(
                       roleLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFFE2BD79),
                         fontWeight: FontWeight.w700,
@@ -125,10 +137,13 @@ class _HeaderCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       title,
-                      style: const TextStyle(
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: isCompact ? 18 : 24,
                         fontWeight: FontWeight.w800,
+                        height: 1.08,
                       ),
                     ),
                   ],
@@ -148,8 +163,11 @@ class _HeaderCard extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             subtitle,
+            maxLines: isCompact ? 2 : 3,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.84),
+              fontSize: isCompact ? 13 : 14,
               height: 1.45,
             ),
           ),

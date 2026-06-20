@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
+import '../../../providers/proveedor_reservaciones.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientPaymentScreen extends StatefulWidget {
@@ -34,11 +35,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     with WidgetsBindingObserver {
   String _paymentMethod = 'card';
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _cardController = TextEditingController();
-  final TextEditingController _expiryController = TextEditingController();
-  final TextEditingController _cvcController = TextEditingController();
   final TextEditingController _wireReferenceController =
       TextEditingController();
+  final CardEditController _stripeCardController = CardEditController();
+  CardFieldInputDetails? _cardDetails;
   bool _submitting = false;
   bool _waitingForCommercialAccessReturn = false;
   String _inlineMessage = '';
@@ -50,25 +50,22 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _emailController.addListener(_refresh);
-    _cardController.addListener(_refresh);
-    _expiryController.addListener(_refresh);
-    _cvcController.addListener(_refresh);
     _wireReferenceController.addListener(_refresh);
+    final auth = context.read<AuthProvider>();
+    final initialEmail = auth.user?.email.trim() ?? '';
+    if (initialEmail.isNotEmpty) {
+      _emailController.text = initialEmail;
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _emailController.removeListener(_refresh);
-    _cardController.removeListener(_refresh);
-    _expiryController.removeListener(_refresh);
-    _cvcController.removeListener(_refresh);
     _wireReferenceController.removeListener(_refresh);
     _emailController.dispose();
-    _cardController.dispose();
-    _expiryController.dispose();
-    _cvcController.dispose();
     _wireReferenceController.dispose();
+    _stripeCardController.dispose();
     super.dispose();
   }
 
@@ -104,13 +101,29 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         widget.commercialAccessMode
             ? 'Activa el acceso comercial para reservar, firmar contrato y pagar vuelos.'
             : _routeLabel(widget.request);
+    final passengerCount = (widget.request['passengers'] ?? '1').toString();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
+      bottomNavigationBar: _PaymentStickyFooter(
+        totalLabel: amount,
+        ctaLabel:
+            _submitting
+                ? 'Procesando...'
+                : widget.commercialAccessMode
+                ? 'Activar acceso comercial'
+                : _paymentMethod == 'card'
+                ? 'Pagar ahora'
+                : _paymentMethod == 'wire'
+                ? 'Generar referencia bancaria'
+                : 'Abrir link de pago',
+        onPressed: _canSubmit && !_submitting ? _submitPayment : null,
+        isLoading: _submitting,
+      ),
       body: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(0, 14, 0, 24),
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 170),
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -147,139 +160,133 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                route,
-                style: const TextStyle(
-                  color: Color(0xFF625D55),
-                  fontSize: 14,
-                  height: 1.35,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.commercialAccessMode
+                        ? 'Acceso comercial premium'
+                        : route,
+                    style: const TextStyle(
+                      color: Color(0xFF1E1E1E),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.commercialAccessMode
+                        ? 'Renovacion mensual protegida'
+                        : '$passengerCount ${passengerCount == '1' ? 'pasajero' : 'pasajeros'}',
+                    style: const TextStyle(
+                      color: Color(0xFF625D55),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF08121C),
-                      Color(0xFF12304A),
-                      Color(0xFF1C5170),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: const Color(0xFFE5EAF0)),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0x1F0E2238),
-                      blurRadius: 28,
-                      offset: Offset(0, 16),
+                      color: Color(0x140E2238),
+                      blurRadius: 26,
+                      offset: Offset(0, 14),
                     ),
                   ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Checkout cifrado',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    const Text(
+                      'TOTAL',
+                      style: TextStyle(
+                        color: Color(0xFF7A6A53),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
-                      widget.commercialAccessMode
-                          ? 'Revisa el correo de contacto y abre Stripe Checkout para activar o renovar tu acceso comercial.'
-                          : 'Confirma el metodo, revisa los datos de contacto y autoriza el cargo de tu reserva.',
+                      amount,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        height: 1.35,
-                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111111),
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        height: 0.95,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: const [
-                        _TrustChip(label: 'Pago protegido'),
-                        _TrustChip(label: 'Concierge financiero'),
-                        _TrustChip(label: 'Acceso premium'),
-                      ],
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.commercialAccessMode ? 'Acceso comercial' : route,
+                      style: const TextStyle(
+                        color: Color(0xFF3B3428),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: GlassInfoCard(
-                child: Column(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10253A),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Detalles del pago',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (!widget.commercialAccessMode)
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                    Icon(Icons.lock_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _PaymentMethodCard(
-                            label: 'Tarjeta corporativa',
-                            note: 'Checkout seguro integrado',
-                            icon: Icons.credit_card_rounded,
-                            selected: _paymentMethod == 'card',
-                            onTap:
-                                () => setState(() => _paymentMethod = 'card'),
+                          Text(
+                            'Pago seguro',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
                           ),
-                          _PaymentMethodCard(
-                            label: 'Transferencia / wire',
-                            note: 'Validacion manual del comprobante',
-                            icon: Icons.account_balance_rounded,
-                            selected: _paymentMethod == 'wire',
-                            onTap:
-                                () => setState(() => _paymentMethod = 'wire'),
+                          SizedBox(height: 4),
+                          Text(
+                            'Tu reserva esta protegida mediante Stripe y validacion bancaria.',
+                            style: TextStyle(
+                              color: Color(0xFFD5E2EE),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35,
+                            ),
                           ),
                         ],
-                      )
-                    else
-                      const _PaymentMethodCard(
-                        label: 'Stripe Checkout',
-                        note: 'Activa o renueva tu acceso comercial',
-                        icon: Icons.workspace_premium_rounded,
-                        selected: true,
-                        onTap: null,
                       ),
-                    const SizedBox(height: 18),
-                    _buildPaymentFields(),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GlassInfoCard(
@@ -287,58 +294,152 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Resumen de reserva',
+                      'RESERVA',
                       style: TextStyle(
-                        fontSize: 20,
+                        color: Color(0xFF7A6A53),
+                        fontSize: 12,
                         fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    _PaymentRow(label: 'Ruta', value: route),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.commercialAccessMode
+                          ? 'Acceso comercial premium'
+                          : route,
+                      style: const TextStyle(
+                        color: Color(0xFF111111),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     _PaymentRow(
                       label: 'Pasajeros',
-                      value: (widget.request['passengers'] ?? '1').toString(),
-                    ),
-                    _PaymentRow(
-                      label: 'Metodo seleccionado',
                       value:
                           widget.commercialAccessMode
-                              ? 'Stripe Checkout'
-                              : _paymentMethod == 'card'
-                              ? 'Tarjeta corporativa'
-                              : 'Transferencia / wire',
+                              ? 'Membresia mensual'
+                              : '$passengerCount ${passengerCount == '1' ? 'pasajero' : 'pasajeros'}',
                     ),
-                    _PaymentRow(label: 'Importe a pagar hoy', value: amount),
+                    _PaymentRow(
+                      label: 'Metodo',
+                      value: _paymentMethodSummaryLabel(),
+                    ),
+                    _PaymentRow(label: 'Total', value: amount, emphasize: true),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: FilledButton(
-                onPressed: _canSubmit && !_submitting ? _submitPayment : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                  backgroundColor: const Color(0xFF10253A),
+              child: GlassInfoCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Metodo de pago',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (widget.commercialAccessMode)
+                      const _CompactPaymentOption(
+                        label: 'Stripe Checkout',
+                        subtitle: 'Activa o renueva tu acceso comercial',
+                        selected: true,
+                        expanded: true,
+                        onTap: null,
+                        child: SizedBox.shrink(),
+                      )
+                    else ...[
+                      _CompactPaymentOption(
+                        label: 'Tarjeta Corporativa',
+                        subtitle: 'Visa • Mastercard • Amex',
+                        selected: _paymentMethod == 'card',
+                        expanded: _paymentMethod == 'card',
+                        onTap: () {
+                          setState(() {
+                            _paymentMethod = 'card';
+                            _wireInstructions = null;
+                            _inlineMessage = '';
+                          });
+                        },
+                        child: _buildCardPaymentPanel(),
+                      ),
+                      const SizedBox(height: 10),
+                      _CompactPaymentOption(
+                        label: 'Transferencia Bancaria',
+                        subtitle: 'Validacion manual del comprobante',
+                        selected: _paymentMethod == 'wire',
+                        expanded: _paymentMethod == 'wire',
+                        onTap: () {
+                          setState(() {
+                            _paymentMethod = 'wire';
+                            _inlineMessage = '';
+                          });
+                        },
+                        child: _buildWirePaymentPanel(),
+                      ),
+                      const SizedBox(height: 10),
+                      _CompactPaymentOption(
+                        label: 'Link de Pago',
+                        subtitle: 'Abrimos Stripe Checkout en un enlace seguro',
+                        selected: _paymentMethod == 'link',
+                        expanded: _paymentMethod == 'link',
+                        onTap: () {
+                          setState(() {
+                            _paymentMethod = 'link';
+                            _wireInstructions = null;
+                            _inlineMessage = '';
+                          });
+                        },
+                        child: _buildLinkPaymentPanel(),
+                      ),
+                    ],
+                  ],
                 ),
-                child:
-                    _submitting
-                        ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                        : Text(
-                          widget.commercialAccessMode
-                              ? 'Activar acceso comercial'
-                              : _paymentMethod == 'card'
-                              ? 'Pagar ahora'
-                              : 'Generar referencia bancaria',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassInfoCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Datos de contacto',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _InputField(
+                      controller: _emailController,
+                      label: 'Correo electronico',
+                      hint: 'cliente@empresa.com',
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    if (_inlineMessage.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        _inlineMessage,
+                        style: TextStyle(
+                          color: _messageColor(),
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
                         ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -347,117 +448,163 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     );
   }
 
-  Widget _buildPaymentFields() {
+  Widget _buildCardPaymentPanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _InputField(
-          controller: _emailController,
-          label: 'Correo electronico',
-          hint: 'cliente@empresa.com',
-          keyboardType: TextInputType.emailAddress,
-        ),
-        const SizedBox(height: 14),
-        if (!widget.commercialAccessMode && _paymentMethod == 'card') ...[
-          _InputField(
-            controller: _cardController,
-            label: 'Numero de tarjeta',
-            hint: '1234 5678 9012 3456',
-            keyboardType: TextInputType.number,
-            onChanged: (value) {
-              final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-              final grouped =
-                  digits
-                      .replaceAllMapped(
-                        RegExp(r'.{1,4}'),
-                        (match) => '${match.group(0)} ',
-                      )
-                      .trimRight();
-              if (grouped != value) {
-                _cardController.value = TextEditingValue(
-                  text: grouped,
-                  selection: TextSelection.collapsed(offset: grouped.length),
-                );
-              }
-            },
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10253A),
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 14),
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _InputField(
-                  controller: _expiryController,
-                  label: 'Expiracion',
-                  hint: 'MM/AA',
-                  keyboardType: TextInputType.number,
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Tarjeta Corporativa',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _cardBrandLabel(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Visa • Mastercard • Amex',
+                style: TextStyle(
+                  color: Color(0xFFD5E2EE),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _InputField(
-                  controller: _cvcController,
-                  label: 'CVC',
-                  hint: '123',
-                  keyboardType: TextInputType.number,
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFD8E0E8)),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 18,
+                ),
+                child: CardField(
+                  controller: _stripeCardController,
+                  enablePostalCode: false,
+                  dangerouslyGetFullCardDetails: false,
+                  cursorColor: const Color(0xFF10253A),
+                  numberHintText: '1234 5678 9012 3456',
+                  expirationHintText: 'MM/AA',
+                  cvcHintText: 'CVC',
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
+                  onCardChanged: (details) {
+                    setState(() {
+                      _cardDetails = details;
+                      if ((details?.complete ?? false) &&
+                          _inlineMessage.startsWith(
+                            'Completa correctamente los datos',
+                          )) {
+                        _inlineMessage = '';
+                      }
+                    });
+                  },
+                  style: const TextStyle(
+                    color: Color(0xFF111111),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
+              const SizedBox(height: 14),
+              const _SecurityBullet(label: 'Pago seguro con Stripe'),
+              const SizedBox(height: 8),
+              const _SecurityBullet(label: 'Datos cifrados'),
+              const SizedBox(height: 8),
+              const _SecurityBullet(label: 'Sin almacenamiento local'),
             ],
           ),
-        ] else if (!widget.commercialAccessMode) ...[
-          _InputField(
-            controller: _wireReferenceController,
-            label: 'Referencia bancaria',
-            hint: 'Folio o comprobante',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWirePaymentPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        _InputField(
+          controller: _wireReferenceController,
+          label: 'Referencia bancaria',
+          hint: 'Folio o comprobante',
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFEFC),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFEADFCE)),
           ),
-          const SizedBox(height: 14),
+          child: const Text(
+            'Generamos referencia bancaria y el pago queda pendiente hasta validar comprobante.',
+            style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
+          ),
+        ),
+        if (_wireInstructions != null) ...[
+          const SizedBox(height: 12),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFEFC),
+              color: const Color(0xFFF4FAF6),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFEADFCE)),
+              border: Border.all(color: const Color(0xFFD9EFE1)),
             ),
-            child: const Text(
-              'Generamos referencia bancaria y el pago queda pendiente hasta validar comprobante. Este flujo permite operar sin tarjeta.',
-              style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
-            ),
-          ),
-          if (_wireInstructions != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4FAF6),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFD9EFE1)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Referencia generada',
-                    style: TextStyle(
-                      color: Color(0xFF1F5F3C),
-                      fontWeight: FontWeight.w900,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Referencia generada',
+                  style: TextStyle(
+                    color: Color(0xFF1F5F3C),
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(height: 8),
-                  Text(_wireInstructionText(_wireInstructions!)),
-                ],
-              ),
-            ),
-          ],
-        ],
-        if (_inlineMessage.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text(
-            _inlineMessage,
-            style: const TextStyle(
-              color: Color(0xFF625D55),
-              fontWeight: FontWeight.w700,
-              height: 1.35,
+                ),
+                const SizedBox(height: 8),
+                Text(_wireInstructionText(_wireInstructions!)),
+              ],
             ),
           ),
         ],
@@ -465,11 +612,28 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     );
   }
 
+  Widget _buildLinkPaymentPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const [
+        SizedBox(height: 12),
+        Text(
+          'Abrimos un checkout externo de Stripe para completar el pago en un enlace seguro sin capturar la tarjeta dentro de esta pantalla.',
+          style: TextStyle(
+            color: Color(0xFF625D55),
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
   bool get _canSubmit {
     if (_emailController.text.trim().isEmpty) return false;
-    if (widget.commercialAccessMode) return true;
+    if (widget.commercialAccessMode || _paymentMethod == 'link') return true;
     if (_paymentMethod == 'card') {
-      return true;
+      return _cardDetails?.complete ?? false;
     }
     return _wireReferenceController.text.trim().isNotEmpty;
   }
@@ -479,8 +643,15 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       await _submitCommercialAccessPayment();
       return;
     }
+    if (_paymentMethod == 'link') {
+      await _submitReservationCheckoutLink();
+      return;
+    }
 
-    final flightRequestId = _entityId(widget.request);
+    final flightRequestId = _flightRequestId(widget.request);
+    final reservationId = _reservationId(widget.request);
+    final customerName = _customerName(context);
+    final reservationProvider = context.read<ReservationProvider>();
     if (flightRequestId.isEmpty) {
       setState(() {
         _inlineMessage = 'No encontramos la reserva para iniciar el pago.';
@@ -493,7 +664,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       _inlineMessage =
           _paymentMethod == 'wire'
               ? 'Generando referencia bancaria...'
-              : 'Creando intento de pago seguro...';
+              : 'Pago seguro...';
     });
 
     try {
@@ -520,43 +691,89 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         flightRequestId: flightRequestId,
         paymentPayload: {'contact_email': _emailController.text.trim()},
       );
+      final responseReservationId = _responseReservationId(intent);
+      final effectiveReservationId =
+          responseReservationId.isNotEmpty
+              ? responseReservationId
+              : reservationId;
 
       var status = _paymentStatus(intent);
       final clientSecret = _clientSecret(intent);
       final publishableKey = _publishableKey(intent);
 
+      if (!(_cardDetails?.complete ?? false)) {
+        throw const ApiException(
+          'Completa correctamente los datos de la tarjeta antes de continuar.',
+        );
+      }
+
       if (status != 'succeeded' &&
           status != 'paid' &&
           clientSecret.isNotEmpty) {
-        if (publishableKey.isNotEmpty) {
-          Stripe.publishableKey = publishableKey;
-          await Stripe.instance.applySettings();
+        if (publishableKey.isEmpty) {
+          throw const ApiException(
+            'El backend no devolvio la llave publica de Stripe para confirmar el pago.',
+          );
         }
 
-        await Stripe.instance.initPaymentSheet(
-          paymentSheetParameters: SetupPaymentSheetParameters(
-            merchantDisplayName: 'Sky Group',
-            paymentIntentClientSecret: clientSecret,
-            billingDetails: BillingDetails(email: _emailController.text.trim()),
+        Stripe.publishableKey = publishableKey;
+        await Stripe.instance.applySettings();
+
+        final paymentIntent = await Stripe.instance.confirmPayment(
+          paymentIntentClientSecret: clientSecret,
+          data: PaymentMethodParams.card(
+            paymentMethodData: PaymentMethodData(
+              billingDetails: BillingDetails(
+                name: customerName,
+                email: _emailController.text.trim(),
+              ),
+            ),
           ),
         );
-        await Stripe.instance.presentPaymentSheet();
-        status = 'succeeded';
+        status = paymentIntent.status.name.toLowerCase();
       }
 
       if (status == 'succeeded' || status == 'paid') {
-        await ApiClient.instance.confirmClientPayment(
-          reservationId: flightRequestId,
-          paymentPayload: {
-            'reservation_id': flightRequestId,
-            'flight_request_id': flightRequestId,
-            'payment_intent_id': _paymentIntentId(intent),
-            'brand': _cardBrand(),
-            'status': 'payment_confirmed',
-            'workflow_status': 'pago confirmado',
-            'payment_status': 'paid',
-          },
+        reservationProvider.markPaymentConfirmed(
+          flightRequestId: flightRequestId,
+          reservationId: effectiveReservationId,
+          paymentIntentId: _paymentIntentId(intent),
+          brand: _cardBrand(),
         );
+        try {
+          await ApiClient.instance.confirmClientPaymentIntent(
+            flightRequestId: flightRequestId,
+            paymentPayload: {
+              'reservation_id': effectiveReservationId,
+              'flight_request_id': flightRequestId,
+              'payment_intent_id': _paymentIntentId(intent),
+              'brand': _cardBrand(),
+              'status': 'payment_confirmed',
+              'workflow_status': 'pago confirmado',
+              'payment_status': 'paid',
+            },
+          );
+        } on ApiException catch (error) {
+          if (!_isMissingPaymentConfirmRoute(error)) rethrow;
+        }
+        if (effectiveReservationId.isNotEmpty) {
+          try {
+            await ApiClient.instance.confirmClientPayment(
+              reservationId: effectiveReservationId,
+              paymentPayload: {
+                'reservation_id': effectiveReservationId,
+                'flight_request_id': flightRequestId,
+                'payment_intent_id': _paymentIntentId(intent),
+                'brand': _cardBrand(),
+                'status': 'payment_confirmed',
+                'workflow_status': 'pago confirmado',
+                'payment_status': 'paid',
+              },
+            );
+          } on ApiException catch (error) {
+            if (!_isMissingPaymentConfirmRoute(error)) rethrow;
+          }
+        }
         if (!mounted) return;
         widget.onPaymentComplete();
         return;
@@ -655,6 +872,75 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
   }
 
+  Future<void> _submitReservationCheckoutLink() async {
+    final flightRequestId = _flightRequestId(widget.request);
+    if (flightRequestId.isEmpty) {
+      setState(() {
+        _inlineMessage =
+            'No encontramos la reserva para abrir el link de pago.';
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _inlineMessage = 'Preparando link de pago...';
+    });
+
+    try {
+      final payload = await ApiClient.instance.createClientCheckout(
+        flightRequestId: flightRequestId,
+        paymentPayload: {'contact_email': _emailController.text.trim()},
+      );
+
+      final redirectUrl =
+          (payload['checkout_url'] ??
+                  payload['management_url'] ??
+                  payload['checkoutUrl'] ??
+                  payload['managementUrl'] ??
+                  ((payload['data'] is Map)
+                      ? (payload['data']['checkout_url'] ??
+                          payload['data']['management_url'] ??
+                          payload['data']['checkoutUrl'] ??
+                          payload['data']['managementUrl'])
+                      : null) ??
+                  '')
+              .toString()
+              .trim();
+
+      if (redirectUrl.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio una URL para el link de pago.',
+        );
+      }
+
+      final opened = await launchUrl(
+        Uri.parse(redirectUrl),
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened) {
+        throw const ApiException('No fue posible abrir el link de pago.');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'Link de pago abierto. Completa el checkout seguro y vuelve a la app para continuar.';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _inlineMessage = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage = 'No fue posible abrir el link de pago: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _validateCommercialAccessAfterCheckout() async {
     if (_submitting) return;
 
@@ -731,12 +1017,27 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         'Monto por confirmar';
   }
 
-  String _entityId(Map<String, dynamic> request) {
+  String _flightRequestId(Map<String, dynamic> request) {
     return request['flight_request_id']?.toString().trim().isNotEmpty == true
         ? request['flight_request_id'].toString().trim()
-        : request['id']?.toString().trim().isNotEmpty == true
+        : request['request_id']?.toString().trim().isNotEmpty == true
+        ? request['request_id'].toString().trim()
+        : request['id']?.toString().trim().isNotEmpty == true &&
+            (request['reservation_id']?.toString().trim().isEmpty ?? true)
         ? request['id'].toString().trim()
-        : request['reservation_id']?.toString().trim() ?? '';
+        : '';
+  }
+
+  String _reservationId(Map<String, dynamic> request) {
+    return request['reservation_id']?.toString().trim().isNotEmpty == true
+        ? request['reservation_id'].toString().trim()
+        : request['booking_id']?.toString().trim().isNotEmpty == true
+        ? request['booking_id'].toString().trim()
+        : (request['reservation'] is Map &&
+            (request['reservation']['id']?.toString().trim().isNotEmpty ??
+                false))
+        ? request['reservation']['id'].toString().trim()
+        : '';
   }
 
   Map<String, dynamic> _extractWireInstructions(Map<String, dynamic> payload) {
@@ -829,12 +1130,78 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         .trim();
   }
 
+  String _responseReservationId(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    final reservation =
+        payload['reservation'] ?? (data is Map ? data['reservation'] : null);
+
+    return (payload['reservation_id'] ??
+            payload['booking_id'] ??
+            (reservation is Map ? reservation['id'] : null) ??
+            (data is Map ? data['reservation_id'] : null) ??
+            '')
+        .toString()
+        .trim();
+  }
+
+  String _customerName(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final user = auth.user;
+    final name = user?.name.trim() ?? '';
+    if (name.isNotEmpty) return name;
+    final company = user?.companyName.trim() ?? '';
+    if (company.isNotEmpty) return company;
+    return 'Cliente Red Aviation';
+  }
+
   String _cardBrand() {
-    final digits = _cardController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.startsWith('4')) return 'visa';
-    if (digits.startsWith('5')) return 'mastercard';
-    if (digits.startsWith('3')) return 'amex';
-    return 'card';
+    final brand = _cardDetails?.brand?.trim().toLowerCase() ?? '';
+    if (brand.isEmpty) return 'card';
+    return brand;
+  }
+
+  String _cardBrandLabel() {
+    final brand = _cardDetails?.brand?.trim() ?? '';
+    if (brand.isEmpty) return 'Stripe';
+    return brand[0].toUpperCase() + brand.substring(1);
+  }
+
+  String _paymentMethodSummaryLabel() {
+    if (widget.commercialAccessMode) return 'Stripe Checkout';
+    switch (_paymentMethod) {
+      case 'wire':
+        return 'Transferencia bancaria';
+      case 'link':
+        return 'Link de pago';
+      case 'card':
+      default:
+        return 'Tarjeta corporativa';
+    }
+  }
+
+  Color _messageColor() {
+    final normalized = _inlineMessage.toLowerCase();
+    if (normalized.contains('error') ||
+        normalized.contains('no fue posible') ||
+        normalized.contains('no encontramos')) {
+      return const Color(0xFF9E2F2F);
+    }
+    if (normalized.contains('preparada') ||
+        normalized.contains('activado') ||
+        normalized.contains('abierto')) {
+      return const Color(0xFF1F5F3C);
+    }
+    return const Color(0xFF625D55);
+  }
+
+  bool _isMissingPaymentConfirmRoute(ApiException error) {
+    final message = error.message.toLowerCase();
+    return (error.statusCode == 404 || error.statusCode == 405) &&
+        (message.contains('payment/confirm') ||
+            message.contains('payments/confirm') ||
+            message.contains('pago/confirmar') ||
+            message.contains('could not be found') ||
+            message.contains('not found'));
   }
 
   bool _accessIsActive(Map<String, dynamic>? payload) {
@@ -882,91 +1249,24 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 }
 
-class _PaymentMethodCard extends StatelessWidget {
-  const _PaymentMethodCard({
-    required this.label,
-    required this.note,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String note;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        width: 180,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF10253A) : const Color(0xFFFFFEFC),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? const Color(0xFF10253A) : const Color(0xFFEADFCE),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              color: selected ? Colors.white : const Color(0xFF10253A),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? Colors.white : const Color(0xFF111111),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              note,
-              style: TextStyle(
-                color:
-                    selected
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : const Color(0xFF625D55),
-                fontSize: 12,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _InputField extends StatelessWidget {
   const _InputField({
     required this.controller,
     required this.label,
     required this.hint,
     this.keyboardType,
-    this.onChanged,
   });
 
   final TextEditingController controller;
   final String label;
   final String hint;
   final TextInputType? keyboardType;
-  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
-      onChanged: (value) => onChanged?.call(value),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -1003,35 +1303,16 @@ class _PaymentRoundActionButton extends StatelessWidget {
   }
 }
 
-class _TrustChip extends StatelessWidget {
-  const _TrustChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
 class _PaymentRow extends StatelessWidget {
-  const _PaymentRow({required this.label, required this.value});
+  const _PaymentRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
 
   final String label;
   final String value;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
@@ -1042,9 +1323,12 @@ class _PaymentRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFF625D55),
-                fontWeight: FontWeight.w700,
+              style: TextStyle(
+                color:
+                    emphasize
+                        ? const Color(0xFF111111)
+                        : const Color(0xFF625D55),
+                fontWeight: emphasize ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
           ),
@@ -1053,13 +1337,217 @@ class _PaymentRow extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Color(0xFF111111),
-                fontWeight: FontWeight.w800,
+              style: TextStyle(
+                color: const Color(0xFF111111),
+                fontWeight: emphasize ? FontWeight.w900 : FontWeight.w800,
+                fontSize: emphasize ? 18 : 14,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CompactPaymentOption extends StatelessWidget {
+  const _CompactPaymentOption({
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.expanded,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final bool expanded;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFF7FAFD) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: selected ? const Color(0xFF10253A) : const Color(0xFFE4EAF0),
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color:
+                        selected
+                            ? const Color(0xFF10253A)
+                            : const Color(0xFF9DA8B3),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Color(0xFF111111),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: Color(0xFF625D55),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: const Color(0xFF625D55),
+                  ),
+                ],
+              ),
+              if (expanded) child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SecurityBullet extends StatelessWidget {
+  const _SecurityBullet({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.check_circle_rounded,
+          color: Color(0xFFE0B86E),
+          size: 16,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentStickyFooter extends StatelessWidget {
+  const _PaymentStickyFooter({
+    required this.totalLabel,
+    required this.ctaLabel,
+    required this.onPressed,
+    required this.isLoading,
+  });
+
+  final String totalLabel;
+  final String ctaLabel;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE5EAF0))),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x12000000),
+              blurRadius: 22,
+              offset: Offset(0, -8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Total',
+              style: TextStyle(
+                color: Color(0xFF7A6A53),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              totalLabel,
+              style: const TextStyle(
+                color: Color(0xFF111111),
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  backgroundColor: const Color(0xFF10253A),
+                  disabledBackgroundColor: const Color(0xFFD4DAE1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child:
+                    isLoading
+                        ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                        : Text(
+                          ctaLabel.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

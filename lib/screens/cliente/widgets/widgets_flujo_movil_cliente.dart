@@ -45,7 +45,7 @@ class ClientMobileTopBar extends StatelessWidget {
                   ],
                 ),
                 padding: const EdgeInsets.all(6),
-                child: Image.asset('assets/logo.png', fit: BoxFit.contain),
+                child: Image.asset('assets/Logo.png', fit: BoxFit.contain),
               ),
               const SizedBox(width: 9),
               Expanded(

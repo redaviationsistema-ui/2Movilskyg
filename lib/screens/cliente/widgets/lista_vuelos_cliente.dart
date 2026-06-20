@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -43,12 +45,17 @@ class ClientFlightsList extends StatefulWidget {
   State<ClientFlightsList> createState() => _ClientFlightsListState();
 }
 
-class _ClientFlightsListState extends State<ClientFlightsList> {
+class _ClientFlightsListState extends State<ClientFlightsList>
+    with WidgetsBindingObserver {
+  static const Duration _autoRefreshInterval = Duration(seconds: 35);
+
   late _TripTab _activeTab;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _activeTab = _TripTab.processing;
     final provider = context.read<ReservationProvider>();
@@ -57,6 +64,32 @@ class _ClientFlightsListState extends State<ClientFlightsList> {
       if (!mounted) return;
       provider.loadClientWorkspaceData();
     });
+
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      _refreshFlights(force: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _refreshFlights(force: true);
+  }
+
+  Future<void> _refreshFlights({required bool force}) async {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+    await context.read<ReservationProvider>().loadClientWorkspaceData(
+      force: force,
+    );
   }
 
   @override
@@ -590,7 +623,7 @@ class _MinimalFlightCard extends StatelessWidget {
     final conciergeEnabled = _conciergeActionEnabled(request, workflowId);
     final imageUrl = _aircraftImageUrl(request, aircraftFleet);
     final aircraftName = _aircraftLabel(request);
-    final capacity = _aircraftCapacityLabel(request);
+    final capacity = _aircraftCapacityLabel(request, aircraftFleet);
     final category = _aircraftCategoryLabel(request);
     final supportLines = _workflowSupportLines(request, meta);
 
@@ -1612,10 +1645,13 @@ _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
       _asBool(
         request['contract_signed'] ??
             request['contract_completed'] ??
-            request['contract_ready'],
+            _nestedMap(request['contract'])['contract_signed'] ??
+            _nestedMap(request['contract'])['contract_completed'],
       ) ||
-      _hasValue(request['contract_url']) ||
-      _hasValue(request['contract_document_url']);
+      _hasValue(request['signed_pdf_url']) ||
+      _hasValue(request['signedPdfUrl']) ||
+      _hasValue(_nestedMap(request['contract'])['signed_pdf_url']) ||
+      _hasValue(_nestedMap(request['contract'])['signedPdfUrl']);
 
   final paymentReady =
       _containsAny(paymentStatus, const ['paid', 'completed', 'confirmed']) ||
@@ -2047,8 +2083,31 @@ List<String> _workflowSupportLines(
 }
 
 String _requestCode(Map<String, dynamic> request) {
-  final id = request['id']?.toString() ?? '0000';
-  return 'RESERVA SKY-$id';
+  final explicitCode = _firstText([
+    request['folio'],
+    request['booking_code'],
+    request['reservation_code'],
+    request['code'],
+  ]);
+  if (explicitCode.isNotEmpty) {
+    final normalized = explicitCode.trim().toUpperCase();
+    return normalized.startsWith('RESERVA ')
+        ? normalized
+        : 'RESERVA $normalized';
+  }
+
+  final rawId = _firstText([
+    request['reservation_id'],
+    request['booking_id'],
+    request['id'],
+  ]);
+  final normalizedRawId = rawId.trim();
+  final numericId = int.tryParse(normalizedRawId);
+  final suffix =
+      numericId != null
+          ? numericId.toString().padLeft(4, '0')
+          : (normalizedRawId.isNotEmpty ? normalizedRawId : '0000');
+  return 'RESERVA SKY-$suffix';
 }
 
 String _providerNextAction(Map<String, dynamic> request) {
@@ -2076,92 +2135,114 @@ _WorkflowActionCopy _workflowActionCopy(String stageId) {
   switch (stageId) {
     case 'draft':
       return const _WorkflowActionCopy(
-        title: 'Completar solicitud',
+        title: 'Información pendiente',
         detail:
-            'Aun faltan datos para activar la reserva con el equipo comercial.',
+            'Se requiere información complementaria para continuar con la gestión de su operación.',
       );
+
     case 'quoted':
       return const _WorkflowActionCopy(
-        title: 'Elegir opcion',
+        title: 'Propuesta disponible',
         detail:
-            'Selecciona aeronave y paquete para convertir la cotizacion en reserva.',
+            'Su propuesta está lista. Seleccione la opción que mejor se adapte a sus requerimientos para continuar.',
       );
+
     case 'package_selected':
       return const _WorkflowActionCopy(
-        title: 'Confirmar reserva',
-        detail: 'Tu seleccion ya esta lista para enviarse al flujo operativo.',
+        title: 'Confirmación de operación',
+        detail:
+            'La propuesta seleccionada ha sido registrada y está lista para su confirmación.',
       );
+
     case 'reserved':
       return const _WorkflowActionCopy(
-        title: 'Respuesta del proveedor',
-        detail: 'La reserva ya quedo creada y supero la activacion inicial.',
+        title: 'Validación operativa',
+        detail:
+            'La operación ha sido enviada para revisión y validación operativa.',
       );
+
     case 'provider_pending':
       return const _WorkflowActionCopy(
-        title: 'Respuesta del proveedor',
-        detail: 'Valida disponibilidad, aeronave y ventana operativa.',
+        title: 'Revisión operativa',
+        detail:
+            'Nos encontramos verificando disponibilidad, aeronave, tripulación y condiciones de operación.',
       );
+
     case 'provider_accepted':
       return const _WorkflowActionCopy(
-        title: 'Firma de contrato',
+        title: 'Documentación contractual',
         detail:
-            'La respuesta del proveedor ya se resolvio y la reserva siguio avanzando.',
+            'La operación ha sido aprobada y avanza a la etapa de formalización contractual.',
       );
+
     case 'contract_pending':
       return const _WorkflowActionCopy(
-        title: 'Firma de contrato',
+        title: 'Firma de documentación',
         detail:
-            'El contrato esta en preparacion o esperando firma del cliente.',
+            'La documentación contractual se encuentra en proceso de revisión y firma.',
       );
+
     case 'contract_signed':
       return const _WorkflowActionCopy(
-        title: 'Confirmacion de pago',
-        detail: 'La firma se completo y el siguiente paso es validar el pago.',
+        title: 'Validación financiera',
+        detail:
+            'La documentación ha sido completada. Procedemos con la validación financiera de la operación.',
       );
+
     case 'payment_pending':
       return const _WorkflowActionCopy(
-        title: 'Confirmacion de pago',
-        detail: 'El cobro se valida y confirma antes de liberar el vuelo.',
+        title: 'Confirmación de pago',
+        detail:
+            'El pago se encuentra en proceso de validación para continuar con la liberación operativa.',
       );
+
     case 'payment_confirmed':
       return const _WorkflowActionCopy(
-        title: 'Confirmacion de vuelo',
+        title: 'Coordinación de vuelo',
         detail:
-            'Pago confirmado. Coordina proveedor, sobrecargo, aeropuerto y pasajeros sin exponer contacto directo entre cliente, proveedor y tripulacion.',
+            'Pago confirmado. Nuestro equipo coordina todos los aspectos operativos y logísticos de su vuelo.',
       );
+
     case 'flight_confirmed':
       return const _WorkflowActionCopy(
-        title: 'Tracking de servicio',
-        detail: 'La operacion ya tiene aeronave, tripulacion y salida cerrada.',
+        title: 'Operación confirmada',
+        detail:
+            'La aeronave, tripulación y programación han sido confirmadas exitosamente.',
       );
+
     case 'tracking_live':
       return const _WorkflowActionCopy(
-        title: 'Tracking y concierge',
+        title: 'Operación en curso',
         detail:
-            'El admin puede seguir la ejecucion y las novedades del servicio.',
+            'Su vuelo se encuentra en ejecución y bajo supervisión continua de nuestro equipo.',
       );
+
     case 'completed':
       return const _WorkflowActionCopy(
-        title: 'Finalizado',
+        title: 'Operación finalizada',
         detail:
-            'La sobrecargo finalizo el servicio y la operacion ya quedo cerrada para seguimiento e historial.',
+            'La operación ha concluido satisfactoriamente. Agradecemos su confianza en nuestros servicios.',
       );
+
     case 'cancelled':
       return const _WorkflowActionCopy(
-        title: 'Viaje cancelado',
+        title: 'Operación cancelada',
         detail:
-            'La reserva fue cancelada. Si quieres, armamos una nueva opcion.',
+            'La operación fue cancelada. Nuestro equipo permanece disponible para asistirle con una nueva solicitud.',
       );
+
     case 'rejected':
       return const _WorkflowActionCopy(
-        title: 'Nueva alternativa',
+        title: 'Alternativa en gestión',
         detail:
-            'El operador rechazo este vuelo. Podemos buscar otra opcion de inmediato.',
+            'La opción seleccionada no pudo ser confirmada. Estamos evaluando alternativas equivalentes.',
       );
+
     default:
       return const _WorkflowActionCopy(
-        title: 'Respuesta del proveedor',
-        detail: 'La reserva ya quedo creada y supero la activacion inicial.',
+        title: 'Operación registrada',
+        detail:
+            'Su solicitud ha sido registrada y se encuentra avanzando dentro del proceso operativo.',
       );
   }
 }
@@ -2202,18 +2283,22 @@ String? _nestedText(dynamic value, String key) {
 }
 
 String _routeLabel(Map<String, dynamic> request) {
-  final legs = request['legs'] ?? request['segments'] ?? request['routes'];
-
-  if (legs is List && legs.isNotEmpty) {
-    final first = legs.first;
-
-    if (first is Map) {
-      final origin = first['origin']?.toString() ?? '';
-      final destination = first['destination']?.toString() ?? '';
-
-      if (origin.isNotEmpty || destination.isNotEmpty) {
-        return '$origin → $destination';
+  final segments = _itinerarySegments(request);
+  if (segments.isNotEmpty) {
+    final points = <String>[];
+    for (final segment in segments) {
+      if (points.isEmpty) {
+        points.add(segment.origin);
+      } else if (points.last != segment.origin) {
+        points.add(segment.origin);
       }
+      if (segment.destination.isNotEmpty &&
+          points.last != segment.destination) {
+        points.add(segment.destination);
+      }
+    }
+    if (points.isNotEmpty) {
+      return points.join(' → ');
     }
   }
 
@@ -2293,11 +2378,31 @@ String _aircraftLabel(Map<String, dynamic> request) {
       'Aeronave por asignar';
 }
 
-String _aircraftCapacityLabel(Map<String, dynamic> request) {
+String _aircraftCapacityLabel(
+  Map<String, dynamic> request,
+  List<Aircraft> aircraftFleet,
+) {
+  final aircraftId =
+      request['assigned_aircraft_id']?.toString().trim() ??
+      request['aircraft_id']?.toString().trim() ??
+      '';
+  final aircraftName = _aircraftLabel(request).trim().toLowerCase();
+
+  for (final aircraft in aircraftFleet) {
+    final matchesId = aircraftId.isNotEmpty && aircraft.id == aircraftId;
+    final matchesName =
+        aircraftName.isNotEmpty &&
+        (aircraft.name.trim().toLowerCase() == aircraftName ||
+            aircraft.aircraftType.trim().toLowerCase() == aircraftName);
+    if (matchesId || matchesName) {
+      final capacity = aircraft.capacityPassengers;
+      if (capacity > 0) return 'Capacidad: $capacity pax';
+    }
+  }
+
   final value =
       request['aircraft_capacity'] ??
       request['capacity'] ??
-      request['passengers'] ??
       _nestedMap(request['contract'])['passengers'];
   final text = value?.toString().trim() ?? '';
   if (text.isEmpty || text == '0') return '';

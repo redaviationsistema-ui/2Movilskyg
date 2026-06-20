@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../core/cliente_api.dart';
+import '../core/client_workflow_status.dart';
 import '../models/aeronave.dart';
 import '../models/aeropuerto.dart';
 import '../models/modelo_ruta.dart';
@@ -442,6 +443,89 @@ class ReservationProvider extends ChangeNotifier {
         return itemId == null || itemId != requestId;
       }),
     ];
+    notifyListeners();
+  }
+
+  void markPaymentConfirmed({
+    required String flightRequestId,
+    String reservationId = '',
+    String paymentIntentId = '',
+    String brand = '',
+  }) {
+    if (flightRequestId.trim().isEmpty && reservationId.trim().isEmpty) return;
+
+    final paidAt = DateTime.now().toIso8601String();
+    final normalizedFlightRequestId = flightRequestId.trim();
+    final normalizedReservationId = reservationId.trim();
+
+    flightRequests =
+        flightRequests.map((row) {
+          final item = Map<String, dynamic>.from(row);
+          final itemId = _resolveEntityId(item) ?? '';
+          final itemFlightRequestId =
+              _resolveEntityId(item['flight_request_id']) ??
+              _resolveEntityId(_nestedMap(item['flight_request'])['id']) ??
+              '';
+          final itemReservationId =
+              _resolveEntityId(item['reservation_id']) ??
+              _resolveEntityId(_nestedMap(item['reservation'])['id']) ??
+              '';
+
+          final matches =
+              (normalizedFlightRequestId.isNotEmpty &&
+                  (itemId == normalizedFlightRequestId ||
+                      itemFlightRequestId == normalizedFlightRequestId)) ||
+              (normalizedReservationId.isNotEmpty &&
+                  itemReservationId == normalizedReservationId);
+
+          if (!matches) return item;
+
+          final reservation = _nestedMap(item['reservation']);
+          final payments =
+              item['payments'] is List
+                  ? List<Map<String, dynamic>>.from(
+                    (item['payments'] as List).whereType<Map>().map(
+                      (payment) => Map<String, dynamic>.from(payment),
+                    ),
+                  )
+                  : <Map<String, dynamic>>[];
+
+          return {
+            ...item,
+            if (normalizedFlightRequestId.isNotEmpty)
+              'flight_request_id': normalizedFlightRequestId,
+            if (normalizedReservationId.isNotEmpty)
+              'reservation_id': normalizedReservationId,
+            'payment_method': 'card',
+            'payment_status': 'paid',
+            'payment_completed': true,
+            'is_paid': true,
+            'status': 'payment_confirmed',
+            'workflow_status': 'pago confirmado',
+            if (paymentIntentId.isNotEmpty)
+              'stripe_payment_intent_id': paymentIntentId,
+            'updated_at': paidAt,
+            'payments': [
+              {
+                'status': 'paid',
+                'paid_at': paidAt,
+                if (brand.isNotEmpty) 'brand': brand,
+                if (paymentIntentId.isNotEmpty)
+                  'stripe_payment_intent_id': paymentIntentId,
+              },
+              ...payments,
+            ],
+            'reservation': {
+              ...reservation,
+              if (normalizedReservationId.isNotEmpty)
+                'id': normalizedReservationId,
+              'status': 'paid',
+              'payment_status': 'paid',
+              'confirmed_at': reservation['confirmed_at'] ?? paidAt,
+            },
+          };
+        }).toList();
+
     notifyListeners();
   }
 
@@ -1541,33 +1625,48 @@ class ReservationProvider extends ChangeNotifier {
     List<Map<String, dynamic>> rows,
   ) {
     final merged = <Map<String, dynamic>>[];
-    final indexByKey = <String, int>{};
+    final indexByAlias = <String, int>{};
 
     for (final raw in rows) {
       final normalized = _normalizeFlightHistoryRow(raw);
-      final key = _mergeKeyForFlightHistoryRow(normalized);
+      final aliases = _mergeAliasesForFlightHistoryRow(normalized);
+      int? currentIndex;
+      for (final alias in aliases) {
+        final matchedIndex = indexByAlias[alias];
+        if (matchedIndex != null) {
+          currentIndex = matchedIndex;
+          break;
+        }
+      }
 
-      if (key.isNotEmpty && indexByKey.containsKey(key)) {
-        final currentIndex = indexByKey[key]!;
+      if (currentIndex != null) {
         merged[currentIndex] = _mergeFlightHistoryRecord(
           merged[currentIndex],
           normalized,
         );
+        final updatedAliases = _mergeAliasesForFlightHistoryRow(
+          merged[currentIndex],
+        );
+        for (final alias in updatedAliases) {
+          indexByAlias[alias] = currentIndex;
+        }
         continue;
       }
 
-      if (key.isNotEmpty) {
-        indexByKey[key] = merged.length;
-      }
+      final nextIndex = merged.length;
       merged.add(normalized);
+      for (final alias in aliases) {
+        indexByAlias[alias] = nextIndex;
+      }
     }
 
     return merged;
   }
 
-  String _mergeKeyForFlightHistoryRow(Map<String, dynamic> row) {
+  Set<String> _mergeAliasesForFlightHistoryRow(Map<String, dynamic> row) {
     final reservation = _nestedMap(row['reservation']);
     final flightRequest = _nestedMap(row['flight_request']);
+    final aliases = <String>{};
 
     final flightRequestId =
         _resolveEntityId(row['flight_request_id']) ??
@@ -1575,7 +1674,8 @@ class ReservationProvider extends ChangeNotifier {
         _resolveEntityId(flightRequest['id']) ??
         _resolveEntityId(reservation['flight_request_id']);
     if (flightRequestId != null && flightRequestId.isNotEmpty) {
-      return 'flight_request:$flightRequestId';
+      aliases.add('flight_request:$flightRequestId');
+      aliases.add('entity:$flightRequestId');
     }
 
     final reservationId =
@@ -1583,16 +1683,28 @@ class ReservationProvider extends ChangeNotifier {
         _resolveEntityId(row['booking_id']) ??
         _resolveEntityId(reservation['id']);
     if (reservationId != null && reservationId.isNotEmpty) {
-      return 'reservation:$reservationId';
+      aliases.add('reservation:$reservationId');
+      aliases.add('entity:$reservationId');
     }
 
-    return _resolveEntityId(row) ??
-        [
-          row['origin'],
-          row['destination'],
-          row['departure_datetime'],
-          row['created_at'],
-        ].whereType<Object>().join('|');
+    final rowId = _resolveEntityId(row);
+    if (rowId != null && rowId.isNotEmpty) {
+      aliases.add('entity:$rowId');
+    }
+
+    if (aliases.isEmpty) {
+      final fallback = [
+        row['origin'],
+        row['destination'],
+        row['departure_datetime'],
+        row['created_at'],
+      ].whereType<Object>().join('|');
+      if (fallback.isNotEmpty) {
+        aliases.add('fallback:$fallback');
+      }
+    }
+
+    return aliases;
   }
 
   Map<String, dynamic> _mergeFlightHistoryRecord(
@@ -1600,10 +1712,24 @@ class ReservationProvider extends ChangeNotifier {
     Map<String, dynamic> incoming,
   ) {
     final merged = Map<String, dynamic>.from(current);
+    final preferIncomingWorkflow = _incomingWorkflowShouldWin(
+      current,
+      incoming,
+    );
 
     for (final entry in incoming.entries) {
       final incomingValue = entry.value;
       final currentValue = merged[entry.key];
+
+      if (_shouldReplaceMergedValue(
+        key: entry.key,
+        currentValue: currentValue,
+        incomingValue: incomingValue,
+        preferIncomingWorkflow: preferIncomingWorkflow,
+      )) {
+        merged[entry.key] = incomingValue;
+        continue;
+      }
 
       if (_hasMeaningfulValue(incomingValue) &&
           !_hasMeaningfulValue(currentValue)) {
@@ -1612,23 +1738,193 @@ class ReservationProvider extends ChangeNotifier {
       }
 
       if (entry.key == 'contract' && incomingValue is Map) {
-        merged[entry.key] = {
-          ..._nestedMap(currentValue),
-          ...Map<String, dynamic>.from(incomingValue),
-        };
+        merged[entry.key] = _mergeMeaningfulMaps(
+          _nestedMap(currentValue),
+          Map<String, dynamic>.from(incomingValue),
+          preferIncoming: preferIncomingWorkflow,
+        );
         continue;
       }
 
       if (entry.key == 'frontend_state' && incomingValue is Map) {
-        merged[entry.key] = {
-          ..._nestedMap(currentValue),
-          ...Map<String, dynamic>.from(incomingValue),
-        };
+        merged[entry.key] = _mergeMeaningfulMaps(
+          _nestedMap(currentValue),
+          Map<String, dynamic>.from(incomingValue),
+          preferIncoming: preferIncomingWorkflow,
+        );
+        continue;
+      }
+
+      if (const {
+            'reservation',
+            'flight_request',
+            'operation',
+          }.contains(entry.key) &&
+          incomingValue is Map) {
+        merged[entry.key] = _mergeMeaningfulMaps(
+          _nestedMap(currentValue),
+          Map<String, dynamic>.from(incomingValue),
+          preferIncoming: preferIncomingWorkflow,
+        );
         continue;
       }
     }
 
     return _normalizeFlightHistoryRow(merged);
+  }
+
+  bool _incomingWorkflowShouldWin(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming,
+  ) {
+    final currentRank = _workflowStageRank(current);
+    final incomingRank = _workflowStageRank(incoming);
+
+    if (incomingRank != currentRank) {
+      return incomingRank > currentRank;
+    }
+
+    final currentUpdatedAt = _recordTimestamp(current);
+    final incomingUpdatedAt = _recordTimestamp(incoming);
+
+    return incomingUpdatedAt > currentUpdatedAt;
+  }
+
+  int _workflowStageRank(Map<String, dynamic> row) {
+    switch (resolveClientWorkflowStage(row)) {
+      case 'draft':
+        return 0;
+      case 'quoted':
+        return 1;
+      case 'package_selected':
+        return 2;
+      case 'reserved':
+        return 3;
+      case 'provider_pending':
+        return 4;
+      case 'provider_accepted':
+        return 5;
+      case 'contract_pending':
+        return 6;
+      case 'contract_signed':
+        return 7;
+      case 'payment_pending':
+        return 8;
+      case 'payment_confirmed':
+        return 9;
+      case 'flight_confirmed':
+        return 10;
+      case 'tracking_live':
+        return 11;
+      case 'completed':
+        return 12;
+      case 'rejected':
+      case 'cancelled':
+        return 13;
+      default:
+        return -1;
+    }
+  }
+
+  int _recordTimestamp(Map<String, dynamic> row) {
+    final reservation = _nestedMap(row['reservation']);
+    final flightRequest = _nestedMap(row['flight_request']);
+    final operation = _nestedMap(row['operation']);
+    final raw =
+        _firstText(row, const [
+          'updated_at',
+          'completed_at',
+          'closed_at',
+          'paid_at',
+          'departure_datetime',
+          'created_at',
+        ]) ??
+        _firstText(reservation, const [
+          'updated_at',
+          'completed_at',
+          'closed_at',
+          'paid_at',
+          'created_at',
+        ]) ??
+        _firstText(flightRequest, const ['updated_at', 'created_at']) ??
+        _firstText(operation, const ['updated_at', 'created_at']) ??
+        '';
+    return DateTime.tryParse(raw)?.millisecondsSinceEpoch ?? 0;
+  }
+
+  bool _shouldReplaceMergedValue({
+    required String key,
+    required dynamic currentValue,
+    required dynamic incomingValue,
+    required bool preferIncomingWorkflow,
+  }) {
+    if (!_hasMeaningfulValue(incomingValue)) return false;
+    if (!_hasMeaningfulValue(currentValue)) return true;
+
+    if (!preferIncomingWorkflow) {
+      return false;
+    }
+
+    return const {
+      'status',
+      'workflow_status',
+      'reservation_status',
+      'flight_status',
+      'tracking_status',
+      'crew_status',
+      'payment_status',
+      'contract_status',
+      'next_action',
+      'origin',
+      'destination',
+      'departure_datetime',
+      'assigned_aircraft_id',
+      'assigned_aircraft_model',
+      'aircraft_id',
+      'aircraft_model',
+      'aircraft',
+      'aircraft_capacity',
+      'capacity',
+      'provider_name',
+      'image_url',
+      'imageUrl',
+      'folio',
+      'booking_code',
+      'reservation_code',
+      'legs',
+      'segments',
+      'routes',
+      'requirements',
+      'reservation',
+      'flight_request',
+      'operation',
+      'operation_id',
+    }.contains(key);
+  }
+
+  Map<String, dynamic> _mergeMeaningfulMaps(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming, {
+    required bool preferIncoming,
+  }) {
+    final merged = <String, dynamic>{...current};
+
+    for (final entry in incoming.entries) {
+      final currentValue = merged[entry.key];
+      final incomingValue = entry.value;
+
+      if (!_hasMeaningfulValue(currentValue) &&
+          _hasMeaningfulValue(incomingValue)) {
+        merged[entry.key] = incomingValue;
+        continue;
+      }
+
+      if (preferIncoming && _hasMeaningfulValue(incomingValue)) {
+        merged[entry.key] = incomingValue;
+      }
+    }
+
+    return merged;
   }
 
   Map<String, dynamic> _normalizeFlightHistoryRow(Map<String, dynamic> raw) {
@@ -1644,16 +1940,19 @@ class ReservationProvider extends ChangeNotifier {
       row['frontend_state'] ?? contract['frontend_state'],
     );
     final firstLeg = _firstLeg(row);
-    final contractReady = _contractReadyForPayment(
+    final contractSigned = _contractSignedForWorkflow(
       row,
       contract,
       frontendState,
     );
-    final paymentStatus = row['payment_status']?.toString().trim() ?? '';
+    final reservation = _nestedMap(row['reservation']);
+    final payments = _paymentsFromRow(row);
+    final paymentStatus = _effectivePaymentStatus(row, reservation, payments);
+    final hasPaidSignals = _hasPaidSignals(row, reservation, payments);
 
     final id =
         _resolveEntityId(row) ??
-        _resolveEntityId(row['reservation']) ??
+        _resolveEntityId(reservation) ??
         _resolveEntityId(row['flight_request']);
     final origin =
         row['origin'] ??
@@ -1711,48 +2010,141 @@ class ReservationProvider extends ChangeNotifier {
             provider['name'] ??
             provider['company_name'] ??
             row['operator_name'],
-      if (contractReady && row['contract_status'] == null)
+      if (contractSigned && row['contract_status'] == null)
         'contract_status': 'signed',
-      if (contractReady && paymentStatus.isEmpty) 'payment_status': 'pending',
-      if (contractReady && row['workflow_status'] == null)
+      if (paymentStatus.isNotEmpty) 'payment_status': paymentStatus,
+      if (hasPaidSignals)
+        'workflow_status':
+            row['workflow_status']?.toString().trim().isNotEmpty == true
+                ? row['workflow_status']
+                : 'pago confirmado',
+      if (hasPaidSignals) 'status': 'payment_confirmed',
+      if (contractSigned && paymentStatus.isEmpty && !hasPaidSignals)
+        'payment_status': 'pending',
+      if (contractSigned && row['workflow_status'] == null && !hasPaidSignals)
         'workflow_status': 'pago pendiente',
-      if (contractReady && row['status'] == null) 'status': 'payment_pending',
+      if (contractSigned && row['status'] == null && !hasPaidSignals)
+        'status': 'payment_pending',
       if (row['image_url'] == null && row['imageUrl'] == null)
         'image_url': _primaryImage(row) ?? _primaryImage(aircraft) ?? '',
     };
   }
 
-  bool _contractReadyForPayment(
+  List<Map<String, dynamic>> _paymentsFromRow(Map<String, dynamic> row) {
+    final direct = row['payments'];
+    if (direct is List) {
+      return direct
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
+    final reservation = _nestedMap(row['reservation']);
+    final nested = reservation['payments'];
+    if (nested is List) {
+      return nested
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
+    return const [];
+  }
+
+  String _effectivePaymentStatus(
+    Map<String, dynamic> row,
+    Map<String, dynamic> reservation,
+    List<Map<String, dynamic>> payments,
+  ) {
+    final direct = row['payment_status']?.toString().trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+
+    final reservationPaymentStatus =
+        reservation['payment_status']?.toString().trim() ?? '';
+    if (reservationPaymentStatus.isNotEmpty) return reservationPaymentStatus;
+
+    final reservationStatus = reservation['status']?.toString().trim() ?? '';
+    if (_isPaidStatus(reservationStatus)) return 'paid';
+
+    for (final payment in payments) {
+      final status = payment['status']?.toString().trim() ?? '';
+      if (_isPaidStatus(status)) return 'paid';
+    }
+
+    return '';
+  }
+
+  bool _hasPaidSignals(
+    Map<String, dynamic> row,
+    Map<String, dynamic> reservation,
+    List<Map<String, dynamic>> payments,
+  ) {
+    final workflow = row['workflow_status']?.toString().trim() ?? '';
+    final status = row['status']?.toString().trim() ?? '';
+    final paymentStatus = row['payment_status']?.toString().trim() ?? '';
+
+    if (_isPaidStatus(workflow) ||
+        _isPaidStatus(status) ||
+        _isPaidStatus(paymentStatus)) {
+      return true;
+    }
+
+    final reservationStatus = reservation['status']?.toString().trim() ?? '';
+    final reservationPaymentStatus =
+        reservation['payment_status']?.toString().trim() ?? '';
+
+    if (_isPaidStatus(reservationStatus) ||
+        _isPaidStatus(reservationPaymentStatus)) {
+      return true;
+    }
+
+    for (final payment in payments) {
+      final status = payment['status']?.toString().trim() ?? '';
+      if (_isPaidStatus(status)) return true;
+      if (payment['paid_at']?.toString().trim().isNotEmpty == true) return true;
+    }
+
+    return false;
+  }
+
+  bool _isPaidStatus(String value) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'paid' ||
+        normalized == 'pagado' ||
+        normalized == 'pagada' ||
+        normalized == 'payment_confirmed' ||
+        normalized == 'payment confirmed' ||
+        normalized == 'pago confirmado';
+  }
+
+  bool _contractSignedForWorkflow(
     Map<String, dynamic> row,
     Map<String, dynamic> contract,
     Map<String, dynamic> frontendState,
   ) {
     final nestedState = _nestedMap(contract['frontend_state']);
-    final ready =
-        row['ready_for_payment'] == true ||
-        frontendState['ready_for_payment'] == true ||
-        nestedState['ready_for_payment'] == true;
-    final nextAction =
-        _firstText(row, const ['next_action']) ??
-        _firstText(frontendState, const ['next_action']) ??
-        _firstText(nestedState, const ['next_action']) ??
-        '';
     final status =
         _firstText(row, const [
           'docusign_status',
           'contract_status',
-          'status',
+          'signature_status',
         ]) ??
-        _firstText(contract, const ['docusign_status', 'status']) ??
+        _firstText(contract, const [
+          'docusign_status',
+          'status',
+          'contract_status',
+        ]) ??
         _firstText(frontendState, const [
           'ui_status',
           'docusign_status',
           'status',
+          'contract_status',
         ]) ??
         _firstText(nestedState, const [
           'ui_status',
           'docusign_status',
           'status',
+          'contract_status',
         ]) ??
         '';
     final signedPdf =
@@ -1762,13 +2154,20 @@ class ReservationProvider extends ChangeNotifier {
         _firstText(nestedState, const ['signed_pdf_url', 'signedPdfUrl']) ??
         '';
     final normalizedStatus = _normalizeLookup(status);
-    final normalizedNextAction = nextAction.trim().toLowerCase();
+    final explicitContractSigned =
+        row['contract_signed'] == true ||
+        row['contract_completed'] == true ||
+        contract['contract_signed'] == true ||
+        contract['contract_completed'] == true ||
+        frontendState['contract_signed'] == true ||
+        frontendState['contract_completed'] == true ||
+        nestedState['contract_signed'] == true ||
+        nestedState['contract_completed'] == true;
 
-    return ready ||
-        normalizedNextAction == 'go_to_payment' ||
-        normalizedNextAction == 'go_to_history' ||
-        normalizedStatus == 'COMPLETED' ||
+    return explicitContractSigned ||
         normalizedStatus == 'SIGNED' ||
+        normalizedStatus == 'COMPLETED' ||
+        normalizedStatus == 'APPROVED' ||
         signedPdf.isNotEmpty;
   }
 
