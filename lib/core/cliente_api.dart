@@ -541,10 +541,16 @@ class ApiClient {
   Future<Map<String, dynamic>> createClientCheckout({
     required String flightRequestId,
     required Map<String, dynamic> paymentPayload,
+    String successUrl = '',
+    String cancelUrl = '',
+    String returnUrl = '',
   }) {
     final body = {
       'flight_request_id': flightRequestId,
       'booking_id': flightRequestId,
+      if (successUrl.trim().isNotEmpty) 'success_url': successUrl.trim(),
+      if (cancelUrl.trim().isNotEmpty) 'cancel_url': cancelUrl.trim(),
+      if (returnUrl.trim().isNotEmpty) 'return_url': returnUrl.trim(),
       ...paymentPayload,
     };
 
@@ -618,11 +624,19 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createClientAccessCheckout({
     required Map<String, dynamic> paymentPayload,
+    String successUrl = '',
+    String cancelUrl = '',
+    String returnUrl = '',
   }) {
     return postFirstAvailable(
       const ['/client/access-payment/create', '/cliente/access-payment/create'],
       authenticated: true,
-      body: paymentPayload,
+      body: {
+        if (successUrl.trim().isNotEmpty) 'success_url': successUrl.trim(),
+        if (cancelUrl.trim().isNotEmpty) 'cancel_url': cancelUrl.trim(),
+        if (returnUrl.trim().isNotEmpty) 'return_url': returnUrl.trim(),
+        ...paymentPayload,
+      },
     );
   }
 

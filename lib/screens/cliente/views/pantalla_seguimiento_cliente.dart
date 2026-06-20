@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/proveedor_reservaciones.dart';
 import 'pantalla_concierge_cliente.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientTrackingScreen extends StatelessWidget {
@@ -118,7 +119,7 @@ class ClientTrackingScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF10253A),
+                          color: ClientThemeColors.brandNavy,
                         ),
                       ),
                       SizedBox(height: 6),
@@ -143,7 +144,7 @@ class ClientTrackingScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF10253A),
+                          color: ClientThemeColors.brandNavy,
                         ),
                       ),
                       SizedBox(height: 6),

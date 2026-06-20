@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientBookingConfirmationScreen extends StatelessWidget {
@@ -88,7 +89,7 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
                   onPressed: onOpenTrips,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(54),
-                    backgroundColor: const Color(0xFF10253A),
+                    backgroundColor: ClientThemeColors.brandNavy,
                   ),
                   child: const Text('Ver mis vuelos'),
                 ),

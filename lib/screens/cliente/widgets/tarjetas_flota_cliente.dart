@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/aeronave.dart';
 import '../../../models/modelos_mercado.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../tema_cliente.dart';
 
 class ClientFleetSection extends StatelessWidget {
   const ClientFleetSection({super.key, required this.aircraft});
@@ -92,9 +93,9 @@ class _AircraftAvailabilityCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         gradient: const LinearGradient(
-          colors: [Color(0xFFFFFFFF), Color(0xFFF8FBFD)],
+          colors: ClientThemeColors.headerGradient,
         ),
-        border: Border.all(color: const Color(0xFFE4EAF0)),
+        border: Border.all(color: ClientThemeColors.accentBorder),
         boxShadow: const [
           BoxShadow(
             color: Color(0x120E2238),
@@ -120,13 +121,13 @@ class _AircraftAvailabilityCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0E2238),
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${_categoryLabel()} | ${aircraft.capacityPassengers} pasajeros | Base ${aircraft.homeBase}',
-                      style: const TextStyle(color: Color(0xFF536274)),
+                      style: const TextStyle(color: ClientThemeColors.muted),
                     ),
                   ],
                 ),
@@ -137,7 +138,10 @@ class _AircraftAvailabilityCard extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             availability.helper,
-            style: const TextStyle(color: Color(0xFF536274), height: 1.35),
+            style: const TextStyle(
+              color: ClientThemeColors.muted,
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -173,36 +177,39 @@ class _CancellationRuleCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFFFFFFF), Color(0xFFFFFCF6)],
+          colors: ClientThemeColors.headerGradient,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE8E1D2)),
+        border: Border.all(color: ClientThemeColors.accentBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.policy_outlined, color: Color(0xFFE0AF57)),
+          const Icon(Icons.policy_outlined, color: ClientThemeColors.accent),
           const SizedBox(height: 10),
           Text(
             rule.window,
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0E2238),
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             rule.penalty,
             style: const TextStyle(
-              color: Color(0xFFB46A00),
+              color: ClientThemeColors.accent,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             rule.action,
-            style: const TextStyle(color: Color(0xFF536274), height: 1.35),
+            style: const TextStyle(
+              color: ClientThemeColors.muted,
+              height: 1.35,
+            ),
           ),
         ],
       ),
@@ -230,6 +237,7 @@ class _AvailabilityPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Text(
         label,
@@ -249,13 +257,13 @@ class _SpecChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F7FA),
+        color: ClientThemeColors.softSurface,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          color: Color(0xFF0E2238),
+          color: Colors.white,
           fontWeight: FontWeight.w600,
         ),
       ),

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/aeropuerto.dart';
+import '../../cliente/tema_cliente.dart';
 import '../../cliente/widgets/widgets_flujo_movil_cliente.dart';
 
 class AirportPickerSheet extends StatefulWidget {
@@ -31,6 +32,8 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final search = _query.trim().toUpperCase();
     final filtered =
         widget.airports
@@ -49,9 +52,13 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
       maxChildSize: 0.95,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8F3EA),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: palette.appGradient,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
           child: Column(
             children: [
@@ -60,23 +67,27 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
                 width: 48,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD6CABC),
+                  color: palette.accentBorder,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       widget.title,
-                      style: const TextStyle(
+                      style: TextStyle(
+                        color:
+                            isDark
+                                ? palette.heroTextPrimary
+                                : palette.textPrimary,
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _controller,
                       onChanged: (value) {
@@ -84,14 +95,39 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
                           _query = value;
                         });
                       },
+                      style: TextStyle(
+                        color:
+                            isDark
+                                ? palette.heroTextPrimary
+                                : palette.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Buscar ciudad, aeropuerto o codigo',
                         filled: true,
-                        fillColor: Colors.white,
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        fillColor: palette.surface,
+                        hintStyle: TextStyle(
+                          color:
+                              isDark
+                                  ? palette.heroTextSecondary
+                                  : palette.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: palette.accent,
+                        ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(22),
                           borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide(color: palette.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide(color: palette.accentBorder),
                         ),
                       ),
                     ),
@@ -101,23 +137,44 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
               Expanded(
                 child:
                     search.isEmpty
-                        ? const Center(
+                        ? Center(
                           child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 24),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: Text(
                               'Escribe para buscar un aeropuerto.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 15,
-                                color: Color(0xFF6C6258),
-                                fontWeight: FontWeight.w500,
+                                color:
+                                    isDark
+                                        ? palette.heroTextSecondary
+                                        : palette.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        : filtered.isEmpty
+                        ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'No encontramos aeropuertos con esa búsqueda.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color:
+                                    isDark
+                                        ? palette.heroTextSecondary
+                                        : palette.textSecondary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         )
                         : ListView.separated(
                           controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                           itemBuilder: (context, index) {
                             final airport = filtered[index];
                             final code =
@@ -126,18 +183,27 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
                                     : '--';
 
                             return ConciergeCard(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(16),
                               child: ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(
                                   airport.city,
-                                  style: const TextStyle(
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 subtitle: Text(
                                   '${airport.name}\n$code',
-                                  style: const TextStyle(height: 1.35),
+                                  style: TextStyle(
+                                    height: 1.35,
+                                    color: palette.textSecondary,
+                                  ),
+                                ),
+                                trailing: Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 16,
+                                  color: palette.accent,
                                 ),
                                 onTap: () => Navigator.pop(context, airport),
                               ),

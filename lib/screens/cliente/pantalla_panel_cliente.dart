@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/proveedor_reservaciones.dart';
+import 'tema_cliente.dart';
 import '../reservation/pantalla_reservacion.dart';
 import '../shared/widgets/componentes_ui_rol.dart';
 import 'views/pantalla_concierge_cliente.dart';
@@ -11,16 +12,28 @@ import 'views/pantalla_busqueda_cliente.dart';
 import 'views/pantalla_seguimiento_cliente.dart';
 import 'widgets/tarjetas_flota_cliente.dart';
 
-const Color kBg = Color(0xFFF7F7F7);
-const Color kWhite = Colors.white;
-const Color kBlack = Color(0xFF050505);
-const Color kText = Color(0xFF111111);
-const Color kMuted = Color(0xFF666666);
-const Color kBorder = Color(0xFFE6E6E6);
-const Color kSoft = Color(0xFFF2F2F2);
+const Color kBg = ClientThemeColors.bg;
+const Color kWhite = ClientThemeColors.surface;
+const Color kBlack = ClientThemeColors.brandNight;
+const Color kText = ClientThemeColors.text;
+const Color kMuted = ClientThemeColors.muted;
+const Color kBorder = ClientThemeColors.border;
+const Color kSoft = ClientThemeColors.softSurface;
 
 class ClientDashboardScreen extends StatelessWidget {
   const ClientDashboardScreen({super.key});
+
+  static const RoleDashboardPalette _clientDashboardPalette =
+      RoleDashboardPalette(
+        backgroundGradient: ClientThemeColors.appGradient,
+        contentBackgroundColor: ClientThemeColors.bg,
+        headerGradient: ClientThemeColors.headerGradient,
+        headerBorderColor: ClientThemeColors.accentBorder,
+        headerBadgeGradient: ClientThemeColors.accentGradient,
+        headerBadgeIconColor: ClientThemeColors.brandNavy,
+        roleLabelColor: Colors.white,
+        menuIconColor: Colors.white,
+      );
 
   static const List<FeatureEntry> _quickViews = [
     FeatureEntry(
@@ -100,8 +113,8 @@ class ClientDashboardScreen extends StatelessWidget {
                         );
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: kBlack,
-                        foregroundColor: kWhite,
+                        backgroundColor: ClientThemeColors.accent,
+                        foregroundColor: ClientThemeColors.textOnAccent,
                         minimumSize: const Size.fromHeight(54),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
@@ -129,8 +142,15 @@ class ClientDashboardScreen extends StatelessWidget {
       title: 'Sky Group',
       subtitle: 'Cliente',
       roleLabel: 'Cliente',
+      palette: _clientDashboardPalette,
       body: Container(
-        color: kBg,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: ClientThemeColors.appGradient,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
           children: [
@@ -202,7 +222,11 @@ class _MinimalHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       decoration: BoxDecoration(
-        color: kWhite,
+        gradient: const LinearGradient(
+          colors: ClientThemeColors.headerGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: kBorder),
         boxShadow: const [
@@ -219,7 +243,7 @@ class _MinimalHero extends StatelessWidget {
           const Text(
             'PRIVATE AVIATION',
             style: TextStyle(
-              color: kMuted,
+              color: ClientThemeColors.accent,
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.4,
@@ -229,7 +253,7 @@ class _MinimalHero extends StatelessWidget {
           const Text(
             'Reserva un jet privado\nen minutos.',
             style: TextStyle(
-              color: kBlack,
+              color: Colors.white,
               fontSize: 34,
               height: 0.98,
               fontWeight: FontWeight.w900,
@@ -240,7 +264,7 @@ class _MinimalHero extends StatelessWidget {
           const Text(
             'Busca ruta, compara opciones y continúa con soporte ejecutivo.',
             style: TextStyle(
-              color: kMuted,
+              color: ClientThemeColors.muted,
               fontSize: 16,
               height: 1.35,
               fontWeight: FontWeight.w500,
@@ -253,8 +277,8 @@ class _MinimalHero extends StatelessWidget {
                 child: FilledButton(
                   onPressed: onReserve,
                   style: FilledButton.styleFrom(
-                    backgroundColor: kBlack,
-                    foregroundColor: kWhite,
+                    backgroundColor: ClientThemeColors.accent,
+                    foregroundColor: ClientThemeColors.textOnAccent,
                     minimumSize: const Size.fromHeight(54),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
@@ -271,9 +295,11 @@ class _MinimalHero extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: onRequestQuote,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: kBlack,
+                    foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(54),
-                    side: const BorderSide(color: kBorder),
+                    side: const BorderSide(
+                      color: ClientThemeColors.accentBorder,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -309,7 +335,7 @@ class _MinimalSectionTitle extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  color: kBlack,
+                  color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5,
@@ -389,7 +415,7 @@ class _QuickAccessCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: kWhite,
+          color: ClientThemeColors.darkCard,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: kBorder),
           boxShadow: const [
@@ -407,10 +433,16 @@ class _QuickAccessCard extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: kBlack,
+                gradient: const LinearGradient(
+                  colors: ClientThemeColors.accentGradient,
+                ),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: kWhite, size: 20),
+              child: Icon(
+                icon,
+                color: ClientThemeColors.textOnAccent,
+                size: 20,
+              ),
             ),
             const Spacer(),
             Text(
@@ -418,7 +450,7 @@ class _QuickAccessCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: kBlack,
+                color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.3,
@@ -455,7 +487,11 @@ class _TrackingCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: kBlack,
+          gradient: const LinearGradient(
+            colors: ClientThemeColors.headerGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(26),
           boxShadow: const [
             BoxShadow(
@@ -485,7 +521,7 @@ class _TrackingCard extends StatelessWidget {
                   Text(
                     'Consulta el avance de tu reserva.',
                     style: TextStyle(
-                      color: Color(0xFFBDBDBD),
+                      color: kMuted,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -512,14 +548,14 @@ class _MinimalEmptyCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: kWhite,
+        color: ClientThemeColors.darkCard,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: kBorder),
       ),
       child: Text(
         message,
         style: const TextStyle(
-          color: kText,
+          color: Colors.white,
           fontWeight: FontWeight.w800,
           height: 1.35,
         ),

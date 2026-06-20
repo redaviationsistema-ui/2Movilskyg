@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../../reservation/pantalla_reservacion.dart';
 import 'pantalla_concierge_cliente.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientSearchScreen extends StatelessWidget {
@@ -198,7 +199,7 @@ class _SearchChip extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          color: Color(0xFF10253A),
+          color: ClientThemeColors.brandNavy,
           fontWeight: FontWeight.w700,
         ),
       ),

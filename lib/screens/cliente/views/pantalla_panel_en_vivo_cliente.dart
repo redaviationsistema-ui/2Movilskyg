@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientLiveDashboardScreen extends StatefulWidget {
@@ -181,7 +182,7 @@ class _ClientLiveDashboardScreenState extends State<ClientLiveDashboardScreen> {
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF10253A),
+                                  color: ClientThemeColors.brandNavy,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -262,7 +263,7 @@ class _MetricCard extends StatelessWidget {
             Text(
               value,
               style: const TextStyle(
-                color: Color(0xFF10253A),
+                color: ClientThemeColors.brandNavy,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
@@ -306,7 +307,7 @@ class _RequestCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF10253A),
+                    color: ClientThemeColors.brandNavy,
                   ),
                 ),
               ),

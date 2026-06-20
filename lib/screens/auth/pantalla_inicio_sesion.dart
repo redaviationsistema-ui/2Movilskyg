@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_theme.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import 'pantalla_seleccion_registro.dart';
 
@@ -39,27 +40,55 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _showPasswordRecoveryMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'La recuperacion de contrasena aun no esta disponible en la app.',
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final theme = Theme.of(context);
+    final colors = context.appColors;
+    final isDark = context.isDarkMode;
+    final backgroundGradient =
+        isDark
+            ? [
+              colors.background,
+              Color.lerp(colors.background, colors.primary, 0.55) ??
+                  colors.primary,
+              Color.lerp(colors.primary, const Color(0xFF1A4662), 0.42) ??
+                  colors.primary,
+            ]
+            : [
+              Color.lerp(colors.background, Colors.white, 0.28) ??
+                  colors.background,
+              Color.lerp(colors.background, const Color(0xFFE5EDF4), 0.82) ??
+                  colors.background,
+              Color.lerp(colors.primary, Colors.white, 0.84) ?? colors.primary,
+            ];
+    final panelColor =
+        Color.lerp(
+          colors.surfaceCard,
+          colors.background,
+          isDark ? 0.08 : 0.22,
+        ) ??
+        colors.surfaceCard;
+    final logoGradient =
+        isDark
+            ? [
+              Color.lerp(colors.surfaceCard, Colors.white, 0.04) ??
+                  colors.surfaceCard,
+              Color.lerp(colors.primary, colors.surfaceCard, 0.35) ??
+                  colors.primary,
+            ]
+            : [
+              Colors.white,
+              Color.lerp(colors.surfaceCard, colors.background, 0.55) ??
+                  colors.surfaceCard,
+            ];
     final isBusy = auth.isLoading;
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF020711), Color(0xFF0A1930), Color(0xFF163B58)],
+            colors: backgroundGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -71,7 +100,10 @@ class _LoginScreenState extends State<LoginScreen> {
               right: -80,
               child: _GlowOrb(
                 size: 280,
-                colors: const [Color(0x55F3C66A), Color(0x00F3C66A)],
+                colors: [
+                  colors.secondary.withValues(alpha: isDark ? 0.28 : 0.18),
+                  colors.secondary.withValues(alpha: 0),
+                ],
               ),
             ),
             Positioned(
@@ -79,7 +111,10 @@ class _LoginScreenState extends State<LoginScreen> {
               bottom: 90,
               child: _GlowOrb(
                 size: 260,
-                colors: const [Color(0x5518A0FB), Color(0x0018A0FB)],
+                colors: [
+                  colors.primary.withValues(alpha: isDark ? 0.26 : 0.14),
+                  colors.primary.withValues(alpha: 0),
+                ],
               ),
             ),
             SafeArea(
@@ -94,12 +129,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
                       decoration: BoxDecoration(
-                        color: const Color(0xEEF8FBFF),
+                        color: panelColor.withValues(
+                          alpha: isDark ? 0.94 : 0.98,
+                        ),
                         borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: const Color(0x26FFFFFF)),
-                        boxShadow: const [
+                        border: Border.all(
+                          color:
+                              isDark
+                                  ? colors.border
+                                  : colors.primary.withValues(alpha: 0.10),
+                        ),
+                        boxShadow: [
                           BoxShadow(
-                            color: Color(0x38000000),
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.34 : 0.12,
+                            ),
                             blurRadius: 44,
                             offset: Offset(0, 24),
                           ),
@@ -118,17 +162,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                     height: 86,
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(26),
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFFFFFFF),
-                                          Color(0xFFE8F1F8),
-                                        ],
+                                      gradient: LinearGradient(
+                                        colors: logoGradient,
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),
-                                      boxShadow: const [
+                                      boxShadow: [
                                         BoxShadow(
-                                          color: Color(0x19000000),
+                                          color: Colors.black.withValues(
+                                            alpha: isDark ? 0.18 : 0.08,
+                                          ),
                                           blurRadius: 18,
                                           offset: Offset(0, 10),
                                         ),
@@ -149,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
                                           fontWeight: FontWeight.w900,
-                                          color: const Color(0xFF0E2338),
+                                          color: colors.textPrimary,
                                         ),
                                   ),
                                   const SizedBox(height: 6),
@@ -157,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     'Bienvenidos a Red Sky',
                                     textAlign: TextAlign.center,
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: const Color(0xFF5E7082),
+                                      color: colors.textSecondary,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -173,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               autofillHints: const [AutofillHints.username],
                               style: const TextStyle(fontSize: 15),
                               decoration: _inputDecoration(
-                                hint: 'tu@empresa.com',
+                                hint: 'Ingresa tu correo.',
                                 icon: Icons.alternate_email_rounded,
                               ),
                               validator: (value) {
@@ -221,44 +264,22 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                             ),
                             const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: _showPasswordRecoveryMessage,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: const Color(0xFF0E2338),
-                                  disabledForegroundColor: const Color(
-                                    0xFF0E2338,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 4,
-                                  ),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: const Text(
-                                  '',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ),
                             if (auth.errorMessage != null) ...[
                               const SizedBox(height: 16),
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF1F0),
+                                  color: theme.colorScheme.errorContainer,
                                   borderRadius: BorderRadius.circular(18),
                                   border: Border.all(
-                                    color: const Color(0xFFFFD3CF),
+                                    color: theme.colorScheme.error,
                                   ),
                                 ),
                                 child: Text(
                                   auth.errorMessage!,
-                                  style: const TextStyle(
-                                    color: Color(0xFF8D1F1A),
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onErrorContainer,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -270,11 +291,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: FilledButton(
                                 onPressed: isBusy ? null : _submit,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0E2338),
-                                  disabledBackgroundColor: const Color(
-                                    0xFF8EA0B1,
-                                  ),
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: colors.primary,
+                                  disabledBackgroundColor:
+                                      Color.lerp(
+                                        colors.surfaceCard,
+                                        colors.primary,
+                                        0.4,
+                                      ) ??
+                                      colors.surfaceCard,
+                                  foregroundColor: theme.colorScheme.onPrimary,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 17,
                                   ),
@@ -284,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 child:
                                     isBusy
-                                        ? const Row(
+                                        ? Row(
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           mainAxisSize: MainAxisSize.min,
@@ -294,7 +319,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                               height: 18,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
-                                                color: Colors.white,
+                                                color:
+                                                    theme.colorScheme.onPrimary,
                                               ),
                                             ),
                                             SizedBox(width: 12),
@@ -325,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   Text(
                                     'No tienes cuenta?',
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: const Color(0xFF5E7082),
+                                      color: colors.textSecondary,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -343,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               );
                                             },
                                     style: TextButton.styleFrom(
-                                      foregroundColor: const Color(0xFFC4912E),
+                                      foregroundColor: colors.secondary,
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 6,
                                         vertical: 4,
@@ -380,36 +406,13 @@ class _LoginScreenState extends State<LoginScreen> {
     String? hint,
     Widget? suffix,
   }) {
-    const borderColor = Color(0xFFD7E0E8);
+    final colors = context.appColors;
 
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF7E8D9C), fontSize: 14),
+      hintStyle: TextStyle(color: colors.textSecondary, fontSize: 14),
       suffixIcon: suffix,
-      prefixIcon: Icon(icon, color: const Color(0xFF5E7082)),
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: borderColor),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: Color(0xFF0E2338), width: 1.3),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: Color(0xFFD45A4F)),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: Color(0xFFD45A4F), width: 1.3),
-      ),
+      prefixIcon: Icon(icon, color: colors.textSecondary),
     );
   }
 }
@@ -426,7 +429,7 @@ class _FieldLabel extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: const Color(0xFF0E2338),
+          color: context.appColors.textPrimary,
           fontWeight: FontWeight.w800,
         ),
       ),

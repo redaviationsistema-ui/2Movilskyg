@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../models/aeropuerto.dart';
 import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../../cliente/tema_cliente.dart';
 import '../../cliente/widgets/widgets_flujo_movil_cliente.dart';
 
 class ReservationScreenContent extends StatelessWidget {
@@ -72,70 +73,61 @@ class ReservationScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final isPrimaryFormReady =
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
         primaryRoute.startDate != null;
 
     return Container(
-      color: kWarmBg,
+      color: palette.background,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 126),
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 148),
         children: [
           const _HeroAccent(),
-          const SizedBox(height: 6),
-          const Text(
-            'RED AVIATION',
+          const SizedBox(height: 4),
+          Text(
+            'Cotiza tu vuelo privado',
             style: TextStyle(
-              color: kWarmText,
-              fontSize: 12,
+              fontSize: 24,
+              height: 1.05,
               fontWeight: FontWeight.w900,
-              letterSpacing: 2.8,
+              letterSpacing: -0.9,
+              color: palette.textPrimary,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Cotiza tu vuelo privado\nen minutos',
+          const SizedBox(height: 4),
+          Text(
+            'Selecciona ruta, fecha y pasajeros para ver aeronaves disponibles.',
             style: TextStyle(
-              fontSize: 28,
-              height: 1.04,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1.1,
-              color: kWarmText,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Selecciona tu ruta, fecha y pasajeros para ver aeronaves disponibles.',
-            style: TextStyle(
-              color: kWarmMuted,
-              fontSize: 13.5,
+              color: palette.textSecondary,
+              fontSize: 13,
               height: 1.35,
               fontWeight: FontWeight.w600,
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           ConciergeCard(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _FormSectionHeader(),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 SegmentedTripSelector(
                   value: tripType,
                   onChanged: onTripTypeChanged,
                 ),
                 if (tripType == 'Ida y vuelta') ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                 ] else if (tripType == 'Multidestino') ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 if (tripType == 'Multidestino') ...[
                   const RouteHeader(title: 'Tramo 1'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                 ],
                 ConciergeField(
                   label: 'Origen',
@@ -148,7 +140,7 @@ class ReservationScreenContent extends StatelessWidget {
                   placeholder: 'Seleccionar aeropuerto',
                   onTap: onPickOrigin,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 ConciergeField(
                   label: 'Destino',
                   value: _airportPrimaryLabel(primaryRoute.toAirport),
@@ -160,7 +152,7 @@ class ReservationScreenContent extends StatelessWidget {
                   placeholder: 'Seleccionar aeropuerto',
                   onTap: onPickDestination,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 ConciergeField(
                   label: 'Salida',
                   value:
@@ -170,10 +162,10 @@ class ReservationScreenContent extends StatelessWidget {
                   helperText: 'Elige la fecha de salida',
                   leadingIcon: Icons.calendar_month_outlined,
                   onTap: onPickPrimaryDate,
-                  trailing: const Icon(
+                  trailing: Icon(
                     Icons.calendar_today_outlined,
                     size: 24,
-                    color: Color(0xFF111111),
+                    color: palette.accent,
                   ),
                   placeholder: 'Seleccionar fecha',
                 ),
@@ -187,7 +179,7 @@ class ReservationScreenContent extends StatelessWidget {
                   onTap: onPickDepartureTime,
                 ),
                 if (tripType == 'Ida y vuelta') ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   ConciergeField(
                     label: 'Fecha de regreso',
                     value:
@@ -197,10 +189,10 @@ class ReservationScreenContent extends StatelessWidget {
                     helperText: 'Programa tu regreso',
                     leadingIcon: Icons.event_repeat_outlined,
                     onTap: onPickReturnDate,
-                    trailing: const Icon(
+                    trailing: Icon(
                       Icons.calendar_today_outlined,
                       size: 24,
-                      color: Color(0xFF111111),
+                      color: palette.accent,
                     ),
                     placeholder: 'Seleccionar fecha',
                   ),
@@ -215,7 +207,7 @@ class ReservationScreenContent extends StatelessWidget {
                   ),
                 ],
                 if (tripType == 'Multidestino') ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   ...List.generate(
                     reservation.routes.length - 1,
                     (extraIndex) => Padding(
@@ -238,16 +230,16 @@ class ReservationScreenContent extends StatelessWidget {
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Agregar tramo'),
                     style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      side: const BorderSide(color: kWarmBorder),
+                      minimumSize: const Size.fromHeight(44),
+                      side: BorderSide(color: palette.border),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      foregroundColor: kWarmText,
+                      foregroundColor: palette.textPrimary,
                     ),
                   ),
                 ],
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -256,20 +248,20 @@ class ReservationScreenContent extends StatelessWidget {
                             ? null
                             : onPreview,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF050505),
-                      disabledBackgroundColor: const Color(0xFFD9CFC0),
-                      disabledForegroundColor: const Color(0xFF7B7062),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(64),
+                      backgroundColor: palette.accent,
+                      disabledBackgroundColor: palette.surfaceSoft,
+                      disabledForegroundColor: palette.textSecondary,
+                      foregroundColor: palette.textOnAccent,
+                      minimumSize: const Size.fromHeight(56),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(22),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       elevation: 0,
                       shadowColor: Colors.transparent,
                     ),
                     child:
                         reservation.isLoadingQuotePreview
-                            ? const Row(
+                            ? Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -278,7 +270,7 @@ class ReservationScreenContent extends StatelessWidget {
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: palette.textOnAccent,
                                   ),
                                 ),
                                 SizedBox(width: 10),
@@ -326,11 +318,11 @@ class ReservationScreenContent extends StatelessWidget {
                             ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                const SizedBox(height: 12),
+                Text(
                   'Cotizacion estimada, sujeta a disponibilidad y operacion.',
                   style: TextStyle(
-                    color: kWarmMuted,
+                    color: palette.textSecondary,
                     fontSize: 12,
                     height: 1.35,
                     fontWeight: FontWeight.w500,
@@ -347,8 +339,8 @@ class ReservationScreenContent extends StatelessWidget {
             ConciergeCard(
               child: Text(
                 reservation.quoteError!,
-                style: const TextStyle(
-                  color: kWarmText,
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -384,30 +376,31 @@ class _HeroAccent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return SizedBox(
-      height: 24,
+      height: 14,
       child: Stack(
         children: [
           Positioned(
-            top: 3,
+            top: 2,
             left: 0,
             child: Container(
-              width: 84,
+              width: 72,
               height: 1.5,
               decoration: BoxDecoration(
-                color: kWarmBorder,
+                color: palette.border,
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
           ),
           Positioned(
-            top: 10,
-            left: 26,
+            top: 7,
+            left: 18,
             child: Container(
-              width: 58,
+              width: 46,
               height: 1.5,
               decoration: BoxDecoration(
-                color: const Color(0xFF8B6A24),
+                color: palette.accent,
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -423,15 +416,16 @@ class _FormSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Row(
-      children: const [
-        Icon(Icons.flight_outlined, color: Color(0xFF8B6A24), size: 18),
-        SizedBox(width: 8),
+      children: [
+        Icon(Icons.flight_outlined, color: palette.accent, size: 18),
+        const SizedBox(width: 6),
         Text(
           'Datos del vuelo',
           style: TextStyle(
-            color: kWarmText,
-            fontSize: 18,
+            color: palette.textPrimary,
+            fontSize: 16,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.3,
           ),
@@ -507,6 +501,7 @@ class QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return SizedBox(
       width: 220,
       child: InkWell(
@@ -515,12 +510,16 @@ class QuickActionCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            gradient: LinearGradient(
+              colors: palette.headerGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: const Color(0xFFE5E5E5)),
-            boxShadow: const [
+            border: Border.all(color: palette.accentBorder),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x10000000),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 28,
                 offset: Offset(0, 14),
               ),
@@ -534,21 +533,21 @@ class QuickActionCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111111),
+                  gradient: LinearGradient(colors: palette.accentGradient),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, color: Colors.white, size: 20),
+                child: Icon(icon, color: palette.textOnAccent, size: 20),
               ),
               const SizedBox(height: 12),
               Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF050505),
+                  color: palette.textPrimary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -556,8 +555,8 @@ class QuickActionCard extends StatelessWidget {
                 subtitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF666666),
+                style: TextStyle(
+                  color: palette.textSecondary,
                   fontSize: 12,
                   height: 1.25,
                   fontWeight: FontWeight.w500,
@@ -587,22 +586,23 @@ class ModeIntroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F4F4),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE1E1E1)),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             eyebrow.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: Color(0xFF111111),
+              color: palette.accent,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.6,
             ),
@@ -610,18 +610,18 @@ class ModeIntroCard extends StatelessWidget {
           const SizedBox(height: 7),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF050505),
+              color: palette.textPrimary,
               height: 1.25,
             ),
           ),
           const SizedBox(height: 7),
           Text(
             subtitle,
-            style: const TextStyle(
-              color: Color(0xFF606060),
+            style: TextStyle(
+              color: palette.textSecondary,
               fontSize: 13,
               height: 1.35,
               fontWeight: FontWeight.w500,
@@ -647,6 +647,7 @@ class SuggestedDestinationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final code = airport.iata?.trim().toUpperCase() ?? 'RUTA';
     final location = [
       airport.city,
@@ -661,12 +662,16 @@ class SuggestedDestinationCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            gradient: LinearGradient(
+              colors: palette.headerGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFE5E5E5)),
-            boxShadow: const [
+            border: Border.all(color: palette.accentBorder),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x0D000000),
+                color: Colors.black.withValues(alpha: 0.10),
                 blurRadius: 20,
                 offset: Offset(0, 10),
               ),
@@ -680,8 +685,8 @@ class SuggestedDestinationCard extends StatelessWidget {
                 code,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111111),
+                style: TextStyle(
+                  color: palette.accent,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
@@ -692,10 +697,10 @@ class SuggestedDestinationCard extends StatelessWidget {
                 airport.city,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF050505),
+                  color: palette.textPrimary,
                   height: 1.05,
                 ),
               ),
@@ -704,8 +709,8 @@ class SuggestedDestinationCard extends StatelessWidget {
                 location,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF666666),
+                style: TextStyle(
+                  color: palette.textSecondary,
                   fontSize: 11,
                   height: 1.1,
                   fontWeight: FontWeight.w500,
@@ -716,8 +721,8 @@ class SuggestedDestinationCard extends StatelessWidget {
                 isMultiCity ? 'Agregar parada' : 'Usar destino',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF050505),
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
@@ -737,10 +742,11 @@ class RouteHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Text(
       title.toUpperCase(),
-      style: const TextStyle(
-        color: Color(0xFF111111),
+      style: TextStyle(
+        color: palette.accent,
         fontWeight: FontWeight.w900,
         fontSize: 12,
         letterSpacing: 0.8,
@@ -763,18 +769,19 @@ class InlinePreferenceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFE4E4E4)),
-          color: const Color(0xFFFAFAFA),
-          boxShadow: const [
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: palette.border),
+          color: palette.surface,
+          boxShadow: [
             BoxShadow(
-              color: Color(0x08000000),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 10,
               offset: Offset(0, 4),
             ),
@@ -783,30 +790,30 @@ class InlinePreferenceButton extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F0F0),
-                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(colors: palette.accentGradient),
+                borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: Icon(icon, size: 20, color: const Color(0xFF111111)),
+              child: Icon(icon, size: 18, color: palette.textOnAccent),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 17,
+                  fontSize: 15,
                   letterSpacing: -0.3,
-                  color: Color(0xFF050505),
+                  color: palette.textPrimary,
                 ),
               ),
             ),
-            const Icon(
+            Icon(
               Icons.keyboard_arrow_right_rounded,
-              color: Color(0xFF050505),
+              color: palette.accent,
               size: 22,
             ),
           ],
@@ -824,17 +831,18 @@ class PassengerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final label = value == 1 ? '1 pasajero' : '$value pasajeros';
 
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Text(
             'Pasajeros',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF050505),
+              color: palette.textPrimary,
             ),
           ),
         ),
@@ -846,10 +854,10 @@ class PassengerRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 16,
-              color: Color(0xFF050505),
+              color: palette.textPrimary,
             ),
           ),
         ),
@@ -870,6 +878,7 @@ class PassengerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
@@ -877,20 +886,16 @@ class PassengerButton extends StatelessWidget {
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color:
-              onTap == null ? const Color(0xFFF1F1F1) : const Color(0xFF050505),
+          color: onTap == null ? palette.surfaceSoft : palette.accent,
           shape: BoxShape.circle,
           border: Border.all(
-            color:
-                onTap == null
-                    ? const Color(0xFFE0E0E0)
-                    : const Color(0xFF050505),
+            color: onTap == null ? palette.border : palette.accent,
           ),
         ),
         child: Icon(
           icon,
           size: 18,
-          color: onTap == null ? const Color(0xFFB0B0B0) : Colors.white,
+          color: onTap == null ? palette.textSecondary : palette.textOnAccent,
         ),
       ),
     );
@@ -919,6 +924,7 @@ class MultiLegCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return ConciergeCard(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -928,16 +934,16 @@ class MultiLegCard extends StatelessWidget {
             children: [
               Text(
                 'Tramo ${index + 1}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF050505),
+                  color: palette.textPrimary,
                 ),
               ),
               const Spacer(),
               IconButton(
                 onPressed: onRemove,
                 icon: const Icon(Icons.close_rounded),
-                color: const Color(0xFF111111),
+                color: palette.accent,
               ),
             ],
           ),
@@ -970,10 +976,10 @@ class MultiLegCard extends StatelessWidget {
             helperText: 'Programa la salida de este tramo',
             leadingIcon: Icons.calendar_month_outlined,
             onTap: onPickDate,
-            trailing: const Icon(
+            trailing: Icon(
               Icons.calendar_today_outlined,
               size: 18,
-              color: Color(0xFF111111),
+              color: palette.accent,
             ),
             placeholder: 'Seleccionar fecha',
           ),
@@ -1008,13 +1014,14 @@ class SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Text(
       label.toUpperCase(),
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w900,
         letterSpacing: 0.8,
-        color: Color(0xFF111111),
+        color: palette.accent,
       ),
     );
   }
@@ -1064,44 +1071,30 @@ class _ReservationTextFieldState extends State<ReservationTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return TextField(
       controller: _controller,
       onChanged: widget.onChanged,
       minLines: 1,
       maxLines: 2,
-      style: const TextStyle(
-        color: Color(0xFF050505),
-        fontWeight: FontWeight.w700,
-      ),
+      style: TextStyle(color: palette.textPrimary, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
         labelText: widget.label,
         hintText: widget.hintText,
-        labelStyle: const TextStyle(
-          color: Color(0xFF444444),
+        labelStyle: TextStyle(
+          color: palette.textSecondary,
           fontWeight: FontWeight.w700,
         ),
-        hintStyle: const TextStyle(
-          color: Color(0xFF9A9A9A),
+        hintStyle: TextStyle(
+          color: palette.textSecondary,
           fontWeight: FontWeight.w500,
         ),
-        filled: true,
-        fillColor: const Color(0xFFF7F7F7),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFE1E1E1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFE1E1E1)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFF050505), width: 1.4),
-        ),
+        fillColor: palette.surface,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
       ),
     );
   }

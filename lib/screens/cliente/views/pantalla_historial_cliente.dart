@@ -6,12 +6,14 @@ class ClientHistoryScreen extends StatelessWidget {
   const ClientHistoryScreen({
     super.key,
     this.showBackButton = true,
+    this.onOpenSearch,
     this.onOpenContract,
     this.onOpenPayment,
     this.onCommercialAccessRequired,
   });
 
   final bool showBackButton;
+  final VoidCallback? onOpenSearch;
   final ValueChanged<Map<String, dynamic>>? onOpenContract;
   final ValueChanged<Map<String, dynamic>>? onOpenPayment;
   final VoidCallback? onCommercialAccessRequired;
@@ -22,10 +24,10 @@ class ClientHistoryScreen extends StatelessWidget {
       heading: 'Tus vuelos',
       description: 'Consulta tus reservas de forma simple.',
       showBackButton: showBackButton,
+      onOpenSearch: onOpenSearch,
       onOpenContract: onOpenContract,
       onOpenPayment: onOpenPayment,
       onCommercialAccessRequired: onCommercialAccessRequired,
-      includeUpcomingTab: false,
     );
   }
 }

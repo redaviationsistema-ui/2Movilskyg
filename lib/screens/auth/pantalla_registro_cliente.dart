@@ -9,9 +9,11 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/app_theme.dart';
 import '../../core/cliente_api.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../services/servicio_ocr_registro.dart';
+import '../cliente/tema_cliente.dart';
 import '../marketplace/pantalla_inicio_mercado.dart';
 
 class ClientRegisterScreen extends StatefulWidget {
@@ -136,7 +138,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       return;
     }
 
-    final optimized = await _optimizeImageForProcessing(File(recoveredFile.path));
+    final optimized = await _optimizeImageForProcessing(
+      File(recoveredFile.path),
+    );
     if (!mounted) return;
 
     setState(() {
@@ -214,7 +218,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
 
     if (!_hasUsefulIneData()) {
-      debugPrint('[INE] Escaneo local sin datos suficientes. Intentando backend.');
+      debugPrint(
+        '[INE] Escaneo local sin datos suficientes. Intentando backend.',
+      );
       try {
         await _scanIneInBackend(images);
       } on ApiException catch (apiError) {
@@ -316,7 +322,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
             .toString()
             .trim();
     final parsedRaw =
-        rawText.isEmpty ? const <String, String>{} : RegistrationOcrService.parseIneText(rawText);
+        rawText.isEmpty
+            ? const <String, String>{}
+            : RegistrationOcrService.parseIneText(rawText);
     debugPrint(
       '[INE] Backend parse: rawTextLength=${rawText.length} parsedRaw=$parsedRaw',
     );
@@ -335,7 +343,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       );
       _setIfPresent(
         _birthDateController,
-        data['birth_date'] ?? data['fecha_nacimiento'] ?? parsedRaw['birth_date'],
+        data['birth_date'] ??
+            data['fecha_nacimiento'] ??
+            parsedRaw['birth_date'],
       );
       _setIfPresent(
         _nationalityController,
@@ -403,13 +413,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     final fileName = document.path.split(Platform.pathSeparator).last;
     if (_documentNumberController.text.trim().isEmpty) {
       final normalizedName = fileName.toUpperCase();
-      final inferred =
-          RegExp(r'\b[A-Z0-9]{8,20}\b').allMatches(normalizedName).map((match) {
+      final inferred = RegExp(r'\b[A-Z0-9]{8,20}\b')
+          .allMatches(normalizedName)
+          .map((match) {
             return match.group(0) ?? '';
-          }).firstWhere(
-            (value) => value.length >= 10,
-            orElse: () => '',
-          );
+          })
+          .firstWhere((value) => value.length >= 10, orElse: () => '');
       if (inferred.isNotEmpty) {
         _documentNumberController.text = inferred;
       }
@@ -433,7 +442,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       imageQuality: 88,
     );
     if (picked == null) return;
-    final optimizedSelfie = await _optimizeImageForProcessing(File(picked.path));
+    final optimizedSelfie = await _optimizeImageForProcessing(
+      File(picked.path),
+    );
     if (!mounted) return;
 
     setState(() {
@@ -663,15 +674,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final colors = context.appColors;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F4F7),
-      appBar: AppBar(
-        title: const Text('Crear cuenta cliente'),
-        backgroundColor: const Color(0xFF07121D),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+      backgroundColor: colors.background,
+      appBar: AppBar(title: const Text('Crear cuenta cliente')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -716,20 +724,20 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                   }),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
-                        backgroundColor: const Color(0xFF0E2338),
-                        foregroundColor: Colors.white,
+                        backgroundColor: colors.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
                       ),
                       child:
                           auth.isLoading
-                              ? const SizedBox(
+                              ? SizedBox(
                                 width: 22,
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: theme.colorScheme.onPrimary,
                                 ),
                               )
                               : Text(
@@ -749,6 +757,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   List<Widget> _profileStep() {
+    final palette = context.clientPalette;
+    final theme = Theme.of(context);
     return [
       const _SectionLabel(
         icon: Icons.person_pin_rounded,
@@ -756,7 +766,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       ),
       const _HintText(
         'Completa tus datos, escanea la INE y valida la selfie antes de continuar.',
-      ),  const SizedBox(height: 14),
+      ),
+      const SizedBox(height: 14),
       const _SectionLabel(
         icon: Icons.contact_mail_rounded,
         title: 'Identificacion oficial',
@@ -776,22 +787,22 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           label: const Text('Reescanear INE'),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
-            foregroundColor: const Color(0xFF0E2338),
-            side: const BorderSide(color: Color(0xFFE0B86E)),
+            foregroundColor: palette.textPrimary,
+            side: BorderSide(color: palette.accentBorder),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
           ),
         ),
       ],
-            const SizedBox(height: 10),
+      const SizedBox(height: 10),
 
       _field(_nameController, 'Nombre completo'),
       _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
       _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
       _field(_nationalityController, 'Nacionalidad'),
       _field(_baseController, 'Ciudad/base', requiredField: false),
-    
+
       const SizedBox(height: 10),
       _field(_documentTypeController, 'Identificacion'),
       _field(_documentNumberController, 'Numero de documento'),
@@ -833,18 +844,22 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           decoration: BoxDecoration(
             color:
                 _selfieHasFace
-                    ? const Color(0xFFEAF7EF)
-                    : const Color(0xFFFFF3E8),
+                    ? theme.colorScheme.secondary.withValues(alpha: 0.12)
+                    : theme.colorScheme.errorContainer,
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  _selfieHasFace
+                      ? palette.accentBorder
+                      : theme.colorScheme.error.withValues(alpha: 0.30),
+            ),
           ),
           child: Row(
             children: [
               Icon(
                 _selfieHasFace ? Icons.verified_rounded : Icons.pending_rounded,
                 color:
-                    _selfieHasFace
-                        ? const Color(0xFF237A49)
-                        : const Color(0xFF9A5A16),
+                    _selfieHasFace ? palette.accent : theme.colorScheme.error,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -862,6 +877,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   List<Widget> _accessStep() {
+    final colors = context.appColors;
     return [
       const _SectionLabel(
         icon: Icons.lock_outline_rounded,
@@ -904,12 +920,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF1F7),
+          color:
+              Color.lerp(colors.surfaceCard, colors.background, 0.20) ??
+              colors.surfaceCard,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.border),
         ),
-        child: const Text(
+        child: Text(
           'Al terminar tendras acceso inmediato a una cotizacion gratis y despues podras activar la membresia mensual de USD \$115.',
-          style: TextStyle(height: 1.4, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            height: 1.4,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
         ),
       ),
     ];
@@ -936,21 +959,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           labelText: label,
           hintText: hint,
           prefixIcon: _iconForLabel(label),
-          filled: true,
-          fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 17,
           ),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFDDE6EE)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE0B86E), width: 1.4),
-          ),
         ),
         validator: (value) {
           final text = value?.trim() ?? '';
@@ -1041,6 +1054,7 @@ class _RegistrationProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     const labels = ['Perfil / Biometría', 'Correo / Contraseña'];
     return Row(
       children: List.generate(labels.length, (index) {
@@ -1050,12 +1064,11 @@ class _RegistrationProgress extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 15,
-                backgroundColor:
-                    active ? const Color(0xFFE0B86E) : const Color(0xFFD9E1E8),
+                backgroundColor: active ? palette.accent : palette.surfaceSoft,
                 child: Text(
                   '${index + 1}',
-                  style: const TextStyle(
-                    color: Color(0xFF07121D),
+                  style: TextStyle(
+                    color: palette.textOnAccent,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1067,10 +1080,7 @@ class _RegistrationProgress extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color:
-                        active
-                            ? const Color(0xFF0E2338)
-                            : const Color(0xFF7A8792),
+                    color: active ? palette.textPrimary : palette.textSecondary,
                   ),
                 ),
               ),
@@ -1087,6 +1097,7 @@ class _ClientRegisterHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 480),
@@ -1104,51 +1115,52 @@ class _ClientRegisterHero extends StatelessWidget {
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF07121D), Color(0xFF102438), Color(0xFF173B55)],
+          gradient: LinearGradient(
+            colors: palette.appGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          boxShadow: const [
+          border: Border.all(color: palette.accentBorder),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x24000000),
+              color: Colors.black.withValues(alpha: 0.16),
               blurRadius: 24,
               offset: Offset(0, 14),
             ),
           ],
         ),
-        child: const Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(
                   Icons.airline_seat_flat_angled_rounded,
-                  color: Color(0xFFE0B86E),
+                  color: palette.accent,
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Text(
                   'Acceso cliente',
                   style: TextStyle(
-                    color: Color(0xFFE0B86E),
+                    color: palette.accent,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Text(
               'Cotizacion gratis y portal privado',
               style: TextStyle(
-                color: Colors.white,
+                color: palette.textPrimary,
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Completa perfil, identificacion y selfie para iniciar el flujo de reserva.',
-              style: TextStyle(color: Color(0xFFD8E2EA), height: 1.4),
+              style: TextStyle(color: palette.textSecondary, height: 1.4),
             ),
           ],
         ),
@@ -1165,16 +1177,17 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: const Color(0xFF7A5A18)),
+          Icon(icon, size: 18, color: palette.accent),
           const SizedBox(width: 8),
           Text(
             title,
-            style: const TextStyle(
-              color: Color(0xFF0E2338),
+            style: TextStyle(
+              color: palette.textPrimary,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -1199,6 +1212,7 @@ class _FileButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return OutlinedButton.icon(
       onPressed: loading ? null : onTap,
       icon:
@@ -1211,11 +1225,11 @@ class _FileButton extends StatelessWidget {
               : const Icon(Icons.document_scanner_rounded),
       label: Text(value == null ? title : '$title: $value'),
       style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF0E2338),
+        backgroundColor: palette.surface,
+        foregroundColor: palette.textPrimary,
         minimumSize: const Size.fromHeight(52),
         alignment: Alignment.centerLeft,
-        side: const BorderSide(color: Color(0xFFE0B86E)),
+        side: BorderSide(color: palette.accentBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
@@ -1229,12 +1243,13 @@ class _HintText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 6),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Color(0xFF5F6975),
+        style: TextStyle(
+          color: palette.textSecondary,
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),

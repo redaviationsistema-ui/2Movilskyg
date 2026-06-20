@@ -15,15 +15,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
-const Color kBg = Color(0xFFF7F7F7);
-const Color kWhite = Colors.white;
-const Color kBlack = Color(0xFF050505);
-const Color kText = Color(0xFF111111);
-const Color kMuted = Color(0xFF666666);
-const Color kBorder = Color(0xFFE6E6E6);
-const Color kSoft = Color(0xFFF2F2F2);
+const Color kBg = ClientThemeColors.bg;
+const Color kWhite = ClientThemeColors.surface;
+const Color kBlack = ClientThemeColors.brandNight;
+const Color kText = ClientThemeColors.text;
+const Color kMuted = ClientThemeColors.muted;
+const Color kBorder = ClientThemeColors.border;
+const Color kSoft = ClientThemeColors.softSurface;
 const String kMobileDocuSignReturnScheme = 'redsky';
 const String kDocuSignReturnPath = '/cliente/contrato/';
 
@@ -2338,7 +2339,7 @@ class _DocuSignFlowCard extends StatelessWidget {
             label: Text(label),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(46),
-              backgroundColor: const Color(0xFFE0B86E),
+              backgroundColor: ClientThemeColors.accent,
               foregroundColor: kBlack,
               disabledBackgroundColor: const Color(0xFFBFBFBF),
               disabledForegroundColor: const Color(0xFF4A4A4A),

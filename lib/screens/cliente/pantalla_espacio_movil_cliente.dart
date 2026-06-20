@@ -7,6 +7,7 @@ import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import '../reservation/pantalla_reservacion.dart';
 import '../subscription/pantalla_centro_membresia.dart';
+import 'tema_cliente.dart';
 import 'views/pantalla_confirmacion_reserva_cliente.dart';
 import 'views/pantalla_contrato_cliente.dart';
 import 'views/pantalla_historial_cliente.dart';
@@ -97,7 +98,7 @@ class _ClientMobileWorkspaceScreenState
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F1E8),
+      backgroundColor: context.clientPalette.background,
       body: Column(
         children: [
           Expanded(
@@ -206,6 +207,11 @@ class _ClientMobileWorkspaceScreenState
       case _TripsStage.list:
         return ClientHistoryScreen(
           showBackButton: false,
+          onOpenSearch: () {
+            setState(() {
+              _selectedIndex = 0;
+            });
+          },
           onOpenContract: (request) {
             setState(() {
               _selectedRequestId = request['id']?.toString();

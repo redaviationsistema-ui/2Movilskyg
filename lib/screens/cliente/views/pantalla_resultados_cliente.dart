@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../tema_cliente.dart';
 
 class ClientResultsScreen extends StatefulWidget {
   const ClientResultsScreen({
@@ -43,7 +44,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
         accessState.canReserve ? 'Crear solicitud' : 'Activar acceso comercial';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: ClientThemeColors.bg,
       body: SafeArea(
         top: false,
         child: Column(
@@ -70,7 +71,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                   const Text(
                     'Aeronaves disponibles',
                     style: TextStyle(
-                      color: Color(0xFF050505),
+                      color: ClientThemeColors.brandNight,
                       fontSize: 28,
                       height: 1,
                       fontWeight: FontWeight.w900,
@@ -81,7 +82,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                   const Text(
                     'Selecciona tu opcion y crea la solicitud en segundos.',
                     style: TextStyle(
-                      color: Color(0xFF666666),
+                      color: ClientThemeColors.muted,
                       fontSize: 14,
                       height: 1.35,
                       fontWeight: FontWeight.w600,
@@ -243,7 +244,9 @@ class _QuoteMatchCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color:
-                isSelected ? const Color(0xFF050505) : const Color(0xFFE7E7E7),
+                isSelected
+                    ? ClientThemeColors.brandNight
+                    : ClientThemeColors.border,
             width: isSelected ? 1.6 : 1,
           ),
           boxShadow: const [
@@ -274,7 +277,7 @@ class _QuoteMatchCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF050505),
+                          color: ClientThemeColors.brandNight,
                           fontSize: 18,
                           height: 1.05,
                           fontWeight: FontWeight.w900,
@@ -291,7 +294,7 @@ class _QuoteMatchCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF666666),
+                          color: ClientThemeColors.muted,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           height: 1.25,
@@ -310,7 +313,7 @@ class _QuoteMatchCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF666666),
+                  color: ClientThemeColors.muted,
                   fontSize: 13,
                   height: 1.25,
                   fontWeight: FontWeight.w700,
@@ -336,7 +339,7 @@ class _QuoteMatchCard extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: isBusy ? null : onCreateRequest,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF050505),
+                  backgroundColor: ClientThemeColors.brandNight,
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: const Color(0xFFE4E4E4),
                   minimumSize: const Size.fromHeight(50),
@@ -379,7 +382,7 @@ class _MetricBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F7F7),
+        color: ClientThemeColors.bg,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFEDEDED)),
       ),
@@ -389,7 +392,7 @@ class _MetricBox extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF666666),
+              color: ClientThemeColors.muted,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -400,7 +403,7 @@ class _MetricBox extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Color(0xFF050505),
+              color: ClientThemeColors.brandNight,
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -487,7 +490,7 @@ class _AircraftMedia extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF050505),
+                          color: ClientThemeColors.brandNight,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
                         ),
@@ -542,7 +545,7 @@ class _EmptyResultsCard extends StatelessWidget {
           const Text(
             'No hay aeronaves para esta busqueda.',
             style: TextStyle(
-              color: Color(0xFF050505),
+              color: ClientThemeColors.brandNight,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
@@ -551,7 +554,7 @@ class _EmptyResultsCard extends StatelessWidget {
           const Text(
             'Ajusta origen, fecha o pasajeros y vuelve a buscar disponibilidad.',
             style: TextStyle(
-              color: Color(0xFF666666),
+              color: ClientThemeColors.muted,
               height: 1.35,
               fontWeight: FontWeight.w600,
             ),
@@ -561,7 +564,7 @@ class _EmptyResultsCard extends StatelessWidget {
             FilledButton(
               onPressed: onBackToSearch,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF050505),
+                backgroundColor: ClientThemeColors.brandNight,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Volver a buscar'),
@@ -609,7 +612,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF050505),
+        color: ClientThemeColors.brandNight,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -643,7 +646,7 @@ class _RoundIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFE7E7E7)),
         ),
-        child: Icon(icon, color: const Color(0xFF050505)),
+        child: Icon(icon, color: ClientThemeColors.brandNight),
       ),
     );
   }

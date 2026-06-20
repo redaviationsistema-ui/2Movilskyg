@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import 'core/app_theme.dart';
 import 'providers/proveedor_autenticacion.dart';
 import 'providers/proveedor_reservaciones.dart';
 import 'providers/proveedor_flujo_trabajo.dart';
@@ -38,6 +39,9 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Red Sky',
+        themeMode: ThemeMode.system,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
         locale: const Locale('es', 'MX'),
         supportedLocales: const [
           Locale('es', 'MX'),
@@ -49,32 +53,6 @@ class MyApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFE2BD79),
-            brightness: Brightness.light,
-          ),
-          scaffoldBackgroundColor: const Color(0xFFF3F6F8),
-          useMaterial3: true,
-          fontFamily: 'Roboto',
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              textStyle: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFFF3F6F8),
-            foregroundColor: Color(0xFF0E2238),
-            elevation: 0,
-            centerTitle: false,
-          ),
-          pageTransitionsTheme: const PageTransitionsTheme(
-            builders: {
-              TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-            },
-          ),
-        ),
         home: const AuthGateScreen(),
       ),
     );

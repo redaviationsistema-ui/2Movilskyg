@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../cliente/tema_cliente.dart';
 import 'pantalla_registro_cliente.dart';
 import 'pantalla_registro_sobrecargo.dart';
 
@@ -8,19 +9,15 @@ class RegisterRoleSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Scaffold(
-      backgroundColor: const Color(0xFF07121D),
-      appBar: AppBar(
-        title: const Text('Crear cuenta'),
-        backgroundColor: const Color(0xFF07121D),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+      backgroundColor: palette.background,
+      appBar: AppBar(title: const Text('Crear cuenta')),
       body: SafeArea(
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF07121D), Color(0xFF102438), Color(0xFF173B55)],
+              colors: palette.appGradient,
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -71,6 +68,7 @@ class _RegisterHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 420),
@@ -88,37 +86,37 @@ class _RegisterHero extends StatelessWidget {
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0E2235), Color(0xFF183C55)],
+          gradient: LinearGradient(
+            colors: palette.headerGradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0x33E0B86E)),
-          boxShadow: const [
+          border: Border.all(color: palette.accentBorder),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x33000000),
+              color: Colors.black.withValues(alpha: 0.20),
               blurRadius: 24,
               offset: Offset(0, 14),
             ),
           ],
         ),
-        child: const Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.flight_takeoff_rounded, color: Color(0xFFE0B86E)),
-            SizedBox(height: 14),
+            Icon(Icons.flight_takeoff_rounded, color: palette.accent),
+            const SizedBox(height: 14),
             Text(
               'Rol de acceso',
               style: TextStyle(
-                color: Colors.white,
+                color: palette.textPrimary,
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Define a que vista entraras despues de iniciar sesion.',
-              style: TextStyle(color: Color(0xFFD8E2EA), height: 1.4),
+              style: TextStyle(color: palette.textSecondary, height: 1.4),
             ),
           ],
         ),
@@ -151,6 +149,7 @@ class _RoleOptionState extends State<_RoleOption> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 420 + widget.delay),
@@ -178,12 +177,12 @@ class _RoleOptionState extends State<_RoleOption> {
             child: Ink(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFF102438),
+                color: palette.surface,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE0B86E)),
-                boxShadow: const [
+                border: Border.all(color: palette.accentBorder),
+                boxShadow: [
                   BoxShadow(
-                    color: Color(0x26000000),
+                    color: Colors.black.withValues(alpha: 0.16),
                     blurRadius: 20,
                     offset: Offset(0, 10),
                   ),
@@ -195,12 +194,10 @@ class _RoleOptionState extends State<_RoleOption> {
                     width: 52,
                     height: 52,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFFF8E7), Color(0xFFEBD39B)],
-                      ),
+                      gradient: LinearGradient(colors: palette.accentGradient),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(widget.icon, color: const Color(0xFF102438)),
+                    child: Icon(widget.icon, color: palette.textOnAccent),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -209,24 +206,24 @@ class _RoleOptionState extends State<_RoleOption> {
                       children: [
                         Text(
                           widget.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                            color: palette.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           widget.subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFFD8E2EA),
+                          style: TextStyle(
+                            color: palette.textSecondary,
                             height: 1.35,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                  Icon(Icons.chevron_right_rounded, color: palette.textPrimary),
                 ],
               ),
             ),

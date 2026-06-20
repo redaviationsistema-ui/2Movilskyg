@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,7 +10,12 @@ import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
+
+const String kMobileCheckoutReturnScheme = 'redsky';
+const String kMobileCheckoutReturnHost = 'cliente';
+const String kMobileCheckoutReturnPath = '/pago';
 
 class ClientPaymentScreen extends StatefulWidget {
   const ClientPaymentScreen({
@@ -39,11 +45,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       TextEditingController();
   final CardEditController _stripeCardController = CardEditController();
   CardFieldInputDetails? _cardDetails;
+  final AppLinks _appLinks = AppLinks();
   bool _submitting = false;
   bool _waitingForCommercialAccessReturn = false;
   String _inlineMessage = '';
   String _accessCheckoutSessionId = '';
   Map<String, dynamic>? _wireInstructions;
+  StreamSubscription<Uri>? _appLinkSubscription;
 
   @override
   void initState() {
@@ -56,6 +64,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (initialEmail.isNotEmpty) {
       _emailController.text = initialEmail;
     }
+    _bindCheckoutReturnLinks();
   }
 
   @override
@@ -66,6 +75,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     _emailController.dispose();
     _wireReferenceController.dispose();
     _stripeCardController.dispose();
+    _appLinkSubscription?.cancel();
     super.dispose();
   }
 
@@ -89,6 +99,78 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       return;
     }
     Navigator.pop(context);
+  }
+
+  Future<void> _bindCheckoutReturnLinks() async {
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        unawaited(_handleIncomingCheckoutUri(initialUri));
+      }
+    } catch (_) {
+      // Ignoramos errores de lectura inicial y conservamos el fallback por resume.
+    }
+
+    _appLinkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      unawaited(_handleIncomingCheckoutUri(uri));
+    });
+  }
+
+  Future<void> _handleIncomingCheckoutUri(Uri uri) async {
+    if (!widget.commercialAccessMode) return;
+    if (uri.scheme != kMobileCheckoutReturnScheme) return;
+    if (uri.host != kMobileCheckoutReturnHost) return;
+    if (uri.path != kMobileCheckoutReturnPath) return;
+
+    final checkoutResult =
+        uri.queryParameters['checkout']?.trim().toLowerCase() ?? '';
+    final sessionId = uri.queryParameters['session_id']?.trim() ?? '';
+
+    if (sessionId.isNotEmpty) {
+      _accessCheckoutSessionId = sessionId;
+    }
+
+    if (!mounted) return;
+
+    if (checkoutResult == 'cancel' || checkoutResult == 'cancelled') {
+      setState(() {
+        _waitingForCommercialAccessReturn = false;
+        _inlineMessage =
+            'Stripe Checkout fue cancelado. Puedes intentarlo de nuevo cuando quieras.';
+      });
+      return;
+    }
+
+    setState(() {
+      _waitingForCommercialAccessReturn = true;
+      _inlineMessage = 'Stripe regreso a la app. Validando acceso comercial...';
+    });
+    await _validateCommercialAccessAfterCheckout();
+  }
+
+  String _buildCommercialAccessReturnUrl(
+    String checkout, {
+    bool includeStripeSessionPlaceholder = false,
+  }) {
+    if (includeStripeSessionPlaceholder) {
+      return '$kMobileCheckoutReturnScheme://$kMobileCheckoutReturnHost'
+          '$kMobileCheckoutReturnPath'
+          '?checkout=$checkout'
+          '&session_id={CHECKOUT_SESSION_ID}'
+          '&refresh=commercial_access';
+    }
+
+    return Uri(
+      scheme: kMobileCheckoutReturnScheme,
+      host: kMobileCheckoutReturnHost,
+      path: kMobileCheckoutReturnPath,
+      queryParameters: {
+        'checkout': checkout,
+        if (_accessCheckoutSessionId.trim().isNotEmpty)
+          'session_id': _accessCheckoutSessionId.trim(),
+        'refresh': 'commercial_access',
+      },
+    ).toString();
   }
 
   @override
@@ -249,7 +331,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10253A),
+                  color: ClientThemeColors.brandNavy,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Row(
@@ -457,7 +539,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF10253A),
+            color: ClientThemeColors.brandNavy,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
@@ -518,7 +600,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                   controller: _stripeCardController,
                   enablePostalCode: false,
                   dangerouslyGetFullCardDetails: false,
-                  cursorColor: const Color(0xFF10253A),
+                  cursorColor: ClientThemeColors.brandNavy,
                   numberHintText: '1234 5678 9012 3456',
                   expirationHintText: 'MM/AA',
                   cvcHintText: 'CVC',
@@ -812,8 +894,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     });
 
     try {
+      final provisionalSuccessUrl = _buildCommercialAccessReturnUrl(
+        'success',
+        includeStripeSessionPlaceholder: true,
+      );
+      final provisionalCancelUrl = _buildCommercialAccessReturnUrl('cancel');
       final payload = await ApiClient.instance.createClientAccessCheckout(
         paymentPayload: {'contact_email': _emailController.text.trim()},
+        successUrl: provisionalSuccessUrl,
+        cancelUrl: provisionalCancelUrl,
+        returnUrl: provisionalSuccessUrl,
       );
       _accessCheckoutSessionId = _firstText(payload, const [
         'session_id',
@@ -891,6 +981,15 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       final payload = await ApiClient.instance.createClientCheckout(
         flightRequestId: flightRequestId,
         paymentPayload: {'contact_email': _emailController.text.trim()},
+        successUrl: _buildCommercialAccessReturnUrl(
+          'success',
+          includeStripeSessionPlaceholder: true,
+        ),
+        cancelUrl: _buildCommercialAccessReturnUrl('cancel'),
+        returnUrl: _buildCommercialAccessReturnUrl(
+          'success',
+          includeStripeSessionPlaceholder: true,
+        ),
       );
 
       final redirectUrl =
@@ -1297,7 +1396,7 @@ class _PaymentRoundActionButton extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: const Color(0xFFE4EAF0)),
         ),
-        child: Icon(icon, color: const Color(0xFF10253A), size: 20),
+        child: Icon(icon, color: ClientThemeColors.brandNavy, size: 20),
       ),
     );
   }
@@ -1374,7 +1473,8 @@ class _CompactPaymentOption extends StatelessWidget {
         color: selected ? const Color(0xFFF7FAFD) : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: selected ? const Color(0xFF10253A) : const Color(0xFFE4EAF0),
+          color:
+              selected ? ClientThemeColors.brandNavy : ClientThemeColors.border,
         ),
       ),
       child: InkWell(
@@ -1393,7 +1493,7 @@ class _CompactPaymentOption extends StatelessWidget {
                         : Icons.radio_button_off,
                     color:
                         selected
-                            ? const Color(0xFF10253A)
+                            ? ClientThemeColors.brandNavy
                             : const Color(0xFF9DA8B3),
                     size: 20,
                   ),
@@ -1449,7 +1549,7 @@ class _SecurityBullet extends StatelessWidget {
       children: [
         const Icon(
           Icons.check_circle_rounded,
-          color: Color(0xFFE0B86E),
+          color: ClientThemeColors.accent,
           size: 16,
         ),
         const SizedBox(width: 8),
@@ -1524,7 +1624,7 @@ class _PaymentStickyFooter extends StatelessWidget {
                 onPressed: onPressed,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
-                  backgroundColor: const Color(0xFF10253A),
+                  backgroundColor: ClientThemeColors.brandNavy,
                   disabledBackgroundColor: const Color(0xFFD4DAE1),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),

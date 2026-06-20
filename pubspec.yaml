@@ -2,7 +2,7 @@ name: red_sky
 description: "Red Sky mobile marketplace for private flights."
 publish_to: 'none'
 
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ^3.7.0
@@ -38,6 +38,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   firebase_messaging: ^16.3.0
   flutter_local_notifications: ^19.5.0
+  app_links: ^6.4.1
 
 dev_dependencies:
   flutter_test:

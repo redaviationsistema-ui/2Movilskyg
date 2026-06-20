@@ -14,12 +14,14 @@ class RoleDashboardScaffold extends StatelessWidget {
     required this.subtitle,
     required this.roleLabel,
     required this.body,
+    this.palette = const RoleDashboardPalette(),
   });
 
   final String title;
   final String subtitle;
   final String roleLabel;
   final Widget body;
+  final RoleDashboardPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +29,9 @@ class RoleDashboardScaffold extends StatelessWidget {
     final compact = MediaQuery.of(context).size.width < 420;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF07121D), Color(0xFF102438), Color(0xFF15354B)],
+          colors: palette.backgroundGradient,
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -49,6 +51,7 @@ class RoleDashboardScaffold extends StatelessWidget {
                 title: title,
                 subtitle: subtitle,
                 roleLabel: roleLabel,
+                palette: palette,
               ),
             ),
             Expanded(
@@ -56,7 +59,10 @@ class RoleDashboardScaffold extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(34),
                 ),
-                child: Container(color: const Color(0xFFF4F6F9), child: body),
+                child: Container(
+                  color: palette.contentBackgroundColor,
+                  child: body,
+                ),
               ),
             ),
           ],
@@ -71,11 +77,13 @@ class _HeaderCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.roleLabel,
+    required this.palette,
   });
 
   final String title;
   final String subtitle;
   final String roleLabel;
+  final RoleDashboardPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -87,8 +95,8 @@ class _HeaderCard extends StatelessWidget {
       padding: EdgeInsets.all(isCompact ? 16 : 22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(isCompact ? 24 : 28),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0E2235), Color(0xFF132E45)],
+        gradient: LinearGradient(
+          colors: palette.headerGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -99,7 +107,7 @@ class _HeaderCard extends StatelessWidget {
             offset: Offset(0, 12),
           ),
         ],
-        border: Border.all(color: const Color(0x3DE0B86E)),
+        border: Border.all(color: palette.headerBorderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,14 +118,12 @@ class _HeaderCard extends StatelessWidget {
                 width: isCompact ? 48 : 52,
                 height: isCompact ? 48 : 52,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFE2BD79), Color(0xFFF0D49D)],
-                  ),
+                  gradient: LinearGradient(colors: palette.headerBadgeGradient),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.flight_takeoff_rounded,
-                  color: Color(0xFF12273C),
+                  color: palette.headerBadgeIconColor,
                 ),
               ),
               const SizedBox(width: 14),
@@ -129,8 +135,8 @@ class _HeaderCard extends StatelessWidget {
                       roleLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFE2BD79),
+                      style: TextStyle(
+                        color: palette.roleLabelColor,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -153,10 +159,7 @@ class _HeaderCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Abrir menu',
                   onPressed: scaffold?.openDrawer,
-                  icon: const Icon(
-                    Icons.menu_rounded,
-                    color: Color(0xFFE2BD79),
-                  ),
+                  icon: Icon(Icons.menu_rounded, color: palette.menuIconColor),
                 ),
             ],
           ),
@@ -175,6 +178,32 @@ class _HeaderCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class RoleDashboardPalette {
+  const RoleDashboardPalette({
+    this.backgroundGradient = const [
+      Color(0xFF07121D),
+      Color(0xFF102438),
+      Color(0xFF15354B),
+    ],
+    this.contentBackgroundColor = const Color(0xFFF4F6F9),
+    this.headerGradient = const [Color(0xFF0E2235), Color(0xFF132E45)],
+    this.headerBorderColor = const Color(0x3DE0B86E),
+    this.headerBadgeGradient = const [Color(0xFFE2BD79), Color(0xFFF0D49D)],
+    this.headerBadgeIconColor = const Color(0xFF12273C),
+    this.roleLabelColor = const Color(0xFFE2BD79),
+    this.menuIconColor = const Color(0xFFE2BD79),
+  });
+
+  final List<Color> backgroundGradient;
+  final Color contentBackgroundColor;
+  final List<Color> headerGradient;
+  final Color headerBorderColor;
+  final List<Color> headerBadgeGradient;
+  final Color headerBadgeIconColor;
+  final Color roleLabelColor;
+  final Color menuIconColor;
 }
 
 class SyncStatusBanner extends StatelessWidget {

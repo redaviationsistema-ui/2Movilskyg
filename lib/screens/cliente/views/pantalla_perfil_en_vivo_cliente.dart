@@ -3,18 +3,12 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
+import '../../../core/app_theme.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
-
-const Color kBg = Color(0xFFF7F7F7);
-const Color kWhite = Colors.white;
-const Color kBlack = Color(0xFF050505);
-const Color kText = Color(0xFF111111);
-const Color kMuted = Color(0xFF666666);
-const Color kBorder = Color(0xFFE6E6E6);
-const Color kSoft = Color(0xFFF2F2F2);
 
 class ClientLiveProfileScreen extends StatefulWidget {
   const ClientLiveProfileScreen({
@@ -36,6 +30,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final auth = context.watch<AuthProvider>();
     final reservation = context.watch<ReservationProvider>();
     final access = auth.accessData ?? const <String, dynamic>{};
@@ -43,7 +38,6 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     final user = auth.user;
 
     final commercialState = resolveCommercialAccessState(access);
-    final hasMembership = _hasMembership(access);
     final statusLabel = _accountStatusLabel(access);
     final planLabel = _planLabel(access);
     final membershipCaption = _membershipCaption(access);
@@ -69,25 +63,25 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
       showBackButton: widget.showBackButton,
       includeTopSafeArea: !widget.hasExternalTopBanner,
       child: Container(
-        color: kBg,
+        color: palette.background,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 132),
           children: [
-            const Text(
+            Text(
               'Perfil cliente',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
-                color: kBlack,
+                color: palette.textPrimary,
                 height: 1,
                 letterSpacing: -1.1,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Expediente, membresía, seguridad y preferencias de viaje.',
               style: TextStyle(
-                color: kMuted,
+                color: palette.textSecondary,
                 fontSize: 14,
                 height: 1.35,
                 fontWeight: FontWeight.w500,
@@ -99,13 +93,9 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
               name: displayName,
               email: email,
               status: statusLabel,
+              membership: planLabel,
+              membershipCaption: membershipCaption,
               onRefresh: _refreshProfile,
-            ),
-            const SizedBox(height: 12),
-            _MembershipInlineCard(
-              status: membershipCaption,
-              plan: planLabel,
-              hasAccess: hasMembership,
             ),
             const SizedBox(height: 12),
             _ProfileTabBar(
@@ -126,7 +116,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
               statusLabel: statusLabel,
               planLabel: planLabel,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             _ActionCard(onRefresh: _refreshProfile, onSignOut: auth.signOut),
           ],
         ),
@@ -184,7 +174,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
                         ? 'Activa'
                         : 'Pendiente',
               ),
-              _MetricData(label: 'Plan', value: planLabel),
+              _MetricData(label: 'Membresía', value: planLabel),
             ],
           ),
           const SizedBox(height: 16),
@@ -404,6 +394,7 @@ class _ProfileTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -411,81 +402,36 @@ class _ProfileTabBar extends StatelessWidget {
             _ProfileTab.values.map((tab) {
               final active = tab == activeTab;
               return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: ChoiceChip(
-                  selected: active,
-                  label: Text(tab.label),
-                  onSelected: (_) => onSelect(tab),
-                  selectedColor: kBlack,
-                  backgroundColor: kWhite,
-                  side: const BorderSide(color: kBorder),
-                  visualDensity: VisualDensity.compact,
-                  labelStyle: TextStyle(
-                    color: active ? kWhite : kText,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
+                padding: const EdgeInsets.only(right: 10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => onSelect(tab),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: active ? palette.surfaceSoft : palette.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: active ? palette.accentBorder : palette.border,
+                      ),
+                    ),
+                    child: Text(
+                      tab.label,
+                      style: TextStyle(
+                        color: active ? palette.accent : palette.textSecondary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ),
               );
             }).toList(),
-      ),
-    );
-  }
-}
-
-class _MembershipInlineCard extends StatelessWidget {
-  const _MembershipInlineCard({
-    required this.status,
-    required this.plan,
-    required this.hasAccess,
-  });
-
-  final String status;
-  final String plan;
-  final bool hasAccess;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: hasAccess ? kBlack : const Color(0xFF2A241D),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            hasAccess
-                ? Icons.verified_rounded
-                : Icons.workspace_premium_rounded,
-            color: kWhite,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plan,
-                  style: const TextStyle(
-                    color: kWhite,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    color: Color(0xFFD9D9D9),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -498,6 +444,7 @@ class _MetricWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return GridView.builder(
       itemCount: metrics.length,
       shrinkWrap: true,
@@ -506,16 +453,20 @@ class _MetricWrap extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        mainAxisExtent: 82,
+        mainAxisExtent: 96,
       ),
       itemBuilder: (context, index) {
         final metric = metrics[index];
         return Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: const Color(0xFFF9F6F1),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: kBorder),
+            gradient: LinearGradient(
+              colors: palette.headerGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: palette.accentBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -525,8 +476,8 @@ class _MetricWrap extends StatelessWidget {
                 metric.value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: kBlack,
+                style: TextStyle(
+                  color: palette.heroTextPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -534,8 +485,10 @@ class _MetricWrap extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 metric.label,
-                style: const TextStyle(
-                  color: kMuted,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: palette.heroTextSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                 ),
@@ -561,6 +514,8 @@ class _AccountHeaderCard extends StatelessWidget {
     required this.name,
     required this.email,
     required this.status,
+    required this.membership,
+    required this.membershipCaption,
     required this.onRefresh,
   });
 
@@ -568,115 +523,192 @@ class _AccountHeaderCard extends StatelessWidget {
   final String name;
   final String email;
   final String status;
+  final String membership;
+  final String membershipCaption;
   final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kBorder),
-        boxShadow: const [
+        gradient: LinearGradient(
+          colors: palette.headerGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: palette.accentBorder),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 22,
-            offset: Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 26,
+            offset: Offset(0, 14),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: kBlack,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: kWhite,
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: kBlack,
-                    fontSize: 18,
-                    height: 1,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: palette.accentGradient),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: palette.textOnAccent,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -0.7,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: kMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color:
-                            status.toLowerCase().contains('activa')
-                                ? const Color(0xFF1B8F4D)
-                                : const Color(0xFFB0893B),
-                        shape: BoxShape.circle,
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: palette.heroTextPrimary,
+                        fontSize: 24,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
                       ),
                     ),
-                    const SizedBox(width: 7),
+                    const SizedBox(height: 6),
                     Text(
-                      status,
-                      style: const TextStyle(
-                        color: kBlack,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                      email,
+                      style: TextStyle(
+                        color: palette.heroTextSecondary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          InkWell(
-            onTap: onRefresh,
-            borderRadius: BorderRadius.circular(999),
-            child: Ink(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: kSoft,
-                shape: BoxShape.circle,
-                border: Border.all(color: kBorder),
               ),
-              child: const Icon(Icons.refresh_rounded, color: kBlack, size: 19),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: onRefresh,
+                borderRadius: BorderRadius.circular(999),
+                child: Ink(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color:
+                        context.isDarkMode
+                            ? palette.surface
+                            : Colors.white.withValues(alpha: 0.92),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: palette.border),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    color: palette.accent,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _HeaderInfoPill(
+                  icon: Icons.verified_rounded,
+                  label: 'Estado de cuenta',
+                  value: status,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _HeaderInfoPill(
+                  icon: Icons.workspace_premium_rounded,
+                  label: 'Membresía',
+                  value: membership,
+                  subtitle: membershipCaption,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderInfoPill extends StatelessWidget {
+  const _HeaderInfoPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.subtitle,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: palette.accent, size: 18),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              height: 1.25,
+            ),
+          ),
+          if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle!,
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -691,21 +723,22 @@ class _MinimalProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kBorder),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title.toUpperCase(),
-            style: const TextStyle(
-              color: kMuted,
+            style: TextStyle(
+              color: palette.accent,
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.1,
@@ -735,13 +768,14 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: kBorder),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: palette.border),
       ),
       child: Row(
         children: [
@@ -749,8 +783,8 @@ class _ActionCard extends StatelessWidget {
             child: FilledButton(
               onPressed: onRefresh,
               style: FilledButton.styleFrom(
-                backgroundColor: kBlack,
-                foregroundColor: kWhite,
+                backgroundColor: palette.accent,
+                foregroundColor: palette.textOnAccent,
                 minimumSize: const Size.fromHeight(52),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
@@ -767,9 +801,9 @@ class _ActionCard extends StatelessWidget {
             child: OutlinedButton(
               onPressed: onSignOut,
               style: OutlinedButton.styleFrom(
-                foregroundColor: kBlack,
+                foregroundColor: palette.textPrimary,
                 minimumSize: const Size.fromHeight(52),
-                side: const BorderSide(color: kBorder),
+                side: BorderSide(color: palette.border),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -799,6 +833,7 @@ class _ProfileRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Column(
       children: [
         Row(
@@ -808,8 +843,8 @@ class _ProfileRow extends StatelessWidget {
               width: 96,
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: kMuted,
+                style: TextStyle(
+                  color: palette.textSecondary,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                 ),
@@ -819,10 +854,8 @@ class _ProfileRow extends StatelessWidget {
               child: Text(
                 value,
                 textAlign: TextAlign.right,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: kBlack,
+                style: TextStyle(
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
                   height: 1.25,
@@ -833,7 +866,7 @@ class _ProfileRow extends StatelessWidget {
         ),
         if (showDivider) ...[
           const SizedBox(height: 12),
-          const Divider(height: 1, color: kBorder),
+          Divider(height: 1, color: palette.border),
           const SizedBox(height: 12),
         ],
       ],

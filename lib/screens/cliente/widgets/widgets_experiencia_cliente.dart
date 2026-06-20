@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-const Color _clientInk = Color(0xFF10253A);
-const Color _clientMuted = Color(0xFF607080);
-const Color _clientStroke = Color(0xFFE4EAF0);
-const Color _clientAccent = Color(0xFFE0B86E);
+import '../../../core/app_theme.dart';
+import '../tema_cliente.dart';
+
+const Color _clientInk = ClientThemeColors.brandNavy;
+const Color _clientMuted = ClientThemeColors.muted;
+const Color _clientStroke = ClientThemeColors.border;
+const Color _clientAccent = ClientThemeColors.accent;
 
 class ClientExperienceShell extends StatelessWidget {
   const ClientExperienceShell({
@@ -26,17 +29,18 @@ class ClientExperienceShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: palette.background,
       body: SafeArea(
         top: includeTopSafeArea,
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF5F7FA),
-                border: Border(bottom: BorderSide(color: Color(0xFFE9EEF4))),
+              decoration: BoxDecoration(
+                color: palette.background,
+                border: Border(bottom: BorderSide(color: palette.border)),
               ),
               child: Row(
                 children: [
@@ -90,7 +94,7 @@ class ClientHeroCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
-          colors: [Color(0xFF08121C), Color(0xFF12304A), Color(0xFF1C5170)],
+          colors: ClientThemeColors.heroGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -155,7 +159,7 @@ class ClientHeroCard extends StatelessWidget {
                 onPressed: primaryAction,
                 style: FilledButton.styleFrom(
                   backgroundColor: _clientAccent,
-                  foregroundColor: const Color(0xFF111111),
+                  foregroundColor: ClientThemeColors.textOnAccent,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 13,
@@ -255,7 +259,7 @@ class ActionShortcutCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ClientThemeColors.darkCard,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: _clientStroke),
           boxShadow: const [
@@ -273,10 +277,12 @@ class ActionShortcutCard extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: tint.withValues(alpha: 0.10),
+                gradient: const LinearGradient(
+                  colors: ClientThemeColors.accentGradient,
+                ),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: tint),
+              child: Icon(icon, color: ClientThemeColors.textOnAccent),
             ),
             const SizedBox(height: 14),
             Text(
@@ -284,13 +290,16 @@ class ActionShortcutCard extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: _clientInk,
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
-              style: const TextStyle(color: _clientMuted, height: 1.35),
+              style: const TextStyle(
+                color: ClientThemeColors.muted,
+                height: 1.35,
+              ),
             ),
           ],
         ),
@@ -314,7 +323,7 @@ class GlassInfoCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ClientThemeColors.darkCard,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _clientStroke),
         boxShadow: const [
@@ -338,12 +347,18 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.10)),
+        border: Border.all(
+          color:
+              context.isDarkMode
+                  ? color.withValues(alpha: 0.16)
+                  : palette.border,
+        ),
       ),
       child: Text(
         label,
@@ -421,9 +436,9 @@ class PricePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F8FB),
+        color: ClientThemeColors.softSurface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE7EDF4)),
+        border: Border.all(color: ClientThemeColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,7 +446,7 @@ class PricePill extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF607080),
+              color: ClientThemeColors.muted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -440,7 +455,7 @@ class PricePill extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Color(0xFF10253A),
+              color: Colors.white,
               fontSize: 15,
               fontWeight: FontWeight.w800,
             ),
@@ -514,6 +529,7 @@ class _RoundActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -521,18 +537,18 @@ class _RoundActionButton extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: palette.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _clientStroke),
-          boxShadow: const [
+          border: Border.all(color: palette.border),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x0D0E2238),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 14,
               offset: Offset(0, 6),
             ),
           ],
         ),
-        child: Icon(icon, color: _clientInk, size: 20),
+        child: Icon(icon, color: palette.textPrimary, size: 20),
       ),
     );
   }
@@ -546,7 +562,7 @@ class _TimelineRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color =
-        step.isActive ? const Color(0xFF143955) : const Color(0xFFBAC4CF);
+        step.isActive ? ClientThemeColors.accent : const Color(0xFF8EA5B9);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -559,7 +575,10 @@ class _TimelineRow extends StatelessWidget {
                 width: 18,
                 height: 18,
                 decoration: BoxDecoration(
-                  color: step.isActive ? const Color(0xFFE0B86E) : Colors.white,
+                  color:
+                      step.isActive
+                          ? ClientThemeColors.accentSoft
+                          : ClientThemeColors.darkCard,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: color, width: 2),
                 ),
@@ -587,7 +606,10 @@ class _TimelineRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   step.caption,
-                  style: const TextStyle(color: Color(0xFF607080), height: 1.3),
+                  style: const TextStyle(
+                    color: ClientThemeColors.muted,
+                    height: 1.3,
+                  ),
                 ),
               ],
             ),
@@ -606,9 +628,11 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background =
-        message.fromTeam ? const Color(0xFFEDF4FA) : const Color(0xFF10253A);
+        message.fromTeam
+            ? ClientThemeColors.accentSoft
+            : ClientThemeColors.brandNavy;
     final foreground =
-        message.fromTeam ? const Color(0xFF10253A) : Colors.white;
+        message.fromTeam ? ClientThemeColors.brandNavy : Colors.white;
 
     return Align(
       alignment:
