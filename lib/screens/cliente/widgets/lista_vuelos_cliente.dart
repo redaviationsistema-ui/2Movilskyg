@@ -265,7 +265,11 @@ class _ClientFlightsListState extends State<ClientFlightsList>
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ClientAircraftDetailScreen(aircraft: aircraft),
+        builder:
+            (_) => ClientAircraftDetailScreen(
+              aircraft: aircraft,
+              request: request,
+            ),
       ),
     );
   }
@@ -409,7 +413,11 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                               conciergeEnabled
                                   ? () => _openConcierge(request)
                                   : null,
-                          filled: true,
+                          visualState: _actionVisualState(
+                            meta: meta,
+                            stepIndex: 5,
+                            enabled: conciergeEnabled,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -433,6 +441,11 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                               contractEnabled
                                   ? () => _handleOpenContract(request)
                                   : null,
+                          visualState: _actionVisualState(
+                            meta: meta,
+                            stepIndex: 2,
+                            enabled: contractEnabled,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -444,6 +457,11 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                               paymentEnabled
                                   ? () => _handleOpenPayment(request)
                                   : null,
+                          visualState: _actionVisualState(
+                            meta: meta,
+                            stepIndex: 3,
+                            enabled: paymentEnabled,
+                          ),
                         ),
                       ),
                     ],
@@ -534,6 +552,8 @@ class _WorkflowMeta {
 
 enum _StepState { done, active, todo }
 
+enum _ActionVisualState { inactive, available, active }
+
 class _ItinerarySegment {
   const _ItinerarySegment({
     required this.order,
@@ -562,6 +582,7 @@ class _TripTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = context.isDarkMode;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
@@ -570,10 +591,10 @@ class _TripTabButton extends StatelessWidget {
         curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          color: active ? palette.surfaceSoft : palette.surface,
+          color: active && isDark ? palette.surfaceStrong : palette.surface,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: active ? palette.accentBorder : palette.border,
+            color: isDark ? palette.accentBorder : palette.border,
           ),
           boxShadow:
               active
@@ -589,7 +610,10 @@ class _TripTabButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: active ? palette.accent : palette.textSecondary,
+            color:
+                active
+                    ? (isDark ? palette.accent : palette.primary)
+                    : palette.textSecondary,
             fontWeight: FontWeight.w900,
             fontSize: 13,
             letterSpacing: -0.2,
@@ -622,6 +646,7 @@ class _MinimalFlightCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = context.isDarkMode;
     final meta = _statusMeta(request);
     final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
     final contractEnabled = _contractActionEnabled(request, workflowId);
@@ -633,6 +658,26 @@ class _MinimalFlightCard extends StatelessWidget {
     final capacity = _aircraftCapacityLabel(request, aircraftFleet);
     final category = _aircraftCategoryLabel(request);
     final supportLines = _workflowSupportLines(request, meta);
+    final contractVisualState = _actionVisualState(
+      meta: meta,
+      stepIndex: 2,
+      enabled: contractEnabled,
+    );
+    final paymentVisualState = _actionVisualState(
+      meta: meta,
+      stepIndex: 3,
+      enabled: paymentEnabled,
+    );
+    final flightVisualState = _actionVisualState(
+      meta: meta,
+      stepIndex: 4,
+      enabled: flightEnabled,
+    );
+    final conciergeVisualState = _actionVisualState(
+      meta: meta,
+      stepIndex: 5,
+      enabled: conciergeEnabled,
+    );
 
     return InkWell(
       onTap: onTap,
@@ -640,16 +685,14 @@ class _MinimalFlightCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: palette.headerGradient,
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          color: palette.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: palette.accentBorder),
+          border: Border.all(
+            color: isDark ? palette.accentBorder : palette.border,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Color(0x124D3F1B),
+              color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.08),
               blurRadius: 14,
               offset: Offset(0, 6),
             ),
@@ -667,7 +710,7 @@ class _MinimalFlightCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: palette.accent,
+                      color: isDark ? palette.accent : palette.primary,
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.7,
@@ -684,7 +727,7 @@ class _MinimalFlightCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: palette.heroTextPrimary,
+                color: palette.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
                 height: 1.02,
@@ -705,11 +748,6 @@ class _MinimalFlightCard extends StatelessWidget {
                       '${_passengerCount(request)} ${_passengerCount(request) == 1 ? 'pasajero' : 'pasajeros'}',
                 ),
                 _MetaChip(icon: Icons.flight_rounded, label: aircraftName),
-                if (_itinerarySegments(request).length > 1)
-                  _MetaChip(
-                    icon: Icons.route_rounded,
-                    label: '${_itinerarySegments(request).length} tramos',
-                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -726,7 +764,6 @@ class _MinimalFlightCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _NextStepPanel(lines: supportLines),
-            _SegmentsPanel(segments: _itinerarySegments(request)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -735,6 +772,7 @@ class _MinimalFlightCard extends StatelessWidget {
                     label: 'Contrato',
                     icon: Icons.description_outlined,
                     enabled: contractEnabled,
+                    visualState: contractVisualState,
                     onTap: onOpenContract,
                   ),
                 ),
@@ -744,6 +782,7 @@ class _MinimalFlightCard extends StatelessWidget {
                     label: 'Pago',
                     icon: Icons.credit_card_rounded,
                     enabled: paymentEnabled,
+                    visualState: paymentVisualState,
                     onTap: onOpenPayment,
                   ),
                 ),
@@ -753,6 +792,7 @@ class _MinimalFlightCard extends StatelessWidget {
                     label: _flightActionLabel(meta),
                     icon: Icons.flight_takeoff_rounded,
                     enabled: flightEnabled,
+                    visualState: flightVisualState,
                     onTap: onTap,
                   ),
                 ),
@@ -762,7 +802,7 @@ class _MinimalFlightCard extends StatelessWidget {
                     label: 'Concierge',
                     icon: Icons.support_agent_rounded,
                     enabled: conciergeEnabled,
-                    filled: true,
+                    visualState: conciergeVisualState,
                     onTap: onOpenConcierge,
                   ),
                 ),
@@ -931,9 +971,21 @@ class _StepPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final colors = switch (state) {
-      _StepState.done => (const Color(0xFFE5F7EA), const Color(0xFF14673A)),
-      _StepState.active => (const Color(0xFFFFF2D8), const Color(0xFF9A6500)),
-      _StepState.todo => (palette.surfaceSoft, palette.heroTextSecondary),
+      _StepState.done => (
+        const Color(0xFFE8FAEE),
+        const Color(0xFF14673A),
+        const Color(0xFFA8D7B8),
+      ),
+      _StepState.active => (
+        const Color(0xFFFFF0CC),
+        const Color(0xFF8A5A00),
+        const Color(0xFFE4C172),
+      ),
+      _StepState.todo => (
+        context.isDarkMode ? palette.surfaceStrong : palette.surfaceSoft,
+        context.isDarkMode ? const Color(0xFFE3EDF5) : palette.textSecondary,
+        context.isDarkMode ? const Color(0xFF31536D) : palette.border,
+      ),
     };
 
     return Container(
@@ -941,6 +993,7 @@ class _StepPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.$1,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.$3),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -986,9 +1039,11 @@ class _ExecutiveAircraftPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: context.isDarkMode ? palette.accentSoft : palette.surface,
+        color: context.isDarkMode ? palette.surfaceStrong : palette.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: context.isDarkMode ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1004,8 +1059,8 @@ class _ExecutiveAircraftPanel extends StatelessWidget {
                   aircraftName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.black,
+                  style: TextStyle(
+                    color: palette.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                     height: 1.1,
@@ -1118,9 +1173,11 @@ class _NextStepPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.isDarkMode ? palette.accentSoft : palette.surface,
+        color: context.isDarkMode ? palette.surfaceStrong : palette.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: context.isDarkMode ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1153,76 +1210,46 @@ class _NextStepPanel extends StatelessWidget {
   }
 }
 
-class _SegmentsPanel extends StatelessWidget {
-  const _SegmentsPanel({required this.segments});
-
-  final List<_ItinerarySegment> segments;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    if (segments.length <= 1) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final segment in segments)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color:
-                    context.isDarkMode ? palette.accentSoft : palette.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: palette.border),
-              ),
-              child: Text(
-                'Tramo ${segment.order} · ${segment.origin} -> ${segment.destination}',
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _CardActionButton extends StatelessWidget {
   const _CardActionButton({
     required this.label,
     required this.icon,
     required this.enabled,
     required this.onTap,
-    this.filled = false,
+    this.visualState = _ActionVisualState.inactive,
   });
 
   final String label;
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
-  final bool filled;
+  final _ActionVisualState visualState;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isActive = visualState == _ActionVisualState.active;
+    final isAvailable = visualState == _ActionVisualState.available;
     final background =
-        filled
-            ? palette.primary
+        isActive
+            ? (context.isDarkMode ? const Color(0xFF1A3D58) : palette.primary)
+            : isAvailable
+            ? palette.accentSoft
             : (enabled
-                ? palette.surface
-                : (context.isDarkMode
-                    ? palette.surfaceSoft
-                    : palette.accentSoft));
+                ? (context.isDarkMode
+                    ? const Color(0xFF173246)
+                    : palette.surface)
+                : (context.isDarkMode ? palette.surfaceSoft : palette.surface));
     final foreground =
-        filled
+        isActive
             ? palette.heroTextPrimary
-            : (enabled ? palette.textPrimary : palette.textSecondary);
+            : isAvailable
+            ? palette.textOnAccent
+            : (enabled
+                ? (context.isDarkMode
+                    ? const Color(0xFFF0F6FB)
+                    : palette.textPrimary)
+                : palette.textSecondary);
 
     return SizedBox(
       height: 34,
@@ -1237,9 +1264,20 @@ class _CardActionButton extends StatelessWidget {
           backgroundColor: background,
           foregroundColor: foreground,
           disabledBackgroundColor:
-              context.isDarkMode ? palette.surfaceSoft : palette.accentSoft,
+              context.isDarkMode ? palette.surfaceSoft : palette.surface,
           disabledForegroundColor: palette.textSecondary,
-          side: BorderSide(color: filled ? palette.primary : palette.border),
+          side: BorderSide(
+            color:
+                isActive
+                    ? (context.isDarkMode
+                        ? const Color(0xFF4D7796)
+                        : palette.primary)
+                    : isAvailable
+                    ? palette.accentBorder
+                    : (context.isDarkMode
+                        ? const Color(0xFF2C4A60)
+                        : palette.border),
+          ),
           visualDensity: VisualDensity.compact,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           shape: RoundedRectangleBorder(
@@ -1339,43 +1377,47 @@ class _SheetButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
-    this.filled = false,
+    this.visualState = _ActionVisualState.inactive,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
-  final bool filled;
+  final _ActionVisualState visualState;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
-    if (filled) {
-      return FilledButton.icon(
-        onPressed: onTap,
-        style: FilledButton.styleFrom(
-          backgroundColor: palette.primary,
-          foregroundColor: palette.heroTextPrimary,
-          disabledBackgroundColor:
-              context.isDarkMode ? palette.surfaceSoft : palette.accentSoft,
-          disabledForegroundColor: palette.textSecondary,
-          minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-        icon: Icon(icon, size: 18),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
-      );
-    }
+    final isActive = visualState == _ActionVisualState.active;
+    final isAvailable = visualState == _ActionVisualState.available;
+    final background =
+        isActive
+            ? palette.primary
+            : isAvailable
+            ? palette.accentSoft
+            : (context.isDarkMode ? palette.surfaceSoft : palette.surface);
+    final foreground =
+        isActive
+            ? palette.heroTextPrimary
+            : isAvailable
+            ? palette.textOnAccent
+            : (onTap != null ? palette.textPrimary : palette.textSecondary);
 
     return OutlinedButton.icon(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        foregroundColor: palette.textPrimary,
+        backgroundColor: background,
+        foregroundColor: foreground,
         disabledForegroundColor: palette.textSecondary,
         minimumSize: const Size.fromHeight(52),
-        side: BorderSide(color: palette.border),
+        side: BorderSide(
+          color:
+              isActive
+                  ? palette.primary
+                  : isAvailable
+                  ? palette.accentBorder
+                  : palette.border,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       icon: Icon(icon, size: 18),
@@ -1443,21 +1485,20 @@ class _EmptyFlightsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isUpcoming = label == 'Próximos';
+    final isDark = context.isDarkMode;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: palette.headerGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: palette.accentBorder),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Color(0x18000000),
+            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.10),
             blurRadius: 24,
             offset: Offset(0, 12),
           ),
@@ -1484,7 +1525,7 @@ class _EmptyFlightsCard extends StatelessWidget {
                 ? 'Aún no tienes reservas activas'
                 : 'Sin vuelos en $label',
             style: TextStyle(
-              color: palette.heroTextPrimary,
+              color: palette.textPrimary,
               fontWeight: FontWeight.w900,
               fontSize: 24,
               height: 1.05,
@@ -1496,7 +1537,7 @@ class _EmptyFlightsCard extends StatelessWidget {
                 ? 'Cuando cotices un vuelo aparecerá aquí.'
                 : 'Cuando tengas movimientos en esta sección aparecerán aquí.',
             style: TextStyle(
-              color: palette.heroTextSecondary,
+              color: palette.textSecondary,
               fontWeight: FontWeight.w600,
               height: 1.45,
             ),
@@ -1506,8 +1547,8 @@ class _EmptyFlightsCard extends StatelessWidget {
             FilledButton.icon(
               onPressed: onOpenSearch,
               style: FilledButton.styleFrom(
-                backgroundColor: palette.accent,
-                foregroundColor: palette.textOnAccent,
+                backgroundColor: palette.primary,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 18,
                   vertical: 16,
@@ -2135,6 +2176,18 @@ _StepState _stepState(_WorkflowMeta meta, int index) {
   if (index < meta.activeStep) return _StepState.done;
   if (index == meta.activeStep) return _StepState.active;
   return _StepState.todo;
+}
+
+_ActionVisualState _actionVisualState({
+  required _WorkflowMeta meta,
+  required int stepIndex,
+  required bool enabled,
+}) {
+  if (!enabled) return _ActionVisualState.inactive;
+  if (meta.activeStep == stepIndex) return _ActionVisualState.active;
+  if (stepIndex == 5 && meta.trackingReady) return _ActionVisualState.active;
+  if (meta.activeStep > stepIndex) return _ActionVisualState.available;
+  return _ActionVisualState.available;
 }
 
 String _flightActionLabel(_WorkflowMeta meta) {

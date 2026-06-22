@@ -359,7 +359,7 @@ class ReservationProvider extends ChangeNotifier {
         quoteMatches,
         primaryRoute.fromAirport,
       );
-      quoteMatches = _sortMatchesForAdvisorRecommendation(quoteMatches);
+      quoteMatches = _sortMatchesByTotalDesc(quoteMatches);
 
       for (final match in quoteMatches) {
         debugPrint(
@@ -1267,25 +1267,27 @@ class ReservationProvider extends ChangeNotifier {
     return filtered;
   }
 
-  List<Map<String, dynamic>> _sortMatchesForAdvisorRecommendation(
+  List<Map<String, dynamic>> _sortMatchesByTotalDesc(
     List<Map<String, dynamic>> matches,
   ) {
-    final rankedMatches =
-        matches
-            .asMap()
-            .entries
-            .map((entry) => (index: entry.key, match: entry.value))
-            .toList()
-          ..sort((current, next) {
-            final scoreDifference = _advisorDecisionScore(
-              next.match,
-              next.index,
-            ).compareTo(_advisorDecisionScore(current.match, current.index));
-            if (scoreDifference != 0) return scoreDifference;
-            return current.index.compareTo(next.index);
-          });
+    final sortedMatches = List<Map<String, dynamic>>.from(matches);
+    sortedMatches.sort((current, next) {
+      final currentTotal = _quoteTotalValue(current);
+      final nextTotal = _quoteTotalValue(next);
+      final totalDifference = nextTotal.compareTo(currentTotal);
+      if (totalDifference != 0) return totalDifference;
+      return 0;
+    });
+    return sortedMatches;
+  }
 
-    return rankedMatches.map((entry) => entry.match).toList();
+  double _quoteTotalValue(Map<String, dynamic> match) {
+    final amount = _asNumber(
+      match['total'] ?? match['final_price'] ?? match['price'],
+      double.nan,
+    );
+    if (!amount.isNaN && amount > 0) return amount;
+    return 0;
   }
 
   String _normalizeStatus(dynamic value) {
@@ -1296,137 +1298,6 @@ class ReservationProvider extends ChangeNotifier {
     final raw = value?.toString() ?? '';
     final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(raw);
     return int.tryParse(match?.group(1)?.split('.').first ?? '') ?? 0;
-  }
-
-  double _advisorDecisionScore(Map<String, dynamic> match, int index) {
-    final priceScore = 1 / _safePositiveValue(_advisorPriceValue(match));
-    final timeScore = 1 / _safePositiveValue(_advisorTimeValue(match));
-    final luxuryScore = _advisorPremiumValue(match);
-    final amenityScore = _normalizeAmenityTerms(match).isNotEmpty ? 1 : 0;
-
-    return luxuryScore * 12 +
-        amenityScore * 8 +
-        timeScore * 1500 +
-        priceScore * 250000 +
-        (index == 0 ? 24 : 0);
-  }
-
-  double _advisorPriceValue(Map<String, dynamic> match) {
-    final amount = _asNumber(
-      match['total'] ?? match['final_price'] ?? match['price'],
-      double.nan,
-    );
-    if (!amount.isNaN && amount > 0) return amount;
-    return double.maxFinite;
-  }
-
-  double _advisorTimeValue(Map<String, dynamic> match) {
-    final explicitHours = _displayFlightHours(match);
-    if (explicitHours > 0) return explicitHours;
-
-    final rawTime = [
-          match['trip_time'],
-          match['card_time'],
-          match['display_time'],
-          match['ui_time'],
-          match['time'],
-          match['flight_time'],
-          match['duration'],
-        ]
-        .map((value) => value?.toString().trim() ?? '')
-        .firstWhere(
-          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
-          orElse: () => '',
-        );
-
-    if (rawTime.isEmpty) return double.maxFinite;
-
-    final hours = double.tryParse(
-      RegExp(
-            r'(\d+(?:\.\d+)?)\s*h',
-            caseSensitive: false,
-          ).firstMatch(rawTime)?.group(1) ??
-          '',
-    );
-    final minutes = double.tryParse(
-      RegExp(
-            r'(\d+(?:\.\d+)?)\s*m',
-            caseSensitive: false,
-          ).firstMatch(rawTime)?.group(1) ??
-          '',
-    );
-    final totalMinutes = (hours ?? 0) * 60 + (minutes ?? 0);
-    return totalMinutes > 0 ? totalMinutes : double.maxFinite;
-  }
-
-  double _advisorPremiumValue(Map<String, dynamic> match) {
-    final cabin =
-        (match['cabin'] ?? match['category'] ?? '').toString().toLowerCase();
-    final capacity = _extractCapacity(match['capacity']);
-    final premiumCabin = [
-      'premium',
-      'heavy',
-      'super midsize',
-      'large',
-      'long range',
-      'vip',
-      'elite',
-    ].any(cabin.contains);
-
-    return capacity + (premiumCabin ? 20 : 0);
-  }
-
-  Set<String> _normalizeAmenityTerms(Map<String, dynamic> match) {
-    final rawAmenities = match['amenities'];
-    if (rawAmenities is! List) return const <String>{};
-
-    return rawAmenities
-        .whereType<Object>()
-        .map((item) => item.toString().trim().toLowerCase())
-        .where((item) => item.isNotEmpty && item != 'null')
-        .toSet();
-  }
-
-  double _displayFlightHours(Map<String, dynamic> match) {
-    final explicitDisplayHours = _asNumber(
-      match['trip_flight_hours'] ??
-          match['card_flight_hours'] ??
-          match['ui_flight_hours'] ??
-          match['client_display_flight_hours'] ??
-          match['display_flight_hours'] ??
-          match['real_flight_hours'] ??
-          match['flight_hours'] ??
-          match['estimated_hours'],
-      double.nan,
-    );
-    if (!explicitDisplayHours.isNaN && explicitDisplayHours > 0) {
-      return explicitDisplayHours;
-    }
-
-    final operationalHours = _asNumber(
-      match['operational_flight_hours'] ?? match['billable_hours'],
-      double.nan,
-    );
-    if (!operationalHours.isNaN && operationalHours > 0) {
-      return operationalHours;
-    }
-
-    final distanceKm = _asNumber(match['distance_km'], double.nan);
-    final speedKmh = _asNumber(match['speed_kmh'] ?? match['speedKmh'], 0);
-    final climbDescentHours =
-        _asNumber(match['climb_descent_hours'], 0) +
-        (_asNumber(match['climb_descent_minutes'], 0) / 60);
-
-    if (!distanceKm.isNaN && distanceKm > 0 && speedKmh > 0) {
-      return distanceKm / speedKmh + climbDescentHours;
-    }
-
-    return 0;
-  }
-
-  double _safePositiveValue(double value) {
-    if (value.isNaN || value <= 0) return 1;
-    return value;
   }
 
   double _sumLegDistance(dynamic legs) {

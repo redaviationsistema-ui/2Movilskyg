@@ -19,12 +19,12 @@ import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
 const Color kBg = ClientThemeColors.bg;
-const Color kWhite = ClientThemeColors.surface;
-const Color kBlack = ClientThemeColors.brandNight;
-const Color kText = ClientThemeColors.text;
-const Color kMuted = ClientThemeColors.muted;
-const Color kBorder = ClientThemeColors.border;
-const Color kSoft = ClientThemeColors.softSurface;
+const Color kWhite = Color(0xFFFFFCF7);
+const Color kBlack = Color(0xFF2B241D);
+const Color kText = Color(0xFF332A20);
+const Color kMuted = Color(0xFF766B5D);
+const Color kBorder = Color(0xFFE2D6C3);
+const Color kSoft = Color(0xFFF5EFE3);
 const String kMobileDocuSignReturnScheme = 'redsky';
 const String kDocuSignReturnPath = '/cliente/contrato/';
 
@@ -170,6 +170,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     required String logoSrc,
     required String headerSrc,
   }) {
+    final contractDate = _escapeHtml(model.compactDepartureLabel.split(' ').first);
     final summaryRows = '''
       <tr><th>Reserva</th><td>${_escapeHtml(model.code)}</td><th>Cliente</th><td>${_escapeHtml(model.customerName)}</td><th>Prestador comercial</th><td>SKY Group</td></tr>
       <tr><th>Operador aéreo</th><td>${_escapeHtml(model.operatorLabel)}</td><th>Ruta</th><td>${_escapeHtml(model.routeLabel)}</td><th>Salida</th><td>${_escapeHtml(model.compactDepartureLabel)}</td></tr>
@@ -194,9 +195,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
             .join();
     final coverCards =
         [
-          ('Cliente', model.customerName),
+          ('Reserva', model.code),
           ('Ruta', model.routeLabel),
-          ('Salida', model.compactDepartureLabel),
+          ('Total', model.finalPriceLabel),
         ].map((item) {
           return '''
         <td>
@@ -228,8 +229,21 @@ class _ClientContractScreenState extends State<ClientContractScreen>
               section.items
                   .map((item) => '<li>${_escapeHtml(item)}</li>')
                   .join();
-          return '<section class="clause-block"><h3>${_escapeHtml(section.title)}</h3>$paragraphs${items.isEmpty ? '' : '<ul>$items</ul>'}</section>';
+          return '<div class="contract-block contract-section"><h3>${_escapeHtml(section.title)}</h3>$paragraphs${items.isEmpty ? '' : '<ul class="contract-list">$items</ul>'}</div>';
         }).join();
+    final accountCards = _bankAccounts
+        .map(
+          (account) => '''
+            <article class="account-card contract-card">
+              <strong>${_escapeHtml(account.bank)}</strong>
+              <span>Cuenta: ${_escapeHtml(account.account)}</span>
+              <span>CLABE: ${_escapeHtml(account.clabe)}</span>
+              <span>Beneficiario: ${_escapeHtml(account.beneficiary)}</span>
+              <span>RFC: ${_escapeHtml(account.rfc)}</span>
+            </article>
+          ''',
+        )
+        .join();
 
     return '''
 <!doctype html>
@@ -237,219 +251,234 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contrato ${_escapeHtml(model.code)}</title>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;padding:18px;background:#f6f1e7;color:#111;font-family:DejaVu Sans,Arial,sans-serif;font-size:12px;line-height:1.5}
-    .sheet{border:1px solid #ddd4c6;border-radius:18px;overflow:hidden;background:#fff}
-    .brandbar{background:#17212b}
-    .brandbar img{display:block;width:100%;height:auto}
-    .body{padding:18px;background:#fffdf9}
-    .eyebrow{color:#8b6a24;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-    .badge{float:right;padding:5px 10px;border-radius:999px;background:#f7ebcc;color:#8b6a24;font-size:10px;font-weight:700}
-    h1{margin:8px 0 6px;font-size:28px;line-height:1.08}
-    h2{font-size:18px;margin:0 0 10px}
-    h3{font-size:15px;margin:0 0 8px}
-    .route{margin:0 0 10px;font-size:18px;font-weight:700;color:#3c3328}
-    .meta span{display:inline-block;margin:0 14px 6px 0;color:#625d55;font-weight:600}
-    .mini-grid,.summary,.accounts,.signature-summary-table,.signature-card-table,.signature-box-table{width:100%}
-    .mini-grid{border-collapse:separate;border-spacing:8px 8px;margin:10px -8px 0}
-    .mini-grid td{width:33.33%;border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px;vertical-align:top}
-    .mini-grid span{display:block;color:#8c7b63;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-    .mini-grid strong{display:block;margin-top:4px;color:#1a1816;font-size:13px;line-height:1.35}
-    .section{margin-top:16px;page-break-inside:avoid}
-    .head-center{text-align:center;margin-bottom:10px}
-    .head-center strong{display:block;font-size:18px;letter-spacing:.03em}
-    .copy p{margin:0 0 8px}
-    .copy ul{margin:0;padding-left:18px}
-    .copy li{margin-bottom:6px}
-    .summary{border-collapse:collapse;margin-top:10px}
-    .summary th,.summary td{border:1px solid #e9e2d4;padding:8px 10px;vertical-align:top;text-align:left}
-    .summary th{background:#f4eee3;color:#625d55;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-    .summary td{background:#faf8f3;font-weight:600}
-    .two-cols{width:100%;border-collapse:separate;border-spacing:10px 0;margin:10px -10px 0}
-    .two-cols td{width:50%;vertical-align:top}
-    .note-box{border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px}
-    .note-box strong{display:block;margin-bottom:6px}
-    .note-box ul{margin:0;padding-left:18px}
-    .note-box li{margin-bottom:6px}
-    .clause-block{margin-bottom:12px}
-    .accounts{border-collapse:separate;border-spacing:10px 10px;margin:0 -10px}
-    .accounts td{width:33.33%;vertical-align:top}
-    .account-card-print{border:1px solid #e1d8ca;border-radius:10px;background:#fcfaf6;padding:10px 12px;min-height:94px}
-    .account-card-print strong{display:block;margin-bottom:6px}
-    .signature-summary-table{border-collapse:collapse;margin:10px 0 12px;border:1px solid #e2d8c9;background:#fbf8f1}
-    .signature-summary-table td{width:33.33%;padding:10px 12px;vertical-align:top;color:#5d5448;border-right:1px solid #e2d8c9}
-    .signature-summary-table td:last-child{border-right:0}
-    .summary-label{display:block;color:#8d7c64;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-    .summary-value{display:block;margin-top:4px;color:#1a1816;font-size:13px;font-weight:700;line-height:1.35}
-    .signature-card-table{max-width:620px;margin:0 auto;border-collapse:collapse;border:1px solid #e1d8ca;background:#fcfaf6}
-    .signature-card-body{padding:14px 16px 12px;text-align:center}
-    .role{display:block;color:#8b6a24;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-    .name{display:block;margin-top:8px;font-size:18px;font-weight:700}
-    .meta-line{display:block;margin-top:4px;color:#625d55}
-    .signature-box-wrap{padding:14px 18px 10px}
-    .signature-box-table{border-collapse:collapse;border:1px dashed #d3c6ab;background:#f8f2e6}
-    .signature-box-table td{padding:16px 18px;text-align:center}
-    .kicker{display:block;color:#6f6557;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-    .title{display:block;margin-top:8px;color:#1a1816;font-size:16px;font-weight:700}
-    .signature-anchor-slot{height:58px;padding-top:8px;text-align:center;vertical-align:middle}
-    .anchor-holder{display:inline-block;color:#f8f2e6;font-size:2px;line-height:2px}
-    .signature-rule{padding:0 18px}
-    .signature-rule div{height:2px;background:#111}
-    .signature-caption-row td{padding:10px 16px 14px;text-align:center;color:#756958;font-size:13px}
-    .contact-bar{margin-top:14px;padding-top:12px;border-top:1px solid #ddd4c6}
-    .contact-row{margin-bottom:8px}
-    .contact-row .label{color:#8d7c64;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-    .contact-row .value{color:#1a1816;font-size:14px;font-weight:700}
-    .hidden-logo{display:none}
+    @page { margin: 18px 18px 22px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; background: #f6f1e7; color: #111; font-family: DejaVu Sans, Arial, sans-serif; font-size: 12px; line-height: 1.5; }
+    .contract-preview { display: grid; gap: 0.8rem; padding: 0; border-radius: 18px; background: transparent; }
+    .contract-sheet { display: grid; gap: 0.7rem; overflow: hidden; border: 1px solid #ddd4c6; border-radius: 14px; background: #ffffff; box-shadow: none; }
+    .contract-brandbar { overflow: hidden; background: #16202a; margin: 0 !important; border-radius: 0 !important; }
+    .contract-brandbar__banner { display: block; width: 100% !important; height: auto !important; }
+    .contract-sheet__body { position: relative; isolation: isolate; display: grid; gap: 0.8rem; padding: 10mm 12mm 12mm !important; border-top: 0; background: #fffdf9; }
+    .contract-watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 0; opacity: 1; pointer-events: none; }
+    .contract-watermark img { width: 72%; max-width: 34rem; opacity: 0.06; filter: grayscale(1); }
+    .eyebrow { color: #8b6a24; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .contract-badge { display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.7rem; border-radius: 999px; background: rgba(139, 106, 36, 0.16); color: #8b6a24; font-size: 10px; font-weight: 800; letter-spacing: 0.04em; }
+    .contract-cover { position: relative; z-index: 1; display: grid; gap: 0.55rem; padding: 0.05rem 0 0.35rem; }
+    .contract-cover__eyebrow-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; }
+    .contract-cover h1 { margin: 8px 0 10px !important; color: #111111; font-family: Georgia, 'Times New Roman', serif; font-size: 22px !important; line-height: 1.15 !important; font-weight: 700; }
+    .contract-cover__route { margin: 0; color: #3c3328; font-size: 1rem; font-weight: 700; }
+    .contract-cover__meta { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: #625d55; font-size: 10.5px !important; font-weight: 600; }
+    .contract-cover__brief { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; margin-top: 0.2rem; }
+    .contract-commercial-intro { display: grid; gap: 0.45rem; break-inside: avoid; page-break-inside: avoid; }
+    .contract-sheet__head { position: relative; z-index: 1; display: grid; gap: 0.3rem; justify-items: center; padding: 0.2rem 0 0.45rem; text-align: center; }
+    .contract-sheet__head strong { display: block; font-size: 18px; letter-spacing: .03em; }
+    .contract-sheet__head small { color: #625d55; font-weight: 700; }
+    .contract-block { position: relative; z-index: 1; display: grid; gap: 0.42rem; }
+    .contract-block h3 { margin: 10px 0 6px !important; color: #111111; font-family: Georgia, 'Times New Roman', serif; font-size: 13px !important; line-height: 1.2 !important; }
+    .contract-block p, .contract-list li, .signature-card small, .annex-table th, .contract-sheet__head small, .contract-cover__meta span, .signature-sheet__header p, .signature-card__caption, .signature-contact-bar__item span { color: #625d55; }
+    .account-card span { color: #111111; }
+    .contract-opening strong, .contract-block strong, .annex-table td, .signature-card strong, .signature-sheet__summary strong, .summary-card strong, .cover-brief-card strong { color: #111111; }
+    .contract-list { display: grid; gap: 0.28rem; margin: 0; padding-left: 1.15rem; }
+    .contract-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+    .summary-card, .contract-card, .signature-card, .account-card, .annex-note-card { border: 1px solid #e1d8ca; border-radius: 10px; background: #fcfaf6; box-shadow: none; }
+    .summary-card { position: relative; display: grid; gap: 0.3rem; padding: 10px 14px !important; background: #fcfaf6; }
+    .summary-card span, .summary-card small, .signature-card span, .contract-card span, .contract-card label, .contract-card .label, .contract-card small { color: #6d6252; font-size: 9px !important; letter-spacing: 0.06em; }
+    .summary-card strong, .contract-card strong, .contract-card .value { font-size: 11px !important; line-height: 1.3 !important; }
+    .summary-card--route strong { font-size: 1.08rem; }
+    .cover-brief-card { display: grid; align-content: start; gap: 0.32rem; min-height: 4.3rem; padding: 0.75rem 0.85rem 0.8rem; }
+    .cover-brief-card span { color: #8c7b63; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+    .annex-table-wrap, .accounts-grid, .signatures-grid { display: grid; gap: 0.75rem; }
+    .annex-table { width: 100%; border-collapse: collapse; border: 1px solid #ddd4c6; border-radius: 8px; overflow: hidden; background: #fcfaf6; table-layout: fixed; font-size: 10px !important; }
+    .annex-table th, .annex-table td { padding: 6px 8px !important; border-bottom: 1px solid #e2d8c9; text-align: left; vertical-align: top; word-break: normal; overflow-wrap: break-word; font-size: 10px !important; }
+    .annex-table th { width: 16%; background: #f1eadc; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+    .annex-table td { font-weight: 600; line-height: 1.35; }
+    .annex-table__spacer { background: #faf8f3; }
+    .annex-legs { display: grid; gap: 0.45rem; }
+    .annex-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
+    .annex-note-card { display: grid; gap: 0.55rem; padding: 0.85rem; }
+    .accounts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .account-card { display: grid; gap: 0.45rem; padding: 1rem; break-inside: avoid; page-break-inside: avoid; }
+    .signatures-section { gap: 0.85rem; padding: 0.25rem 0 0.05rem; break-before: page; page-break-before: always; min-height: calc(100vh - 6rem); align-content: start; }
+    .signature-sheet__header { display: grid; gap: 0.3rem; max-width: 42rem; }
+    .signature-sheet__header h3 { font-size: 24px !important; line-height: 1.05; font-family: Georgia, 'Times New Roman', serif; margin: 0; }
+    .signature-sheet__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; padding: 0.7rem 0.8rem; border: 1px solid #e2d8c9; border-radius: 10px; background: #fbf8f1; }
+    .signature-sheet__summary span { color: #5d5448; font-size: 0.92rem; line-height: 1.45; }
+    .signatures-grid { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+    .signature-card.signature-block { width: min(100%, 58rem); justify-items: center; text-align: center; }
+    .signature-card { display: grid; gap: 0.45rem; padding: 1rem; }
+    .signature-card__role { color: #8b6a24 !important; font-size: 0.82rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+    .signature-line { min-height: 5.5rem; margin-top: 0.45rem; padding: 0 0.2rem 0.35rem; border-bottom: 1.5px solid #111111; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; width: min(100%, 54rem); }
+    .signature-external-placeholder { display: grid; align-content: center; justify-items: center; gap: 0.3rem; min-height: 4.75rem; padding: 0.75rem; border: 1px dashed #d9cba8; border-radius: 14px; background: rgba(139, 106, 36, 0.06); text-align: center; width: 100%; }
+    .signature-external-placeholder span { color: #6f6557; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    .signature-external-placeholder strong { color: #1a1816; font-size: 0.95rem; }
+    .docusign-anchor { color: transparent; font-size: 1px; line-height: 1px; user-select: none; }
+    .signature-card__caption { color: #756958 !important; font-size: 0.9rem; }
+    .signature-contact-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px !important; margin-top: 0.15rem; padding-top: 12px !important; border-top: 1.5px solid #e4dbcd !important; }
+    .signature-contact-bar__item { display: grid; align-content: start; gap: 3px !important; }
+    .signature-contact-bar__item span { color: #8d7c64; font-size: 9px !important; font-weight: 800; letter-spacing: 0.05em !important; text-transform: uppercase; }
+    .signature-contact-bar__item strong, .signature-contact-bar__item a { color: #1a1816; font-size: 1.18rem; line-height: 1.35; font-weight: 800; text-decoration: none; overflow-wrap: anywhere; }
+    .contract-pdf p, .contract-pdf li, .contract-pdf td, .contract-pdf th, .contract-pdf div, .contract-pdf span, .contract-pdf small { font-size: 10.5px !important; line-height: 1.35 !important; }
+    .contract-card, .contract-section, .contract-commercial-intro, .signature-block, .contract-table { break-inside: avoid; page-break-inside: avoid; }
   </style>
 </head>
 <body>
-  <div class="sheet">
-    <div class="brandbar"><img src="$headerSrc" alt="Header"></div>
-    <div class="body">
-      <div class="badge">CONFIDENCIAL · DOCUMENTO PARA FIRMA</div>
-      <div class="eyebrow">RESERVA ${_escapeHtml(model.code)}</div>
-      <h1>Contrato de prestación de servicios de aviación ejecutiva</h1>
-      <p class="route">${_escapeHtml(model.routeLabel)}</p>
-      <div class="meta">
-        <span>Salida: ${_escapeHtml(model.compactDepartureLabel)}</span>
-        <span>Pasajeros: ${_escapeHtml(model.passengerLabel)}</span>
-        <span>Aeronave: ${_escapeHtml(model.aircraftLabel)}</span>
-        <span>Tramos: ${model.legs.length}</span>
-        <span>Total: ${_escapeHtml(model.finalPriceLabel)}</span>
-      </div>
-
-      <table class="mini-grid">
-        <tr>$coverCards</tr>
-      </table>
-
-      <section class="section">
-        <div class="head-center">
-          <span class="eyebrow">Contrato ${_escapeHtml(model.code)}</span>
-          <strong>Anexo A — Datos comerciales de la reserva</strong>
+  <article class="contract-preview contract-pdf">
+    <section class="contract-sheet">
+      <header class="contract-brandbar">
+        <img src="$headerSrc" alt="Sky Group" class="contract-brandbar__banner" />
+      </header>
+      <div class="contract-sheet__body">
+        <div class="contract-watermark" aria-hidden="true">
+          <img src="$logoSrc" alt="" />
         </div>
-      </section>
+        <section class="contract-cover">
+          <div class="contract-cover__eyebrow-row">
+            <span class="eyebrow">Reserva ${_escapeHtml(model.code)}</span>
+            <span class="contract-badge">CONFIDENCIAL · DOCUMENTO PARA FIRMA</span>
+          </div>
+          <h1>Contrato de prestación de servicios de aviación ejecutiva</h1>
+          <p class="contract-cover__route">${_escapeHtml(model.routeLabel)}</p>
+          <div class="contract-cover__meta">
+            <span>Salida: ${_escapeHtml(model.compactDepartureLabel)}</span>
+            <span>Pasajeros: ${_escapeHtml(model.passengerLabel)}</span>
+            <span>Aeronave: ${_escapeHtml(model.aircraftLabel)}</span>
+            <span>Tramos: ${model.legs.length}</span>
+            <span>Total: ${_escapeHtml(model.finalPriceLabel)}</span>
+          </div>
+          <table class="mini-grid"><tr>$coverCards</tr></table>
+        </section>
 
-      <section class="section copy">
-        <p>El presente Contrato se celebra en la fecha <strong>${_escapeHtml(model.compactDepartureLabel.split(' ').first)}</strong>.</p>
-        <p>ENTRE <strong>RED AVIATION COMPANY S.A. DE C.V.</strong>, sociedad constituida conforme a las leyes de los Estados Unidos Mexicanos, con domicilio en Circuito Alfonso G. de Orozco, Manzana 007, C.P. 50225, San Miguel Totoltepec, Toluca de Lerdo, Estado de México, legalmente representada en este acto por José Luis Hernández Ortiz, quien cuenta con facultades suficientes para este acto, en lo sucesivo el <strong>Prestador del Servicio</strong>.</p>
-        <p>Y <strong>${_escapeHtml(model.customerName)}</strong>, persona física o moral según corresponda, con domicilio en <strong>Domicilio por confirmar</strong>, por su propio derecho o representada en este acto por <strong>${_escapeHtml(model.representativeName)}</strong>, quien declara contar con la capacidad jurídica y/o facultades suficientes para obligarse en los términos del presente Contrato, en lo sucesivo el <strong>Cliente</strong>.</p>
-      </section>
+        <section class="contract-commercial-intro contract-section">
+          <div class="contract-sheet__head">
+            <span class="eyebrow">Contrato ${_escapeHtml(model.code)}</span>
+            <strong>ANEXO A — DATOS COMERCIALES DE LA RESERVA</strong>
+            <small>$contractDate</small>
+          </div>
+          <div class="contract-summary">
+            <article class="summary-card summary-card--route contract-card">
+              <span>Ruta contratada</span>
+              <strong>${_escapeHtml(model.routeLabel)}</strong>
+              <small>${_escapeHtml(model.compactDepartureLabel)}</small>
+            </article>
+            <article class="summary-card contract-card">
+              <span>Aeronave</span>
+              <strong>${_escapeHtml(model.aircraftLabel)}</strong>
+              <small>${_escapeHtml(model.categoryLabel)}</small>
+            </article>
+            <article class="summary-card contract-card">
+              <span>Servicio</span>
+              <strong>${_escapeHtml(model.serviceTier)}</strong>
+              <small>${_escapeHtml(model.passengerLabel)}</small>
+            </article>
+            <article class="summary-card contract-card">
+              <span>Costo total</span>
+              <strong>${_escapeHtml(model.finalPriceLabel)}</strong>
+            </article>
+          </div>
+        </section>
 
-      <section class="section copy">
-        <h3>CONSIDERANDO QUE</h3>
-        <ul>$considerationsRows</ul>
-      </section>
-
-      <section class="section">
-        <h3>ANEXO A — RESUMEN COMERCIAL</h3>
-        <table class="summary"><tbody>$summaryRows</tbody></table>
-      </section>
-
-      <section class="section">
-        <strong>Itinerario</strong>
-        <table class="summary" style="margin-top:8px;">
-          <thead>
-            <tr><th>Tramo</th><th>Origen</th><th>Destino</th><th>Fecha</th><th>Hora</th></tr>
-          </thead>
-          <tbody>$itineraryRows</tbody>
-        </table>
-      </section>
-
-      <section class="section">
-        <table class="two-cols">
-          <tr>
-            <td><div class="note-box"><strong>Incluye</strong><ul>$includeRows</ul></div></td>
-            <td><div class="note-box"><strong>No incluye, salvo pacto expreso</strong><ul>$excludeRows</ul></div></td>
-          </tr>
-        </table>
-      </section>
-
-      <section class="section copy">
-        <h3>1. DEFINICIONES</h3>
-        <ul>$definitionsRows</ul>
-      </section>
-
-      <section class="section copy">
-        $legalRows
-      </section>
-
-      <section class="section copy">
-        <h3>Condiciones operativas</h3>
-        <ul>${_operationalConditions.map((p) => '<li>${_escapeHtml(p)}</li>').join()}</ul>
-      </section>
-
-      <section class="section">
-        <h3>CUENTAS PARA PAGO</h3>
-        <table class="accounts"><tr>${_bankAccounts.map((account) => '<td><div class="account-card-print"><strong>${_escapeHtml(account.bank)}</strong><div>Cuenta: ${_escapeHtml(account.account)}</div><div>CLABE: ${_escapeHtml(account.clabe)}</div><div>Beneficiario: ${_escapeHtml(account.beneficiary)}</div><div>RFC: ${_escapeHtml(account.rfc)}</div></div></td>').join()}</tr></table>
-      </section>
-
-      <section class="section copy">
-        <p>El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.</p>
-      </section>
-
-      <section class="section copy">
-        <div class="head-center" style="text-align:left;">
-          <span class="eyebrow">Formalización</span>
-          <strong style="font-size:24px;">FIRMAS</strong>
-          <p>Las partes aceptan el presente contrato mediante firma electrónica.</p>
-          <p>La firma de este contrato se realizará de forma digital mediante DocuSign. Al completar la firma, el documento quedará registrado y asociado a esta reserva <strong>${_escapeHtml(model.code)}</strong>.</p>
+        <div class="contract-block contract-section">
+          <p class="contract-opening">El presente Contrato se celebra en la fecha <strong>$contractDate</strong>.</p>
+          <p>ENTRE <strong>RED AVIATION COMPANY S.A. DE C.V.</strong>, sociedad constituida conforme a las leyes de los Estados Unidos Mexicanos, con domicilio en Circuito Alfonso G. de Orozco, Manzana 007, C.P. 50225, San Miguel Totoltepec, Toluca de Lerdo, Estado de México, legalmente representada en este acto por José Luis Hernández Ortiz, quien cuenta con facultades suficientes para este acto, en lo sucesivo el <strong>Prestador del Servicio</strong>.</p>
+          <p>Y <strong>${_escapeHtml(model.customerName)}</strong>, persona física o moral según corresponda, con domicilio en <strong>Domicilio por confirmar</strong>, por su propio derecho o representada en este acto por <strong>${_escapeHtml(model.representativeName)}</strong>, quien declara contar con la capacidad jurídica y/o facultades suficientes para obligarse en los términos del presente Contrato, en lo sucesivo el <strong>Cliente</strong>.</p>
         </div>
-        <table class="signature-summary-table">
-          <tr>
-            <td><span class="summary-label">Cliente</span><span class="summary-value">${_escapeHtml(model.customerName)}</span></td>
-            <td><span class="summary-label">Ruta</span><span class="summary-value">${_escapeHtml(model.routeLabel)}</span></td>
-            <td><span class="summary-label">Total</span><span class="summary-value">${_escapeHtml(model.finalPriceLabel)}</span></td>
-          </tr>
-        </table>
-        <table class="signature-card-table">
-          <tr>
-            <td class="signature-card-body">
-              <span class="role">Cliente</span>
-              <span class="name">${_escapeHtml(model.customerName)}</span>
-              <span class="meta-line">Representante: ${_escapeHtml(model.representativeName)}</span>
-              <span class="meta-line">Cargo: Cliente / Representante</span>
-            </td>
-          </tr>
-          <tr>
-            <td class="signature-box-wrap">
-              <table class="signature-box-table">
-                <tr>
-                  <td>
-                    <span class="kicker">Espacio reservado para firma digital</span>
-                    <span class="title">Firma digital del cliente</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td class="signature-anchor-slot">
-                    <span class="anchor-holder">/sig_cliente/</span>
-                  </td>
-                </tr>
+
+        <div class="contract-block contract-section">
+          <h3>CONSIDERANDO QUE</h3>
+          <ul class="contract-list">$considerationsRows</ul>
+        </div>
+
+        <div class="contract-block contract-section">
+          <h3>ANEXO A — RESUMEN COMERCIAL</h3>
+          <div class="annex-table-wrap">
+            <table class="annex-table contract-table"><tbody>$summaryRows</tbody></table>
+          </div>
+          <div class="annex-legs">
+            <strong>Itinerario</strong>
+            <div class="annex-table-wrap">
+              <table class="annex-table contract-table">
+                <thead>
+                  <tr><th>Tramo</th><th>Origen</th><th>Destino</th><th>Fecha</th><th>Hora</th></tr>
+                </thead>
+                <tbody>$itineraryRows</tbody>
               </table>
-            </td>
-          </tr>
-          <tr>
-            <td class="signature-rule"><div></div></td>
-          </tr>
-          <tr class="signature-caption-row">
-            <td>Pendiente de firma del cliente</td>
-          </tr>
-        </table>
-        <div class="contact-bar">
-          <div class="contact-row"><span class="label">Contacto comercial</span> <span class="value">sales@redskyg.com</span></div>
-          <div class="contact-row"><span class="label">Sitio web</span> <span class="value">https://redskyg.com/mx</span></div>
-          <div class="contact-row"><span class="label">Teléfonos</span> <span class="value">+52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394</span></div>
+            </div>
+          </div>
+          <div class="annex-grid">
+            <article class="annex-note-card contract-card"><strong>Incluye</strong><ul class="contract-list">$includeRows</ul></article>
+            <article class="annex-note-card contract-card"><strong>No incluye, salvo pacto expreso</strong><ul class="contract-list">$excludeRows</ul></article>
+          </div>
         </div>
-      </section>
 
-      <div class="hidden-logo"><img src="$logoSrc" alt=""></div>
-      <div class="contact-bar">
-        <div class="contact-row"><span class="label">Correo</span> <span class="value">sales@redskyg.com</span></div>
-        <div class="contact-row"><span class="label">Sitio</span> <span class="value">https://redskyg.com/mx</span></div>
+        <div class="contract-block contract-section">
+          <h3>1. DEFINICIONES</h3>
+          <ul class="contract-list">$definitionsRows</ul>
+        </div>
+
+        $legalRows
+
+        <div class="contract-block contract-section">
+          <h3>Condiciones operativas</h3>
+          <ul class="contract-list">${_operationalConditions.map((p) => '<li>${_escapeHtml(p)}</li>').join()}</ul>
+        </div>
+
+        <div class="contract-block contract-section">
+          <h3>CUENTAS PARA PAGO</h3>
+          <div class="accounts-grid">$accountCards</div>
+        </div>
+
+        <div class="contract-block contract-section">
+          <p>El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.</p>
+        </div>
+
+        <div class="contract-block contract-section signatures-section">
+          <div class="signature-sheet__header">
+            <span class="eyebrow">Formalización</span>
+            <h3>FIRMAS</h3>
+            <p>Las partes aceptan el presente contrato mediante firma electrónica.</p>
+            <p>La firma de este contrato se realizará de forma digital mediante DocuSign. Al completar la firma, el documento quedará registrado y asociado a esta reserva <strong>${_escapeHtml(model.code)}</strong>.</p>
+          </div>
+          <div class="signature-sheet__summary">
+            <span><strong>Cliente:</strong> ${_escapeHtml(model.customerName)}</span>
+            <span><strong>Ruta:</strong> ${_escapeHtml(model.routeLabel)}</span>
+            <span><strong>Total:</strong> ${_escapeHtml(model.finalPriceLabel)}</span>
+          </div>
+          <div class="signatures-grid">
+            <article class="signature-card contract-card signature-block">
+              <span class="signature-card__role">Cliente</span>
+              <strong>${_escapeHtml(model.customerName)}</strong>
+              <small>Representante: ${_escapeHtml(model.representativeName)}</small>
+              <small>Cargo: Cliente / Representante</small>
+              <div class="signature-line">
+                <div class="signature-external-placeholder" aria-hidden="true">
+                  <span>Espacio reservado para firma digital</span>
+                  <strong>Firma digital del cliente</strong>
+                  <span class="docusign-anchor">/sig_cliente/</span>
+                </div>
+              </div>
+              <small class="signature-card__caption">Pendiente de firma del cliente</small>
+            </article>
+          </div>
+          <div class="signature-contact-bar">
+            <div class="signature-contact-bar__item">
+              <span>Contacto comercial</span>
+              <strong><a href="mailto:sales@redskyg.com">sales@redskyg.com</a></strong>
+            </div>
+            <div class="signature-contact-bar__item">
+              <span>Sitio web</span>
+              <strong><a href="https://redskyg.com/mx">https://redskyg.com/mx</a></strong>
+            </div>
+            <div class="signature-contact-bar__item">
+              <span>Teléfonos</span>
+              <strong>+52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394</strong>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
+    </section>
+  </article>
 </body>
 </html>
 ''';
@@ -704,6 +733,16 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         flightRequestId: flightRequestId,
         clientSignatureAnchor: '/sig_cliente/',
       );
+      final assets = await Future.wait([
+        _assetToDataUrl('assets/Logo.png'),
+        _assetToDataUrl('assets/contract_margin.png'),
+      ]);
+      final fullContractHtml = _buildContractHtmlDocument(
+        model: contractModel,
+        logoSrc: assets[0],
+        headerSrc: assets[1],
+      );
+      final fullContractPlainText = _buildContractPlainText(contractModel);
       final returnUrl = _buildDocuSignReturnUrl(
         reservationId: reservationId,
         flightRequestId: flightRequestId,
@@ -711,8 +750,11 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       final payload = await ApiClient.instance.sendClientContractForSignature(
         reservationId: reservationId,
         contractPayload: {
+          'id': reservationId,
+          'reservation': reservationId,
           'booking_id': reservationId,
           'reservation_id': reservationId,
+          'flight_request': flightRequestId,
           'flight_request_id': flightRequestId,
           'client_name': contractModel.customerName,
           'client_email': customerEmail,
@@ -725,8 +767,15 @@ class _ClientContractScreenState extends State<ClientContractScreen>
           'callback_url': returnUrl,
           'return_path': kDocuSignReturnPath,
           'contract_snapshot': contractSnapshot,
+          'contract_html': fullContractHtml,
+          'contract_markup': fullContractHtml,
+          'contract_plain_text': fullContractPlainText,
+          'document_html': fullContractHtml,
+          'full_contract_html': fullContractHtml,
+          'full_contract_text': fullContractPlainText,
           'source_contract_path': _buildContractSourcePath(reservationId),
-          'document_source': 'backend_pdf_contract',
+          'document_source': 'client_contract_full_html',
+          'regenerate': true,
           'docusign': {
             'provider': 'docusign',
             'client_signature_anchor': '/sig_cliente/',
@@ -1214,99 +1263,125 @@ class _ClientContractReplicaDocument extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF7),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFE3D7C3)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-            color: const Color(0xFF17212B),
-            child: Center(
-              child: Image.asset(
-                'assets/Logo.png',
-                height: 34,
-                fit: BoxFit.contain,
-              ),
-            ),
+        color: const Color(0xFFF7F3EC),
+        borderRadius: BorderRadius.circular(34),
+        border: Border.all(color: const Color(0xFFE6DAC7), width: 1.4),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x18000000),
+            blurRadius: 24,
+            offset: Offset(0, 12),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Reserva ${model.code}',
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFCF7),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFE2D5C1), width: 1.2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: _ContractFrameHeader(),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 430;
+                      final reservationLabel = Text(
+                        'RESERVA ${model.code}',
+                        maxLines: compact ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Color(0xFF8B6A24),
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.8,
                         ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF4E6B9),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'CONFIDENCIAL · DOCUMENTO PARA FIRMA',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF9A7A2A),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w900,
+                      );
+                      final badge = Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4E6B9),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          'CONFIDENCIAL · DOCUMENTO PARA FIRMA',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF9A7A2A),
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      );
+
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            reservationLabel,
+                            const SizedBox(height: 10),
+                            badge,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: reservationLabel),
+                          const SizedBox(width: 12),
+                          badge,
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Contrato de prestación de servicios de aviación ejecutiva',
+                    style: TextStyle(
+                      color: kBlack,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    model.routeLabel,
+                    style: const TextStyle(
+                      color: Color(0xFF3A352E),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      _ReplicaMetaText(
+                        'Fecha de salida: ${model.compactDepartureLabel}',
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Contrato de prestación de servicios de aviación ejecutiva',
-                  style: TextStyle(
-                    color: kBlack,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    height: 1.1,
+                      _ReplicaMetaText('Pasajeros: ${model.passengerLabel}'),
+                      _ReplicaMetaText('Aeronave: ${model.aircraftLabel}'),
+                      _ReplicaMetaText('Tramos: ${model.legs.length}'),
+                      _ReplicaMetaText('Total: ${model.finalPriceLabel}'),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  model.routeLabel,
-                  style: const TextStyle(
-                    color: Color(0xFF3A352E),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 8,
-                  children: [
-                    _ReplicaMetaText(
-                      'Fecha de salida: ${model.compactDepartureLabel}',
-                    ),
-                    _ReplicaMetaText('Pasajeros: ${model.passengerLabel}'),
-                    _ReplicaMetaText('Aeronave: ${model.aircraftLabel}'),
-                    _ReplicaMetaText('Tramos: ${model.legs.length}'),
-                    _ReplicaMetaText('Total: ${model.finalPriceLabel}'),
-                  ],
-                ),
                 const SizedBox(height: 22),
                 const _ReplicaSectionTitle('ANEXO A — RESUMEN COMERCIAL'),
                 const SizedBox(height: 12),
@@ -1431,43 +1506,60 @@ class _ClientContractReplicaDocument extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const _ReplicaSectionTitle('Firmas'),
-                const SizedBox(height: 12),
-                _ReplicaSignatureBox(
-                  title: 'Prestador del Servicio',
-                  lineOne: 'RED AVIATION COMPANY S.A. DE C.V.',
-                  lineTwo: 'José Luis Hernández Ortiz',
-                ),
-                const SizedBox(height: 10),
-                _ReplicaSignatureBox(
-                  title: 'Cliente',
-                  lineOne: model.customerName,
-                  lineTwo: model.representativeName,
-                ),
-                const SizedBox(height: 18),
-                const Divider(color: Color(0xFF1C2430), thickness: 2),
-                const SizedBox(height: 10),
-                const Text(
-                  'Teléfonos: +52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394',
-                  style: TextStyle(
-                    color: Color(0xFF6F6557),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+                  const _ReplicaSectionTitle('Firmas'),
+                  const SizedBox(height: 18),
+                  const Divider(color: Color(0xFF1C2430), thickness: 2),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Teléfonos: +52 558 618 6576 · +52 722 112 6671 · +1 305 464 6394',
+                    style: TextStyle(
+                      color: Color(0xFF6F6557),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Correo: sales@redskyg.com · Sitio: https://redskyg.com/mx',
-                  style: TextStyle(
-                    color: Color(0xFF6F6557),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Correo: sales@redskyg.com · Sitio:https://redskyg.com/mx',
+                    style: TextStyle(
+                      color: Color(0xFF6F6557),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContractFrameHeader extends StatelessWidget {
+  const _ContractFrameHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF17212B),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF23303D)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: AspectRatio(
+        aspectRatio: 2048 / 410,
+        child: Image.asset(
+          'assets/contract_margin.png',
+          width: double.infinity,
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          errorBuilder: (_, __, ___) {
+            return const ColoredBox(color: Color(0xFF17212B));
+          },
+        ),
       ),
     );
   }
@@ -1946,10 +2038,22 @@ class _ReplicaBankCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text('Cuenta: ${account.account}'),
-          Text('CLABE: ${account.clabe}'),
-          Text('Beneficiario: ${account.beneficiary}'),
-          Text('RFC: ${account.rfc}'),
+          Text(
+            'Cuenta: ${account.account}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'CLABE: ${account.clabe}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'Beneficiario: ${account.beneficiary}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'RFC: ${account.rfc}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -2081,15 +2185,20 @@ class _ProgressStep extends StatelessWidget {
           decoration: BoxDecoration(
             color:
                 done
-                    ? const Color(0xFF102E20)
+                    ? const Color(0xFFE5F7EA)
                     : active
-                    ? kBlack
+                    ? const Color(0xFFF3E6C9)
                     : const Color(0xFFF1ECE3),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             done ? Icons.check_rounded : data.icon,
-            color: active ? kWhite : const Color(0xFF8C7B63),
+            color:
+                done
+                    ? const Color(0xFF14673A)
+                    : active
+                    ? const Color(0xFF8B6A24)
+                    : const Color(0xFF8C7B63),
             size: 18,
           ),
         ),
@@ -2261,9 +2370,9 @@ class _DocuSignFlowCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kBlack,
+        color: const Color(0xFFF8F1E4),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF242424)),
+        border: Border.all(color: const Color(0xFFE3D4BC)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2274,13 +2383,13 @@ class _DocuSignFlowCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: kWhite.withValues(alpha: 0.10),
+                  color: const Color(0xFFF3E6C9),
                   borderRadius: BorderRadius.circular(13),
-                  border: Border.all(color: kWhite.withValues(alpha: 0.16)),
+                  border: Border.all(color: const Color(0xFFE2D1B3)),
                 ),
                 child: const Icon(
                   Icons.verified_user_rounded,
-                  color: kWhite,
+                  color: Color(0xFF8B6A24),
                   size: 20,
                 ),
               ),
@@ -2292,7 +2401,7 @@ class _DocuSignFlowCard extends StatelessWidget {
                     const Text(
                       'DocuSign',
                       style: TextStyle(
-                        color: kWhite,
+                        color: kBlack,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2301,7 +2410,7 @@ class _DocuSignFlowCard extends StatelessWidget {
                     Text(
                       caption,
                       style: const TextStyle(
-                        color: Color(0xFFCFCFCF),
+                        color: Color(0xFF62584A),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         height: 1.3,
@@ -2341,8 +2450,8 @@ class _DocuSignFlowCard extends StatelessWidget {
               minimumSize: const Size.fromHeight(46),
               backgroundColor: ClientThemeColors.accent,
               foregroundColor: kBlack,
-              disabledBackgroundColor: const Color(0xFFBFBFBF),
-              disabledForegroundColor: const Color(0xFF4A4A4A),
+              disabledBackgroundColor: const Color(0xFFE6DAC3),
+              disabledForegroundColor: const Color(0xFF7C705F),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -2364,19 +2473,23 @@ class _DocuSignStep extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: kWhite.withValues(alpha: 0.10),
+        color: const Color(0xFFFFF7E7),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: kWhite.withValues(alpha: 0.14)),
+        border: Border.all(color: const Color(0xFFE8D7B7)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.check_circle_rounded, color: kWhite, size: 13),
+          const Icon(
+            Icons.check_circle_rounded,
+            color: Color(0xFF9A7A2A),
+            size: 13,
+          ),
           const SizedBox(width: 5),
           Text(
             label,
             style: const TextStyle(
-              color: kWhite,
+              color: Color(0xFF8B6A24),
               fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
@@ -3364,7 +3477,11 @@ class _ContractHeroCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
-        color: kBlack,
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF8EFD9), Color(0xFFEBD9B4)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(26),
         boxShadow: const [
           BoxShadow(
@@ -3384,7 +3501,7 @@ class _ContractHeroCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w900,
-              color: kWhite,
+              color: kBlack,
               height: 1,
               letterSpacing: -1,
             ),
@@ -3393,10 +3510,10 @@ class _ContractHeroCard extends StatelessWidget {
           Text(
             model.departureLabel,
             style: const TextStyle(
-              color: Color(0xFFBDBDBD),
+              color: Color(0xFF62584A),
               fontSize: 13,
               height: 1.35,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 12),
@@ -3427,14 +3544,14 @@ class _HeroChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: kWhite.withValues(alpha: 0.12),
+        color: const Color(0xFFFFFBF4),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: kWhite.withValues(alpha: 0.16)),
+        border: Border.all(color: const Color(0xFFE4D5B7)),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          color: kWhite,
+          color: kBlack,
           fontSize: 12,
           fontWeight: FontWeight.w900,
         ),
@@ -3454,9 +3571,9 @@ class _DarkMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: kWhite.withValues(alpha: 0.10),
+        color: const Color(0xFFFFFBF4),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kWhite.withValues(alpha: 0.14)),
+        border: Border.all(color: const Color(0xFFE4D5B7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3464,7 +3581,7 @@ class _DarkMetric extends StatelessWidget {
           Text(
             label.toUpperCase(),
             style: const TextStyle(
-              color: Color(0xFFBDBDBD),
+              color: Color(0xFF7E715F),
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -3476,7 +3593,7 @@ class _DarkMetric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: kWhite,
+              color: kBlack,
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -3551,10 +3668,22 @@ class _BankCard extends StatelessWidget {
             style: const TextStyle(color: kBlack, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
-          Text('Cuenta: ${account.account}'),
-          Text('CLABE: ${account.clabe}'),
-          Text('Beneficiario: ${account.beneficiary}'),
-          Text('RFC: ${account.rfc}'),
+          Text(
+            'Cuenta: ${account.account}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'CLABE: ${account.clabe}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'Beneficiario: ${account.beneficiary}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            'RFC: ${account.rfc}',
+            style: const TextStyle(color: kBlack, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );

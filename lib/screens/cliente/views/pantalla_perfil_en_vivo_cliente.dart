@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
-import '../../../core/app_theme.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -395,6 +394,7 @@ class _ProfileTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -414,16 +414,22 @@ class _ProfileTabBar extends StatelessWidget {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: active ? palette.surfaceSoft : palette.surface,
+                      color:
+                          active && isDark
+                              ? palette.surfaceStrong
+                              : palette.surface,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
-                        color: active ? palette.accentBorder : palette.border,
+                        color: isDark ? palette.accentBorder : palette.border,
                       ),
                     ),
                     child: Text(
                       tab.label,
                       style: TextStyle(
-                        color: active ? palette.accent : palette.textSecondary,
+                        color:
+                            active
+                                ? (isDark ? palette.accent : palette.primary)
+                                : palette.textSecondary,
                         fontWeight: FontWeight.w900,
                         fontSize: 13,
                       ),
@@ -445,6 +451,7 @@ class _MetricWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GridView.builder(
       itemCount: metrics.length,
       shrinkWrap: true,
@@ -460,13 +467,11 @@ class _MetricWrap extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: palette.headerGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: palette.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: palette.accentBorder),
+            border: Border.all(
+              color: isDark ? palette.accentBorder : palette.border,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,7 +482,7 @@ class _MetricWrap extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: palette.heroTextPrimary,
+                  color: palette.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -488,7 +493,7 @@ class _MetricWrap extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: palette.heroTextSecondary,
+                  color: palette.textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                 ),
@@ -530,17 +535,16 @@ class _AccountHeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: palette.headerGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: palette.accentBorder),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
@@ -580,7 +584,7 @@ class _AccountHeaderCard extends StatelessWidget {
                     Text(
                       name,
                       style: TextStyle(
-                        color: palette.heroTextPrimary,
+                        color: palette.textPrimary,
                         fontSize: 24,
                         height: 1.05,
                         fontWeight: FontWeight.w900,
@@ -591,7 +595,7 @@ class _AccountHeaderCard extends StatelessWidget {
                     Text(
                       email,
                       style: TextStyle(
-                        color: palette.heroTextSecondary,
+                        color: palette.textSecondary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         height: 1.35,
@@ -609,15 +613,17 @@ class _AccountHeaderCard extends StatelessWidget {
                   height: 42,
                   decoration: BoxDecoration(
                     color:
-                        context.isDarkMode
-                            ? palette.surface
+                        isDark
+                            ? palette.surfaceStrong
                             : Colors.white.withValues(alpha: 0.92),
                     shape: BoxShape.circle,
-                    border: Border.all(color: palette.border),
+                    border: Border.all(
+                      color: isDark ? palette.accentBorder : palette.border,
+                    ),
                   ),
                   child: Icon(
                     Icons.refresh_rounded,
-                    color: palette.accent,
+                    color: isDark ? palette.accent : palette.primary,
                     size: 20,
                   ),
                 ),
@@ -667,17 +673,24 @@ class _HeaderInfoPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: palette.accent, size: 18),
+          Icon(
+            icon,
+            color: isDark ? palette.accent : palette.primary,
+            size: 18,
+          ),
           const SizedBox(height: 10),
           Text(
             label,
@@ -724,13 +737,16 @@ class _MinimalProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,7 +754,7 @@ class _MinimalProfileCard extends StatelessWidget {
           Text(
             title.toUpperCase(),
             style: TextStyle(
-              color: palette.accent,
+              color: isDark ? palette.accent : palette.primary,
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.1,
@@ -769,13 +785,16 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Row(
         children: [
@@ -783,8 +802,8 @@ class _ActionCard extends StatelessWidget {
             child: FilledButton(
               onPressed: onRefresh,
               style: FilledButton.styleFrom(
-                backgroundColor: palette.accent,
-                foregroundColor: palette.textOnAccent,
+                backgroundColor: palette.primary,
+                foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(52),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
@@ -803,7 +822,9 @@ class _ActionCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: palette.textPrimary,
                 minimumSize: const Size.fromHeight(52),
-                side: BorderSide(color: palette.border),
+                side: BorderSide(
+                  color: isDark ? palette.accentBorder : palette.border,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),

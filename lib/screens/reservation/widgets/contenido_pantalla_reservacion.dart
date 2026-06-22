@@ -74,6 +74,7 @@ class ReservationScreenContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isPrimaryFormReady =
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
@@ -165,7 +166,7 @@ class ReservationScreenContent extends StatelessWidget {
                   trailing: Icon(
                     Icons.calendar_today_outlined,
                     size: 24,
-                    color: palette.accent,
+                    color: isDark ? palette.accent : palette.primary,
                   ),
                   placeholder: 'Seleccionar fecha',
                 ),
@@ -192,7 +193,7 @@ class ReservationScreenContent extends StatelessWidget {
                     trailing: Icon(
                       Icons.calendar_today_outlined,
                       size: 24,
-                      color: palette.accent,
+                      color: isDark ? palette.accent : palette.primary,
                     ),
                     placeholder: 'Seleccionar fecha',
                   ),
@@ -231,7 +232,9 @@ class ReservationScreenContent extends StatelessWidget {
                     label: const Text('Agregar tramo'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(44),
-                      side: BorderSide(color: palette.border),
+                      side: BorderSide(
+                        color: isDark ? palette.accentBorder : palette.border,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -248,10 +251,10 @@ class ReservationScreenContent extends StatelessWidget {
                             ? null
                             : onPreview,
                     style: FilledButton.styleFrom(
-                      backgroundColor: palette.accent,
+                      backgroundColor: palette.primary,
                       disabledBackgroundColor: palette.surfaceSoft,
                       disabledForegroundColor: palette.textSecondary,
-                      foregroundColor: palette.textOnAccent,
+                      foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(56),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
@@ -270,7 +273,7 @@ class ReservationScreenContent extends StatelessWidget {
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: palette.textOnAccent,
+                                    color: Colors.white,
                                   ),
                                 ),
                                 SizedBox(width: 10),
@@ -419,7 +422,14 @@ class _FormSectionHeader extends StatelessWidget {
     final palette = context.clientPalette;
     return Row(
       children: [
-        Icon(Icons.flight_outlined, color: palette.accent, size: 18),
+        Icon(
+          Icons.flight_outlined,
+          color:
+              Theme.of(context).brightness == Brightness.dark
+                  ? palette.accent
+                  : palette.primary,
+          size: 18,
+        ),
         const SizedBox(width: 6),
         Text(
           'Datos del vuelo',
@@ -770,6 +780,10 @@ class InlinePreferenceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final accentIcon =
+        Theme.of(context).brightness == Brightness.dark
+            ? palette.accent
+            : palette.primary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -797,7 +811,7 @@ class InlinePreferenceButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: Icon(icon, size: 18, color: palette.textOnAccent),
+              child: Icon(icon, size: 18, color: accentIcon),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -813,7 +827,7 @@ class InlinePreferenceButton extends StatelessWidget {
             ),
             Icon(
               Icons.keyboard_arrow_right_rounded,
-              color: palette.accent,
+              color: accentIcon,
               size: 22,
             ),
           ],
@@ -979,7 +993,10 @@ class MultiLegCard extends StatelessWidget {
             trailing: Icon(
               Icons.calendar_today_outlined,
               size: 18,
-              color: palette.accent,
+              color:
+                  Theme.of(context).brightness == Brightness.dark
+                      ? palette.accent
+                      : palette.primary,
             ),
             placeholder: 'Seleccionar fecha',
           ),

@@ -155,6 +155,30 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: false,
+        iconTheme: IconThemeData(
+          color:
+              scheme.brightness == Brightness.dark
+                  ? scheme.primary
+                  : roles.textPrimary,
+        ),
+        actionsIconTheme: IconThemeData(
+          color:
+              scheme.brightness == Brightness.dark
+                  ? scheme.primary
+                  : roles.textPrimary,
+        ),
+      ),
+      iconTheme: IconThemeData(
+        color:
+            scheme.brightness == Brightness.dark
+                ? scheme.primary
+                : roles.textPrimary,
+      ),
+      primaryIconTheme: IconThemeData(
+        color:
+            scheme.brightness == Brightness.dark
+                ? scheme.primary
+                : roles.textPrimary,
       ),
       textTheme: base.textTheme.apply(
         bodyColor: roles.textPrimary,
@@ -172,8 +196,14 @@ class AppTheme {
         fillColor: Color.lerp(roles.surfaceCard, roles.background, 0.08),
         hintStyle: TextStyle(color: roles.textSecondary, fontSize: 14),
         labelStyle: TextStyle(color: roles.textSecondary),
-        prefixIconColor: roles.textSecondary,
-        suffixIconColor: roles.textSecondary,
+        prefixIconColor:
+            scheme.brightness == Brightness.dark
+                ? scheme.primary
+                : roles.textSecondary,
+        suffixIconColor:
+            scheme.brightness == Brightness.dark
+                ? scheme.primary
+                : roles.textSecondary,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
           vertical: 17,

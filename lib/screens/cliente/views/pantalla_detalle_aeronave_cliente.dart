@@ -1,26 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
+import '../../../core/app_theme.dart';
 import '../../../models/aeronave.dart';
-import '../../../models/modelos_flujo_trabajo.dart';
-import '../../../providers/proveedor_flujo_trabajo.dart';
-import '../../reservation/pantalla_reservacion.dart';
-import '../../shared/widgets/hoja_crud_flujo_trabajo.dart';
 import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
-const Color kBg = ClientThemeColors.bg;
-const Color kWhite = ClientThemeColors.surface;
-const Color kBlack = ClientThemeColors.brandNight;
-const Color kText = ClientThemeColors.text;
-const Color kMuted = ClientThemeColors.muted;
-const Color kBorder = ClientThemeColors.border;
-const Color kSoft = ClientThemeColors.softSurface;
-
 class ClientAircraftDetailScreen extends StatelessWidget {
-  const ClientAircraftDetailScreen({super.key, required this.aircraft});
+  const ClientAircraftDetailScreen({
+    super.key,
+    required this.aircraft,
+    this.request,
+  });
 
   final Aircraft aircraft;
+  final Map<String, dynamic>? request;
 
   String get _category {
     final type = aircraft.aircraftType.toLowerCase();
@@ -34,171 +26,24 @@ class ClientAircraftDetailScreen extends StatelessWidget {
     return 'Jet ligero';
   }
 
-  void _openQuoteSheet(BuildContext context) {
-    const flowId = 'Cliente::Detalle aeronave';
-
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      backgroundColor: kWhite,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  aircraft.name.isEmpty
-                      ? 'Solicitar aeronave'
-                      : 'Solicitar ${aircraft.name}',
-                  style: const TextStyle(
-                    color: kBlack,
-                    fontSize: 26,
-                    height: 1,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.8,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Completa ruta, pasajeros, horario y preferencias para continuar con la solicitud.',
-                  style: TextStyle(
-                    color: kMuted,
-                    fontSize: 15,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-
-                          final record = StaticRecord(
-                            title: 'Solicitud ${aircraft.name}',
-                            subtitle:
-                                'Solicitud guardada para ruta, pasajeros, horario y preferencias.',
-                            status: 'Enviada',
-                            amount:
-                                '\$${(aircraft.rentalPriceUsd * aircraft.minimumHours).toStringAsFixed(0)} USD',
-                          );
-
-                          context.read<WorkflowProvider>().watch(
-                            flowId: flowId,
-                            initialRecords: const [],
-                          );
-
-                          context.read<WorkflowProvider>().createRecord(
-                            flowId,
-                            record,
-                          );
-
-                          _openAircraftRecord(context, flowId, record);
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: kBlack,
-                          foregroundColor: kWhite,
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        icon: const Icon(Icons.send_rounded, size: 18),
-                        label: const Text(
-                          'Enviar',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const ReservationScreen(),
-                            ),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: kBlack,
-                          minimumSize: const Size.fromHeight(52),
-                          side: const BorderSide(color: kBorder),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        icon: const Icon(Icons.edit_calendar_rounded, size: 18),
-                        label: const Text(
-                          'Completar',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final baseFare = aircraft.rentalPriceUsd * aircraft.minimumHours;
-    const flowId = 'Cliente::Detalle aeronave';
-
-    context.watch<WorkflowProvider>().watch(
-      flowId: flowId,
-      initialRecords: const [],
-    );
 
     return ClientExperienceShell(
       title: aircraft.name.isEmpty ? 'Aeronave' : aircraft.name,
       subtitle: 'Detalle ejecutivo.',
       child: Container(
-        color: kBg,
+        color: palette.background,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
             _AircraftHeaderCard(
               aircraft: aircraft,
+              request: request,
               category: _category,
               baseFare: baseFare,
-              onRequest: () => _openQuoteSheet(context),
-              onCompleteData: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ReservationScreen()),
-                );
-              },
-              onShare: () {
-                final record = StaticRecord(
-                  title: 'Link ${aircraft.name}',
-                  subtitle:
-                      'Enlace interno generado para compartir esta aeronave.',
-                  status: 'Activo',
-                  amount: 'Compartir',
-                );
-
-                context.read<WorkflowProvider>().createRecord(flowId, record);
-                _openAircraftRecord(context, flowId, record);
-              },
             ),
 
             const SizedBox(height: 16),
@@ -214,37 +59,37 @@ class ClientAircraftDetailScreen extends StatelessWidget {
 class _AircraftHeaderCard extends StatelessWidget {
   const _AircraftHeaderCard({
     required this.aircraft,
+    required this.request,
     required this.category,
     required this.baseFare,
-    required this.onRequest,
-    required this.onCompleteData,
-    required this.onShare,
   });
 
   final Aircraft aircraft;
+  final Map<String, dynamic>? request;
   final String category;
   final double baseFare;
-  final VoidCallback onRequest;
-  final VoidCallback onCompleteData;
-  final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = context.isDarkMode;
     final title = aircraft.name.isEmpty ? 'Aeronave ejecutiva' : aircraft.name;
     final location =
         aircraft.homeBase.isEmpty ? aircraft.city : aircraft.homeBase;
     final capacityLabel = '${aircraft.capacityPassengers} pasajeros';
+    final segments = _requestSegments(request);
+    final hasRequestContext = request != null;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
       decoration: BoxDecoration(
-        color: kWhite,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: kBorder),
-        boxShadow: const [
+        border: Border.all(color: palette.border),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x10000000),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 28,
             offset: Offset(0, 14),
           ),
@@ -263,8 +108,8 @@ class _AircraftHeaderCard extends StatelessWidget {
           const SizedBox(height: 18),
           Text(
             title,
-            style: const TextStyle(
-              color: kBlack,
+            style: TextStyle(
+              color: palette.textPrimary,
               fontSize: 32,
               height: 0.98,
               fontWeight: FontWeight.w900,
@@ -287,25 +132,68 @@ class _AircraftHeaderCard extends StatelessWidget {
               ),
             ],
           ),
+          if (hasRequestContext) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _InfoChip(
+                  icon: Icons.calendar_month_rounded,
+                  label: _requestDepartureCopy(request),
+                ),
+                _InfoChip(
+                  icon: Icons.groups_rounded,
+                  label:
+                      '${_requestPassengerCount(request)} ${_requestPassengerCount(request) == 1 ? 'pasajero' : 'pasajeros'}',
+                ),
+                if (segments.isNotEmpty)
+                  _InfoChip(
+                    icon: Icons.alt_route_rounded,
+                    label: '${segments.length} tramos',
+                  ),
+              ],
+            ),
+          ],
           if (aircraft.imageUrl.trim().isNotEmpty) ...[
             const SizedBox(height: 16),
             _AircraftHeroImage(imageUrl: aircraft.imageUrl, title: title),
+          ],
+          if (segments.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  segments
+                      .map(
+                        (segment) => _RouteSegmentChip(
+                          label:
+                              'Tramo ${segment.order} · ${segment.origin} -> ${segment.destination}',
+                        ),
+                      )
+                      .toList(),
+            ),
           ],
           const SizedBox(height: 18),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
             decoration: BoxDecoration(
-              color: kBlack,
+              color: isDark ? palette.primary : palette.surfaceSoft,
               borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: palette.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'DESDE',
                   style: TextStyle(
-                    color: Color(0xFFBBBBBB),
+                    color:
+                        isDark
+                            ? palette.heroTextSecondary
+                            : palette.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1,
@@ -314,8 +202,9 @@ class _AircraftHeaderCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   '${formatMoney(baseFare)} USD',
-                  style: const TextStyle(
-                    color: kWhite,
+                  style: TextStyle(
+                    color:
+                        isDark ? palette.heroTextPrimary : palette.textPrimary,
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -1,
@@ -325,73 +214,17 @@ class _AircraftHeaderCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${formatMoney(aircraft.rentalPriceUsd)}/hr • Min. ${aircraft.minimumHours.toStringAsFixed(1)} hrs',
-                  style: const TextStyle(
-                    color: Color(0xFFD0D0D0),
+                  style: TextStyle(
+                    color:
+                        isDark
+                            ? palette.heroTextSecondary
+                            : palette.textSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onCompleteData,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kBlack,
-                    foregroundColor: kWhite,
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  icon: const Icon(Icons.flight_takeoff_rounded, size: 18),
-                  label: const Text(
-                    'Reservar',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onRequest,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kBlack,
-                    minimumSize: const Size.fromHeight(52),
-                    side: const BorderSide(color: kBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  icon: const Icon(Icons.send_rounded, size: 18),
-                  label: const Text(
-                    'Cotizar',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                height: 52,
-                width: 52,
-                child: OutlinedButton(
-                  onPressed: onShare,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kBlack,
-                    side: const BorderSide(color: kBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Icon(Icons.ios_share_rounded, size: 19),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -407,6 +240,7 @@ class _AircraftSpecsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     final location =
         aircraft.homeBase.isEmpty ? aircraft.city : aircraft.homeBase;
     final description =
@@ -415,17 +249,17 @@ class _AircraftSpecsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: kWhite,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: kBorder),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Descripción',
             style: TextStyle(
-              color: kBlack,
+              color: palette.textPrimary,
               fontSize: 19,
               fontWeight: FontWeight.w900,
             ),
@@ -434,7 +268,7 @@ class _AircraftSpecsCard extends StatelessWidget {
           Text(
             description,
             style: TextStyle(
-              color: kMuted,
+              color: palette.textSecondary,
               fontSize: 13,
               height: 1.35,
               fontWeight: FontWeight.w600,
@@ -456,17 +290,17 @@ class _AircraftSpecsCard extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
-              title: const Text(
+              title: Text(
                 'Ver especificaciones',
                 style: TextStyle(
-                  color: kBlack,
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w900,
                   fontSize: 15,
                 ),
               ),
-              trailing: const Icon(
+              trailing: Icon(
                 Icons.arrow_forward_rounded,
-                color: kBlack,
+                color: palette.textPrimary,
                 size: 18,
               ),
               children: [
@@ -593,16 +427,17 @@ class _TinyLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: const Color(0xFF7A7368)),
+        Icon(icon, size: 16, color: palette.textSecondary),
         const SizedBox(width: 4),
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            color: Color(0xFF7A7368),
-            fontSize: 10.5,
+          style: TextStyle(
+            color: palette.textSecondary,
+            fontSize: 11,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.6,
           ),
@@ -620,24 +455,29 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F3EE),
+        color:
+            context.isDarkMode
+                ? palette.surfaceSoft
+                : Color.lerp(palette.surface, palette.background, 0.38) ??
+                    palette.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFEAE4D9)),
+        border: Border.all(color: palette.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: const Color(0xFF756D62)),
+          Icon(icon, size: 18, color: palette.textSecondary),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF4C453C),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -653,20 +493,56 @@ class _SmallBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       decoration: BoxDecoration(
-        color: kSoft,
+        color:
+            context.isDarkMode
+                ? palette.accentSoft
+                : Color.lerp(palette.accentSoft, palette.surface, 0.35) ??
+                    palette.accentSoft,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: kBorder),
+        border: Border.all(color: palette.border),
       ),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
-          color: kBlack,
-          fontSize: 11,
+        style: TextStyle(
+          color: palette.textPrimary,
+          fontSize: 12,
           fontWeight: FontWeight.w900,
           letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteSegmentChip extends StatelessWidget {
+  const _RouteSegmentChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color:
+            context.isDarkMode
+                ? palette.surfaceSoft
+                : Color.lerp(palette.surface, palette.background, 0.38) ??
+                    palette.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: palette.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
@@ -686,12 +562,13 @@ class _SpecTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F3EC),
+        color: palette.accentSoft,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9E1D5)),
+        border: Border.all(color: palette.border),
       ),
       child: Row(
         children: [
@@ -699,10 +576,10 @@ class _SpecTile extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: kWhite,
+              color: palette.surface,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 18, color: const Color(0xFF786C5B)),
+            child: Icon(icon, size: 18, color: palette.textSecondary),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -712,8 +589,8 @@ class _SpecTile extends StatelessWidget {
               children: [
                 Text(
                   label.toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF7C7264),
+                  style: TextStyle(
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w900,
                     fontSize: 10,
                     letterSpacing: 0.8,
@@ -724,8 +601,8 @@ class _SpecTile extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: kBlack,
+                  style: TextStyle(
+                    color: palette.textPrimary,
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
                     height: 1,
@@ -740,40 +617,191 @@ class _SpecTile extends StatelessWidget {
   }
 }
 
-Future<void> _openAircraftRecord(
-  BuildContext context,
-  String flowId,
-  StaticRecord record,
-) {
-  final provider = context.read<WorkflowProvider>();
+String _requestDepartureCopy(Map<String, dynamic>? request) {
+  if (request == null) return 'Fecha por definir';
+  final raw =
+      request['departure_datetime']?.toString() ??
+      request['start_datetime']?.toString() ??
+      request['departure_at']?.toString() ??
+      request['scheduled_at']?.toString() ??
+      request['date']?.toString();
+  final parsed = raw == null ? null : DateTime.tryParse(raw);
+  if (parsed == null) return 'Fecha por definir';
 
-  return showWorkflowRecordDetail(
-    context,
-    record: record,
-    onAdvance: () => provider.advanceRecord(flowId, record),
-    onActivate:
-        () => provider.updateRecord(
-          flowId,
-          record,
-          record.copyWith(status: 'Confirmado'),
+  final hour =
+      parsed.hour == 0
+          ? 12
+          : (parsed.hour > 12 ? parsed.hour - 12 : parsed.hour);
+  final minute = parsed.minute.toString().padLeft(2, '0');
+  final suffix = parsed.hour >= 12 ? 'p.m.' : 'a.m.';
+  const months = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
+  final month = months[parsed.month - 1];
+  return '${parsed.day}-$month, $hour:$minute $suffix';
+}
+
+int _requestPassengerCount(Map<String, dynamic>? request) {
+  if (request == null) return 1;
+  final candidates = [
+    request['passengers'],
+    request['passenger_count'],
+    request['pax'],
+    request['seats'],
+  ];
+  for (final value in candidates) {
+    if (value is num && value > 0) return value.toInt();
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed != null && parsed > 0) return parsed;
+  }
+  return 1;
+}
+
+class _RequestSegment {
+  const _RequestSegment({
+    required this.order,
+    required this.origin,
+    required this.destination,
+  });
+
+  final int order;
+  final String origin;
+  final String destination;
+}
+
+List<_RequestSegment> _requestSegments(Map<String, dynamic>? request) {
+  if (request == null) return const [];
+
+  final routeItems =
+      request['routes'] ?? request['segments'] ?? request['legs'];
+  if (routeItems is List) {
+    final parsed =
+        routeItems
+            .asMap()
+            .entries
+            .map((entry) {
+              final item = entry.value;
+              if (item is! Map) return null;
+              final map = Map<String, dynamic>.from(item);
+              final origin =
+                  (map['origin'] ??
+                          map['source_origin'] ??
+                          map['from'] ??
+                          map['from_airport'] ??
+                          '')
+                      .toString()
+                      .trim();
+              final destination =
+                  (map['destination'] ??
+                          map['source_destination'] ??
+                          map['to'] ??
+                          map['to_airport'] ??
+                          '')
+                      .toString()
+                      .trim();
+              if (origin.isEmpty || destination.isEmpty) return null;
+              return _RequestSegment(
+                order: entry.key + 1,
+                origin: origin.toUpperCase(),
+                destination: destination.toUpperCase(),
+              );
+            })
+            .whereType<_RequestSegment>()
+            .toList();
+    if (parsed.isNotEmpty) return parsed;
+  }
+
+  final requirements = request['requirements'];
+  if (requirements is List && requirements.isNotEmpty) {
+    final parsed = <_RequestSegment>[];
+    final baseOrigin =
+        (request['origin'] ??
+                request['from'] ??
+                request['source_origin'] ??
+                request['from_airport'] ??
+                '')
+            .toString()
+            .trim();
+    final baseDestination =
+        (request['destination'] ??
+                request['to'] ??
+                request['source_destination'] ??
+                request['to_airport'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (baseOrigin.isNotEmpty || baseDestination.isNotEmpty) {
+      parsed.add(
+        _RequestSegment(
+          order: 1,
+          origin:
+              baseOrigin.isEmpty
+                  ? 'ORIGEN POR CONFIRMAR'
+                  : baseOrigin.toUpperCase(),
+          destination:
+              baseDestination.isEmpty
+                  ? 'DESTINO POR CONFIRMAR'
+                  : baseDestination.toUpperCase(),
         ),
-    onBlock:
-        () => provider.updateRecord(
-          flowId,
-          record,
-          record.copyWith(status: 'Bloqueado'),
-        ),
-    onDelete: () => provider.deleteRecord(flowId, record),
-    onEdit: () async {
-      final updated = await showWorkflowRecordForm(
-        context,
-        title: 'Editar solicitud',
-        initial: record,
       );
+    }
 
-      if (updated != null && context.mounted) {
-        provider.updateRecord(flowId, record, updated);
-      }
-    },
-  );
+    for (final leg in requirements) {
+      if (leg is! Map) continue;
+      final map = Map<String, dynamic>.from(leg);
+      final origin = (map['origin'] ?? '').toString().trim();
+      final destination = (map['destination'] ?? '').toString().trim();
+      if (origin.isEmpty && destination.isEmpty) continue;
+      parsed.add(
+        _RequestSegment(
+          order: parsed.length + 1,
+          origin:
+              origin.isEmpty ? 'ORIGEN POR CONFIRMAR' : origin.toUpperCase(),
+          destination:
+              destination.isEmpty
+                  ? 'DESTINO POR CONFIRMAR'
+                  : destination.toUpperCase(),
+        ),
+      );
+    }
+
+    if (parsed.isNotEmpty) return parsed;
+  }
+
+  final origin =
+      (request['origin'] ??
+              request['from'] ??
+              request['source_origin'] ??
+              request['from_airport'] ??
+              '')
+          .toString()
+          .trim();
+  final destination =
+      (request['destination'] ??
+              request['to'] ??
+              request['source_destination'] ??
+              request['to_airport'] ??
+              '')
+          .toString()
+          .trim();
+  if (origin.isEmpty || destination.isEmpty) return const [];
+  return [
+    _RequestSegment(
+      order: 1,
+      origin: origin.toUpperCase(),
+      destination: destination.toUpperCase(),
+    ),
+  ];
 }

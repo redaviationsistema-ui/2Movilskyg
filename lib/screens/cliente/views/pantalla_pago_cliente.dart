@@ -48,8 +48,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   final AppLinks _appLinks = AppLinks();
   bool _submitting = false;
   bool _waitingForCommercialAccessReturn = false;
+  bool _stripeCardReady = false;
+  bool _stripeCardLoading = false;
   String _inlineMessage = '';
   String _accessCheckoutSessionId = '';
+  String _stripeCardError = '';
+  Map<String, dynamic>? _cardPaymentIntentSeed;
   Map<String, dynamic>? _wireInstructions;
   StreamSubscription<Uri>? _appLinkSubscription;
 
@@ -65,6 +69,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       _emailController.text = initialEmail;
     }
     _bindCheckoutReturnLinks();
+    if (!widget.commercialAccessMode && _paymentMethod == 'card') {
+      unawaited(_ensureStripeCardReady());
+    }
   }
 
   @override
@@ -91,6 +98,74 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   void _refresh() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _ensureStripeCardReady({bool forceRefresh = false}) async {
+    if (widget.commercialAccessMode) return;
+    if (_paymentMethod != 'card') return;
+    if (_stripeCardLoading) return;
+    if (!forceRefresh && _stripeCardReady && _cardPaymentIntentSeed != null) {
+      return;
+    }
+
+    final flightRequestId = _flightRequestId(widget.request);
+    if (flightRequestId.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _stripeCardReady = false;
+        _stripeCardError =
+            'No encontramos la reserva para preparar la tarjeta.';
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _stripeCardLoading = true;
+        _stripeCardError = '';
+      });
+    }
+
+    try {
+      final intent = await ApiClient.instance.createClientPaymentIntent(
+        flightRequestId: flightRequestId,
+        paymentPayload: {'contact_email': _emailController.text.trim()},
+      );
+      final publishableKey = _publishableKey(intent);
+      if (publishableKey.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio la llave publica de Stripe para preparar la tarjeta.',
+        );
+      }
+
+      Stripe.publishableKey = publishableKey;
+      await Stripe.instance.applySettings();
+
+      if (!mounted) return;
+      setState(() {
+        _cardPaymentIntentSeed = intent;
+        _stripeCardReady = true;
+        _stripeCardError = '';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _stripeCardReady = false;
+        _stripeCardError = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _stripeCardReady = false;
+        _stripeCardError = 'No fue posible preparar Stripe: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _stripeCardLoading = false;
+        });
+      }
+    }
   }
 
   void _handleBack() {
@@ -378,7 +453,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                     const Text(
                       'RESERVA',
                       style: TextStyle(
-                        color: Color(0xFF7A6A53),
+                        color: Color(0xFFD6E1EA),
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.1,
@@ -390,7 +465,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                           ? 'Acceso comercial premium'
                           : route,
                       style: const TextStyle(
-                        color: Color(0xFF111111),
+                        color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         height: 1,
@@ -403,12 +478,19 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                           widget.commercialAccessMode
                               ? 'Membresia mensual'
                               : '$passengerCount ${passengerCount == '1' ? 'pasajero' : 'pasajeros'}',
+                      onDark: true,
                     ),
                     _PaymentRow(
                       label: 'Metodo',
                       value: _paymentMethodSummaryLabel(),
+                      onDark: true,
                     ),
-                    _PaymentRow(label: 'Total', value: amount, emphasize: true),
+                    _PaymentRow(
+                      label: 'Total',
+                      value: amount,
+                      emphasize: true,
+                      onDark: true,
+                    ),
                   ],
                 ),
               ),
@@ -425,7 +507,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -450,6 +532,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                             _wireInstructions = null;
                             _inlineMessage = '';
                           });
+                          unawaited(_ensureStripeCardReady());
                         },
                         child: _buildCardPaymentPanel(),
                       ),
@@ -499,7 +582,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111111),
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -531,6 +614,72 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   Widget _buildCardPaymentPanel() {
+    if (_stripeCardLoading) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!_stripeCardReady) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: ClientThemeColors.brandNavy,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF29445A)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Stripe aun no esta listo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _stripeCardError.isNotEmpty
+                    ? _stripeCardError
+                    : 'Estamos preparando el campo seguro de tarjeta.',
+                style: const TextStyle(
+                  color: Color(0xFFD5E2EE),
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => unawaited(_ensureStripeCardReady(forceRefresh: true)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFF8BA4B8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -769,10 +918,24 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         return;
       }
 
-      final intent = await ApiClient.instance.createClientPaymentIntent(
-        flightRequestId: flightRequestId,
-        paymentPayload: {'contact_email': _emailController.text.trim()},
-      );
+      if (_paymentMethod == 'card') {
+        await _ensureStripeCardReady();
+        if (!_stripeCardReady) {
+          throw ApiException(
+            _stripeCardError.isNotEmpty
+                ? _stripeCardError
+                : 'Stripe no esta listo para capturar la tarjeta.',
+          );
+        }
+      }
+
+      final intent =
+          _paymentMethod == 'card' && _cardPaymentIntentSeed != null
+              ? Map<String, dynamic>.from(_cardPaymentIntentSeed!)
+              : await ApiClient.instance.createClientPaymentIntent(
+                flightRequestId: flightRequestId,
+                paymentPayload: {'contact_email': _emailController.text.trim()},
+              );
       final responseReservationId = _responseReservationId(intent);
       final effectiveReservationId =
           responseReservationId.isNotEmpty
@@ -1283,14 +1446,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (normalized.contains('error') ||
         normalized.contains('no fue posible') ||
         normalized.contains('no encontramos')) {
-      return const Color(0xFF9E2F2F);
+      return const Color(0xFFFFB4B4);
     }
     if (normalized.contains('preparada') ||
         normalized.contains('activado') ||
         normalized.contains('abierto')) {
-      return const Color(0xFF1F5F3C);
+      return const Color(0xFF9BE7B0);
     }
-    return const Color(0xFF625D55);
+    return const Color(0xFFD6E1EA);
   }
 
   bool _isMissingPaymentConfirmRoute(ApiException error) {
@@ -1407,11 +1570,13 @@ class _PaymentRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.emphasize = false,
+    this.onDark = false,
   });
 
   final String label;
   final String value;
   final bool emphasize;
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
@@ -1424,9 +1589,13 @@ class _PaymentRow extends StatelessWidget {
               label,
               style: TextStyle(
                 color:
-                    emphasize
-                        ? const Color(0xFF111111)
-                        : const Color(0xFF625D55),
+                    onDark
+                        ? (emphasize
+                            ? Colors.white
+                            : const Color(0xFFD6E1EA))
+                        : (emphasize
+                            ? const Color(0xFF111111)
+                            : const Color(0xFF625D55)),
                 fontWeight: emphasize ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
@@ -1437,7 +1606,7 @@ class _PaymentRow extends StatelessWidget {
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
-                color: const Color(0xFF111111),
+                color: onDark ? Colors.white : const Color(0xFF111111),
                 fontWeight: emphasize ? FontWeight.w900 : FontWeight.w800,
                 fontSize: emphasize ? 18 : 14,
               ),
@@ -1625,7 +1794,9 @@ class _PaymentStickyFooter extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                   backgroundColor: ClientThemeColors.brandNavy,
+                  foregroundColor: Colors.white,
                   disabledBackgroundColor: const Color(0xFFD4DAE1),
+                  disabledForegroundColor: const Color(0xFF5E6A77),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),

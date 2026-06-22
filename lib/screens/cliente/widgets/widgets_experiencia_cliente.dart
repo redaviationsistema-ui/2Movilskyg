@@ -1,13 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/app_theme.dart';
 import '../tema_cliente.dart';
-
-const Color _clientInk = ClientThemeColors.brandNavy;
-const Color _clientMuted = ClientThemeColors.muted;
-const Color _clientStroke = ClientThemeColors.border;
-const Color _clientAccent = ClientThemeColors.accent;
 
 class ClientExperienceShell extends StatelessWidget {
   const ClientExperienceShell({
@@ -89,18 +83,19 @@ class ClientHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: ClientThemeColors.heroGradient,
+        gradient: LinearGradient(
+          colors: palette.heroGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1F0E2238),
+            color: Colors.black.withValues(alpha: 0.16),
             blurRadius: 24,
             offset: Offset(0, 14),
           ),
@@ -114,6 +109,7 @@ class ClientHeroCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: palette.accentBorder),
             ),
             child: Text(
               badge,
@@ -158,8 +154,8 @@ class ClientHeroCard extends StatelessWidget {
               FilledButton(
                 onPressed: primaryAction,
                 style: FilledButton.styleFrom(
-                  backgroundColor: _clientAccent,
-                  foregroundColor: ClientThemeColors.textOnAccent,
+                  backgroundColor: palette.accent,
+                  foregroundColor: palette.textOnAccent,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 13,
@@ -205,6 +201,7 @@ class ClientSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -212,23 +209,23 @@ class ClientSectionTitle extends StatelessWidget {
           width: 48,
           height: 4,
           decoration: BoxDecoration(
-            color: _clientAccent,
+            color: palette.accent,
             borderRadius: BorderRadius.circular(999),
           ),
         ),
         const SizedBox(height: 10),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            color: _clientInk,
+            color: palette.textPrimary,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: const TextStyle(color: _clientMuted, height: 1.35),
+          style: TextStyle(color: palette.textSecondary, height: 1.35),
         ),
       ],
     );
@@ -253,18 +250,22 @@ class ActionShortcutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: ClientThemeColors.darkCard,
+          color: palette.surface,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _clientStroke),
-          boxShadow: const [
+          border: Border.all(
+            color: isDark ? palette.accentBorder : palette.border,
+          ),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x120E2238),
+              color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.08),
               blurRadius: 16,
               offset: Offset(0, 8),
             ),
@@ -277,29 +278,24 @@ class ActionShortcutCard extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: ClientThemeColors.accentGradient,
-                ),
+                gradient: LinearGradient(colors: palette.accentGradient),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: ClientThemeColors.textOnAccent),
+              child: Icon(icon, color: palette.textOnAccent),
             ),
             const SizedBox(height: 14),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
+                color: palette.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
-              style: const TextStyle(
-                color: ClientThemeColors.muted,
-                height: 1.35,
-              ),
+              style: TextStyle(color: palette.textSecondary, height: 1.35),
             ),
           ],
         ),
@@ -320,15 +316,19 @@ class GlassInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: ClientThemeColors.darkCard,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _clientStroke),
-        boxShadow: const [
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x100E2238),
+            color: Colors.black.withValues(alpha: isDark ? 0.10 : 0.06),
             blurRadius: 18,
             offset: Offset(0, 10),
           ),
@@ -355,7 +355,7 @@ class StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color:
-              context.isDarkMode
+              Theme.of(context).brightness == Brightness.dark
                   ? color.withValues(alpha: 0.16)
                   : palette.border,
         ),
@@ -561,8 +561,8 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        step.isActive ? ClientThemeColors.accent : const Color(0xFF8EA5B9);
+    final palette = context.clientPalette;
+    final color = step.isActive ? palette.accent : palette.textSecondary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -575,10 +575,7 @@ class _TimelineRow extends StatelessWidget {
                 width: 18,
                 height: 18,
                 decoration: BoxDecoration(
-                  color:
-                      step.isActive
-                          ? ClientThemeColors.accentSoft
-                          : ClientThemeColors.darkCard,
+                  color: step.isActive ? palette.accentSoft : palette.surface,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: color, width: 2),
                 ),
@@ -606,10 +603,7 @@ class _TimelineRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   step.caption,
-                  style: const TextStyle(
-                    color: ClientThemeColors.muted,
-                    height: 1.3,
-                  ),
+                  style: TextStyle(color: palette.textSecondary, height: 1.3),
                 ),
               ],
             ),

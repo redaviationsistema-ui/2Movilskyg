@@ -32,19 +32,21 @@ class ClientResultsScreen extends StatefulWidget {
 
 class _ClientResultsScreenState extends State<ClientResultsScreen> {
   bool _isCreatingRequest = false;
+  _ResultsSortCriterion _sortCriterion = _ResultsSortCriterion.advisor;
 
   @override
   Widget build(BuildContext context) {
     final reservation = context.watch<ReservationProvider>();
     final auth = context.watch<AuthProvider>();
+    final palette = context.clientPalette;
     final accessState = resolveCommercialAccessState(auth.accessData);
-    final matches = reservation.quoteMatches;
+    final matches = _sortMatches(reservation.quoteMatches);
     final selected = reservation.selectedQuoteMatch;
     final createActionLabel =
         accessState.canReserve ? 'Crear solicitud' : 'Activar acceso comercial';
 
     return Scaffold(
-      backgroundColor: ClientThemeColors.bg,
+      backgroundColor: palette.background,
       body: SafeArea(
         top: false,
         child: Column(
@@ -66,12 +68,12 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 children: [
-                  const Text(
+                  Text(
                     'Aeronaves disponibles',
                     style: TextStyle(
-                      color: ClientThemeColors.brandNight,
+                      color: palette.textPrimary,
                       fontSize: 28,
                       height: 1,
                       fontWeight: FontWeight.w900,
@@ -79,14 +81,22 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Selecciona tu opcion y crea la solicitud en segundos.',
                     style: TextStyle(
-                      color: ClientThemeColors.muted,
+                      color: palette.textSecondary,
                       fontSize: 14,
                       height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  _ResultsSortCard(
+                    activeCriterion: _sortCriterion,
+                    onSelect:
+                        (criterion) => setState(() {
+                          _sortCriterion = criterion;
+                        }),
                   ),
                   const SizedBox(height: 14),
                   if (reservation.quoteError != null) ...[
@@ -195,6 +205,230 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     return identical(quote, selected);
   }
+
+  List<Map<String, dynamic>> _sortMatches(List<Map<String, dynamic>> matches) {
+    final indexed =
+        matches
+            .asMap()
+            .entries
+            .map((entry) => (index: entry.key, match: entry.value))
+            .toList();
+
+    indexed.sort((current, next) {
+      final comparison = switch (_sortCriterion) {
+        _ResultsSortCriterion.advisor => _advisorScore(
+          next.match,
+        ).compareTo(_advisorScore(current.match)),
+        _ResultsSortCriterion.investment => _quoteTotalValue(
+          current.match,
+        ).compareTo(_quoteTotalValue(next.match)),
+        _ResultsSortCriterion.fastest => _quoteTimeValue(
+          current.match,
+        ).compareTo(_quoteTimeValue(next.match)),
+        _ResultsSortCriterion.exclusive => _exclusivityScore(
+          next.match,
+        ).compareTo(_exclusivityScore(current.match)),
+      };
+
+      if (comparison != 0) return comparison;
+      return current.index.compareTo(next.index);
+    });
+
+    return indexed.map((entry) => entry.match).toList();
+  }
+
+  double _advisorScore(Map<String, dynamic> match) {
+    final exclusivity = _exclusivityScore(match);
+    final time = _safeScoreDenominator(_quoteTimeValue(match));
+    final total = _safeScoreDenominator(_quoteTotalValue(match));
+    return exclusivity * 10 + (1 / time) * 1600 + (1 / total) * 220000;
+  }
+
+  double _quoteTotalValue(Map<String, dynamic> match) {
+    return _extractNumber(
+      match['total'] ?? match['final_price'] ?? match['price'],
+    );
+  }
+
+  double _quoteTimeValue(Map<String, dynamic> match) {
+    final raw = _firstText(match, const [
+      'time',
+      'flight_time',
+      'duration',
+      'display_time',
+      'card_time',
+    ]);
+    if (raw.isEmpty) return double.maxFinite;
+
+    final lower = raw.toLowerCase();
+    final hourMatch = RegExp(r'(\d+(?:\.\d+)?)\s*h').firstMatch(lower);
+    final minuteMatch = RegExp(r'(\d+(?:\.\d+)?)\s*m').firstMatch(lower);
+    final hours = double.tryParse(hourMatch?.group(1) ?? '') ?? 0;
+    final minutes = double.tryParse(minuteMatch?.group(1) ?? '') ?? 0;
+    final totalMinutes = hours * 60 + minutes;
+    if (totalMinutes > 0) return totalMinutes;
+
+    final numeric = _extractNumber(raw);
+    return numeric > 0 ? numeric : double.maxFinite;
+  }
+
+  double _exclusivityScore(Map<String, dynamic> match) {
+    final cabin =
+        _firstText(match, const [
+          'cabin',
+          'category',
+          'aircraft_type',
+        ]).toLowerCase();
+    final capacity = _extractNumber(
+      match['capacity'] ?? match['capacity_passengers'],
+    );
+    final amenities =
+        match['amenities'] is List ? (match['amenities'] as List).length : 0;
+    final price = _quoteTotalValue(match);
+
+    var cabinScore = 0.0;
+    if (cabin.contains('heavy')) cabinScore += 40;
+    if (cabin.contains('long range')) cabinScore += 32;
+    if (cabin.contains('super midsize')) cabinScore += 24;
+    if (cabin.contains('midsize')) cabinScore += 18;
+    if (cabin.contains('light')) cabinScore += 10;
+    if (cabin.contains('vip') || cabin.contains('elite')) cabinScore += 20;
+
+    return cabinScore + capacity + (amenities * 2) + (price / 1000);
+  }
+
+  double _safeScoreDenominator(double value) {
+    if (value.isNaN || value <= 0 || value == double.maxFinite) return 1;
+    return value;
+  }
+
+  double _extractNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return 0;
+    return double.tryParse(text.replaceAll(RegExp(r'[^0-9.\-]'), '')) ?? 0;
+  }
+}
+
+enum _ResultsSortCriterion { advisor, investment, fastest, exclusive }
+
+extension on _ResultsSortCriterion {
+  String get label {
+    switch (this) {
+      case _ResultsSortCriterion.advisor:
+        return 'Recomendado por asesor';
+      case _ResultsSortCriterion.investment:
+        return 'Mejor inversion';
+      case _ResultsSortCriterion.fastest:
+        return 'Salida mas rapida';
+      case _ResultsSortCriterion.exclusive:
+        return 'Mayor exclusividad';
+    }
+  }
+}
+
+class _ResultsSortCard extends StatelessWidget {
+  const _ResultsSortCard({
+    required this.activeCriterion,
+    required this.onSelect,
+  });
+
+  final _ResultsSortCriterion activeCriterion;
+  final ValueChanged<_ResultsSortCriterion> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'COMPARAR POR',
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Prioriza criterio experto, inversion, rapidez o exclusividad.',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children:
+                  _ResultsSortCriterion.values.map((criterion) {
+                    final active = criterion == activeCriterion;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(22),
+                        onTap: () => onSelect(criterion),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                active
+                                    ? (isDark
+                                        ? palette.surfaceStrong
+                                        : palette.textPrimary)
+                                    : palette.surface,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color:
+                                  active
+                                      ? (isDark
+                                          ? palette.accentBorder
+                                          : palette.textPrimary)
+                                      : (isDark
+                                          ? palette.accentBorder
+                                          : palette.border),
+                            ),
+                          ),
+                          child: Text(
+                            criterion.label,
+                            style: TextStyle(
+                              color:
+                                  active ? Colors.white : palette.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _QuoteMatchCard extends StatelessWidget {
@@ -216,6 +450,8 @@ class _QuoteMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final aircraft = _aircraftName(quote);
     final cabin = _firstText(quote, const [
       'cabin',
@@ -240,20 +476,17 @@ class _QuoteMatchCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(28),
           border: Border.all(
-            color:
-                isSelected
-                    ? ClientThemeColors.brandNight
-                    : ClientThemeColors.border,
+            color: isDark ? palette.accentBorder : palette.border,
             width: isSelected ? 1.6 : 1,
           ),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: Color(0x10000000),
-              blurRadius: 18,
-              offset: Offset(0, 8),
+              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.10),
+              blurRadius: 22,
+              offset: Offset(0, 10),
             ),
           ],
         ),
@@ -276,8 +509,8 @@ class _QuoteMatchCard extends StatelessWidget {
                         aircraft,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: ClientThemeColors.brandNight,
+                        style: TextStyle(
+                          color: palette.textPrimary,
                           fontSize: 18,
                           height: 1.05,
                           fontWeight: FontWeight.w900,
@@ -293,8 +526,8 @@ class _QuoteMatchCard extends StatelessWidget {
                         ].join(' | '),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: ClientThemeColors.muted,
+                        style: TextStyle(
+                          color: palette.textSecondary,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                           height: 1.25,
@@ -303,7 +536,8 @@ class _QuoteMatchCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (isSelected) const Icon(Icons.check_circle_rounded),
+                if (isSelected)
+                  Icon(Icons.check_circle_rounded, color: palette.accent),
               ],
             ),
             if (reason.isNotEmpty) ...[
@@ -312,8 +546,8 @@ class _QuoteMatchCard extends StatelessWidget {
                 reason,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: ClientThemeColors.muted,
+                style: TextStyle(
+                  color: palette.textSecondary,
                   fontSize: 13,
                   height: 1.25,
                   fontWeight: FontWeight.w700,
@@ -339,9 +573,9 @@ class _QuoteMatchCard extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: isBusy ? null : onCreateRequest,
                 style: FilledButton.styleFrom(
-                  backgroundColor: ClientThemeColors.brandNight,
+                  backgroundColor: palette.primary,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFFE4E4E4),
+                  disabledBackgroundColor: palette.surfaceSoft,
                   minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -349,7 +583,7 @@ class _QuoteMatchCard extends StatelessWidget {
                 ),
                 icon:
                     isBusy
-                        ? const SizedBox(
+                        ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
@@ -379,20 +613,24 @@ class _MetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: ClientThemeColors.bg,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFEDEDED)),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: ClientThemeColors.muted,
+            style: TextStyle(
+              color: palette.textSecondary,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -402,8 +640,8 @@ class _MetricBox extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: ClientThemeColors.brandNight,
+            style: TextStyle(
+              color: palette.textPrimary,
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -422,6 +660,7 @@ class _AircraftMedia extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: SizedBox(
@@ -482,7 +721,7 @@ class _AircraftMedia extends StatelessWidget {
                         vertical: 7,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.90),
+                        color: palette.accentSoft.withValues(alpha: 0.96),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -490,7 +729,7 @@ class _AircraftMedia extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: ClientThemeColors.brandNight,
+                          color: ClientThemeColors.textOnAccent,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
                         ),
@@ -532,29 +771,33 @@ class _EmptyResultsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'No hay aeronaves para esta busqueda.',
             style: TextStyle(
-              color: ClientThemeColors.brandNight,
+              color: palette.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Ajusta origen, fecha o pasajeros y vuelve a buscar disponibilidad.',
             style: TextStyle(
-              color: ClientThemeColors.muted,
+              color: palette.textSecondary,
               height: 1.35,
               fontWeight: FontWeight.w600,
             ),
@@ -564,7 +807,7 @@ class _EmptyResultsCard extends StatelessWidget {
             FilledButton(
               onPressed: onBackToSearch,
               style: FilledButton.styleFrom(
-                backgroundColor: ClientThemeColors.brandNight,
+                backgroundColor: palette.primary,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Volver a buscar'),
@@ -583,17 +826,18 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
       ),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Color(0xFF111111),
+        style: TextStyle(
+          color: palette.textPrimary,
           fontWeight: FontWeight.w800,
           height: 1.35,
         ),
@@ -609,16 +853,18 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: ClientThemeColors.brandNight,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accentBorder),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: palette.accent,
           fontSize: 12,
           fontWeight: FontWeight.w900,
         ),
@@ -635,6 +881,7 @@ class _RoundIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -642,11 +889,11 @@ class _RoundIconButton extends StatelessWidget {
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: palette.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE7E7E7)),
+          border: Border.all(color: palette.border),
         ),
-        child: Icon(icon, color: ClientThemeColors.brandNight),
+        child: Icon(icon, color: palette.accent),
       ),
     );
   }

@@ -1112,7 +1112,7 @@ class _ExpiringDocument {
   String get summary {
     if (daysRemaining == null) return '$category sin fecha registrada';
     if (daysRemaining! < 0) return '$category vencido';
-    return '$category vence en ${daysRemaining} dias';
+    return '$category vence en $daysRemaining dias';
   }
 }
 
@@ -1194,30 +1194,6 @@ class _DarkAlertPill extends StatelessWidget {
           fontWeight: FontWeight.w800,
         ),
       ),
-    );
-  }
-}
-
-class _QuickActionChip extends StatelessWidget {
-  const _QuickActionChip({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: Icon(icon, size: 18, color: const Color(0xFF0E2338)),
-      label: Text(label),
-      labelStyle: const TextStyle(fontWeight: FontWeight.w900),
-      onPressed: onTap,
-      backgroundColor: Colors.white,
-      side: const BorderSide(color: Color(0xFFE5EAF0)),
     );
   }
 }
@@ -1438,8 +1414,9 @@ class _MissionListState extends State<_MissionList> {
   List<_MissionSecondaryAction> _secondaryActionsFor(
     CrewAssignment? assignment,
   ) {
-    if (assignment == null || !assignment.canRespondToAssignment)
+    if (assignment == null || !assignment.canRespondToAssignment) {
       return const [];
+    }
     return const [
       _MissionSecondaryAction(
         label: 'Solicitar cambio',
@@ -1514,10 +1491,6 @@ class _MissionListState extends State<_MissionList> {
         widget.onRequestChange(assignment);
         break;
       case _MissionActionKind.advance:
-        final missionAction = action.missionAction;
-        if (missionAction != null) {
-          widget.onAdvance(assignment, missionAction);
-        }
         break;
     }
   }
@@ -1735,13 +1708,11 @@ class _MissionSecondaryAction {
     required this.label,
     required this.icon,
     required this.kind,
-    this.missionAction,
   });
 
   final String label;
   final IconData icon;
   final _MissionActionKind kind;
-  final CrewMissionAction? missionAction;
 }
 
 class _MissionStage {
@@ -2524,7 +2495,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: stateValue,
+                initialValue: stateValue,
                 decoration: const InputDecoration(
                   labelText: 'Estado de agenda',
                 ),
@@ -2543,7 +2514,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: blockTypeValue.isEmpty ? null : blockTypeValue,
+                initialValue: blockTypeValue.isEmpty ? null : blockTypeValue,
                 decoration: const InputDecoration(labelText: 'Tipo de bloqueo'),
                 items:
                     const [
@@ -3238,7 +3209,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: _selectedStatus,
+            initialValue: _selectedStatus,
             decoration: const InputDecoration(
               labelText: 'Estado',
               border: OutlineInputBorder(),
@@ -3678,7 +3649,7 @@ class _SettingsView extends StatelessWidget {
               onChanged: (value) => onChanged('personalCoverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: form['escalationMode']?.toString() ?? 'Admin primero',
+              initialValue: form['escalationMode']?.toString() ?? 'Admin primero',
               decoration: const InputDecoration(labelText: 'Escalamiento'),
               items:
                   const [
@@ -3803,7 +3774,7 @@ class _DocumentComposerState extends State<_DocumentComposer> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _category,
+          initialValue: _category,
           decoration: const InputDecoration(labelText: 'Categoria'),
           items:
               const ['Certificacion', 'Identidad', 'Idioma', 'Experiencia']
@@ -3934,7 +3905,7 @@ class _DocumentTile extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: selectedStatus,
+            initialValue: selectedStatus,
             decoration: const InputDecoration(labelText: 'Estado'),
             items:
                 statusOptions

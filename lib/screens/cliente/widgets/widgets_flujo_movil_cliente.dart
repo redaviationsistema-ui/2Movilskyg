@@ -17,6 +17,7 @@ class ClientMobileTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -44,6 +45,8 @@ class ClientMobileTopBar extends StatelessWidget {
                 child: Image.asset(
                   'assets/LOGOINTERNO.png',
                   fit: BoxFit.contain,
+                  color: isDark ? Colors.white : null,
+                  colorBlendMode: isDark ? BlendMode.srcIn : null,
                 ),
               ),
               const SizedBox(width: 9),
@@ -443,6 +446,7 @@ class ConciergeField extends StatelessWidget {
   final String? secondaryValue;
   final String placeholder;
   final String? helperText;
+  static const Color _iconBlue = ClientThemeColors.brandNavy;
 
   @override
   Widget build(BuildContext context) {
@@ -491,7 +495,7 @@ class ConciergeField extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(leadingIcon, size: 18, color: palette.accent),
+                    child: Icon(leadingIcon, size: 18, color: _iconBlue),
                   ),
                   const SizedBox(width: 12),
                 ],

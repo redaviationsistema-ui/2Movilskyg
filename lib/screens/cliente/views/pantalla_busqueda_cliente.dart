@@ -13,6 +13,7 @@ class ClientSearchScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ReservationProvider>();
+    final palette = context.clientPalette;
     final suggestedPax = provider.passengers > 0 ? provider.passengers : 6;
     final fleetCount = provider.aircraftFleet.length;
 
@@ -20,10 +21,7 @@ class ClientSearchScreen extends StatelessWidget {
       title: 'Reserva inmediata',
       subtitle:
           'Una vista viva para arrancar la solicitud como si fuera movilidad premium.',
-      trailing: const StatusBadge(
-        label: 'Modo charter',
-        color: Color(0xFF143955),
-      ),
+      trailing: StatusBadge(label: 'Modo charter', color: palette.primary),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
@@ -190,16 +188,18 @@ class _SearchChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F8FB),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: ClientThemeColors.brandNavy,
+        style: TextStyle(
+          color: palette.textPrimary,
           fontWeight: FontWeight.w700,
         ),
       ),

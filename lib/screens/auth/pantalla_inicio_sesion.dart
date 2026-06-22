@@ -182,6 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       child: Image.asset(
                                         'assets/LOGOINTERNO.png',
                                         filterQuality: FilterQuality.high,
+                                        color: isDark ? Colors.white : null,
+                                        colorBlendMode:
+                                            isDark ? BlendMode.srcIn : null,
                                       ),
                                     ),
                                   ),
