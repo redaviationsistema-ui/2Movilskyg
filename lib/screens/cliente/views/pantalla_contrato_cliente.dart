@@ -628,11 +628,12 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     final contractModel = _contractModelForRequest(request, auth: auth);
     final reservationId = _reservationId(request);
     final flightRequestId = _flightRequestId(request);
+    final contractEntityId = _contractEntityId(request);
 
-    if (reservationId.isEmpty) {
+    if (contractEntityId.isEmpty) {
       setState(() {
         _submitMessage =
-            'No se encontro el folio de reserva para guardar la firma.';
+            'No se encontro un identificador del contrato para guardar la firma.';
       });
       return;
     }
@@ -653,7 +654,8 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       final payload = {
         'reservation_id': reservationId,
         'flight_request_id': flightRequestId,
-        'booking_id': reservationId,
+        'booking_id':
+            reservationId.isNotEmpty ? reservationId : contractEntityId,
         'status': 'pending_payment',
         'workflow_status': 'pago pendiente',
         'contract_status': 'signed',
@@ -668,7 +670,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       };
 
       await _markContractReadyForPayment(
-        reservationId: reservationId,
+        reservationId: contractEntityId,
         payload: payload,
       );
 
@@ -710,6 +712,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     final contractModel = _contractModelForRequest(request, auth: auth);
     final reservationId = _reservationId(request);
     final flightRequestId = _flightRequestId(request);
+    final contractEntityId = _contractEntityId(request);
     final customerEmail = _firstMeaningfulText([
       request['client_email'],
       request['customer_email'],
@@ -717,10 +720,10 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       auth.user?.email,
     ], fallback: '');
 
-    if (reservationId.isEmpty) {
+    if (contractEntityId.isEmpty) {
       setState(() {
         _submitMessage =
-            'No se encontro el folio de reserva para preparar DocuSign.';
+            'No se encontro un identificador del contrato para preparar DocuSign.';
       });
       return;
     }
@@ -732,7 +735,8 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
     try {
       final contractSnapshot = contractModel.toSnapshot(
-        reservationId: reservationId,
+        reservationId:
+            reservationId.isNotEmpty ? reservationId : contractEntityId,
         flightRequestId: flightRequestId,
         clientSignatureAnchor: '/sig_cliente/',
       );
@@ -747,16 +751,19 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       );
       final fullContractPlainText = _buildContractPlainText(contractModel);
       final returnUrl = _buildDocuSignReturnUrl(
-        reservationId: reservationId,
+        reservationId:
+            reservationId.isNotEmpty ? reservationId : contractEntityId,
         flightRequestId: flightRequestId,
       );
       final payload = await ApiClient.instance.sendClientContractForSignature(
         reservationId: reservationId,
         flightRequestId: flightRequestId,
         contractPayload: {
-          'id': reservationId,
-          'reservation': reservationId,
-          'booking_id': reservationId,
+          'id': contractEntityId,
+          'reservation':
+              reservationId.isNotEmpty ? reservationId : contractEntityId,
+          'booking_id':
+              reservationId.isNotEmpty ? reservationId : contractEntityId,
           'reservation_id': reservationId,
           'flight_request': flightRequestId,
           'flight_request_id': flightRequestId,
@@ -777,7 +784,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
           'document_html': fullContractHtml,
           'full_contract_html': fullContractHtml,
           'full_contract_text': fullContractPlainText,
-          'source_contract_path': _buildContractSourcePath(reservationId),
+          'source_contract_path': _buildContractSourcePath(
+            reservationId.isNotEmpty ? reservationId : contractEntityId,
+          ),
           'document_source': 'client_contract_full_html',
           'regenerate': true,
           'docusign': {
@@ -830,8 +839,8 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   Future<void> _validateExternalSignatureAfterReturn() async {
     if (_externalSigning || _submitting) return;
 
-    final reservationId = _reservationId(widget.request);
-    if (reservationId.isEmpty) return;
+    final contractEntityId = _contractEntityId(widget.request);
+    if (contractEntityId.isEmpty) return;
 
     setState(() {
       _externalSigning = true;
@@ -893,11 +902,11 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   }
 
   Future<void> _downloadContractPdf() async {
-    final reservationId = _reservationId(widget.request);
-    if (reservationId.isEmpty) {
+    final contractEntityId = _contractEntityId(widget.request);
+    if (contractEntityId.isEmpty) {
       setState(() {
         _submitMessage =
-            'No se encontro el folio de reserva para descargar el contrato.';
+            'No se encontro un identificador del contrato para descargar el PDF.';
       });
       return;
     }
@@ -909,10 +918,10 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
     try {
       final bytes = await ApiClient.instance.downloadClientContractPdf(
-        reservationId,
+        contractEntityId,
       );
       final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/contrato-$reservationId.pdf');
+      final file = File('${directory.path}/contrato-$contractEntityId.pdf');
       await file.writeAsBytes(bytes, flush: true);
       final result = await OpenFilex.open(file.path);
 
@@ -959,6 +968,14 @@ class _ClientContractScreenState extends State<ClientContractScreen>
             (request['reservation_id']?.toString().trim().isEmpty ?? true)
         ? request['id'].toString().trim()
         : '';
+  }
+
+  String _contractEntityId(Map<String, dynamic> request) {
+    final reservationId = _reservationId(request);
+    if (reservationId.isNotEmpty) return reservationId;
+    final flightRequestId = _flightRequestId(request);
+    if (flightRequestId.isNotEmpty) return flightRequestId;
+    return '';
   }
 
   _ContractModel _contractModelForRequest(

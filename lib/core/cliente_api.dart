@@ -475,6 +475,13 @@ class ApiClient {
     }
 
     if (normalizedFlightRequestId.isNotEmpty) {
+      // Some backends resolve reservation routes from flight_request_id.
+      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato/docusign');
+      addPath(
+        '/client/reservations/$normalizedFlightRequestId/contract/docusign',
+      );
+      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato/enviar');
+      addPath('/client/reservations/$normalizedFlightRequestId/contract/send');
       addPath(
         '/cliente/solicitudes/$normalizedFlightRequestId/contrato/docusign',
       );
