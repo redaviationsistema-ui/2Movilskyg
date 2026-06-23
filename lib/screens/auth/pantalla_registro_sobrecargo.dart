@@ -3,7 +3,10 @@ import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/cliente_api.dart';
@@ -71,9 +74,12 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   Future<void> _pickDocument() async {
     final selected = await _selectDocumentImage();
     if (selected == null) return;
+    await _logFileDiagnostics('Crew document selected', selected);
+    final optimized = await _optimizeImageForProcessing(selected);
+    await _logFileDiagnostics('Crew document optimized', optimized);
 
     setState(() {
-      _document = selected;
+      _document = optimized;
       _readingDocument = true;
       _documentMessage = 'Escaneando licencia en backend...';
     });
@@ -86,18 +92,60 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _applyDocumentResponse(response);
     } on ApiException catch (error) {
       setState(() {
-        _applyDocumentFallback(selected);
+        _applyDocumentFallback(optimized);
         _documentMessage =
             '${error.message} La licencia ya quedo cargada; completa o corrige los datos manualmente.';
       });
     } catch (_) {
       setState(() {
-        _applyDocumentFallback(selected);
+        _applyDocumentFallback(optimized);
         _documentMessage =
             'La licencia ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
       });
     } finally {
       if (mounted) setState(() => _readingDocument = false);
+    }
+  }
+
+  Future<File> _optimizeImageForProcessing(File source) async {
+    try {
+      final bytes = await source.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return source;
+
+      const maxDimension = 1600;
+      final resized =
+          decoded.width > maxDimension || decoded.height > maxDimension
+              ? img.copyResize(
+                decoded,
+                width: decoded.width >= decoded.height ? maxDimension : null,
+                height: decoded.height > decoded.width ? maxDimension : null,
+                interpolation: img.Interpolation.average,
+              )
+              : decoded;
+
+      final output = img.encodeJpg(resized, quality: 85);
+      final tempDir = await getTemporaryDirectory();
+      final fileName =
+          '${path.basenameWithoutExtension(source.path)}_optimized.jpg';
+      final optimizedFile = File(path.join(tempDir.path, fileName));
+      await optimizedFile.writeAsBytes(output, flush: true);
+      return optimizedFile;
+    } catch (_) {
+      return source;
+    }
+  }
+
+  Future<void> _logFileDiagnostics(String label, File file) async {
+    try {
+      final bytes = await file.length();
+      debugPrint(
+        '[CREW DOC] $label path=${file.path} name=${path.basename(file.path)} bytes=$bytes platform=${Platform.operatingSystem}',
+      );
+    } catch (error) {
+      debugPrint(
+        '[CREW DOC] $label path=${file.path} name=${path.basename(file.path)} bytes=unavailable platform=${Platform.operatingSystem} error=$error',
+      );
     }
   }
 
@@ -284,10 +332,9 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     final fileName = document.path.split(Platform.pathSeparator).last;
     if (_licenseController.text.trim().isEmpty) {
       final normalizedName = fileName.toUpperCase();
-      final inferred =
-          RegExp(r'\b[A-Z]{2,5}-?\d{4,12}\b')
-              .firstMatch(normalizedName)
-              ?.group(0);
+      final inferred = RegExp(
+        r'\b[A-Z]{2,5}-?\d{4,12}\b',
+      ).firstMatch(normalizedName)?.group(0);
       if (inferred != null && inferred.isNotEmpty) {
         _licenseController.text = inferred;
       }

@@ -170,7 +170,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     required String logoSrc,
     required String headerSrc,
   }) {
-    final contractDate = _escapeHtml(model.compactDepartureLabel.split(' ').first);
+    final contractDate = _escapeHtml(
+      model.compactDepartureLabel.split(' ').first,
+    );
     final summaryRows = '''
       <tr><th>Reserva</th><td>${_escapeHtml(model.code)}</td><th>Cliente</th><td>${_escapeHtml(model.customerName)}</td><th>Prestador comercial</th><td>SKY Group</td></tr>
       <tr><th>Operador aéreo</th><td>${_escapeHtml(model.operatorLabel)}</td><th>Ruta</th><td>${_escapeHtml(model.routeLabel)}</td><th>Salida</th><td>${_escapeHtml(model.compactDepartureLabel)}</td></tr>
@@ -231,9 +233,10 @@ class _ClientContractScreenState extends State<ClientContractScreen>
                   .join();
           return '<div class="contract-block contract-section"><h3>${_escapeHtml(section.title)}</h3>$paragraphs${items.isEmpty ? '' : '<ul class="contract-list">$items</ul>'}</div>';
         }).join();
-    final accountCards = _bankAccounts
-        .map(
-          (account) => '''
+    final accountCards =
+        _bankAccounts
+            .map(
+              (account) => '''
             <article class="account-card contract-card">
               <strong>${_escapeHtml(account.bank)}</strong>
               <span>Cuenta: ${_escapeHtml(account.account)}</span>
@@ -242,8 +245,8 @@ class _ClientContractScreenState extends State<ClientContractScreen>
               <span>RFC: ${_escapeHtml(account.rfc)}</span>
             </article>
           ''',
-        )
-        .join();
+            )
+            .join();
 
     return '''
 <!doctype html>
@@ -749,6 +752,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       );
       final payload = await ApiClient.instance.sendClientContractForSignature(
         reservationId: reservationId,
+        flightRequestId: flightRequestId,
         contractPayload: {
           'id': reservationId,
           'reservation': reservationId,
@@ -935,20 +939,26 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   }
 
   String _reservationId(Map<String, dynamic> request) {
-    return request['id']?.toString() ??
-        request['flight_request_id']?.toString() ??
-        request['reservation_id']?.toString() ??
-        request['booking_id']?.toString() ??
-        '';
+    return request['reservation_id']?.toString().trim().isNotEmpty == true
+        ? request['reservation_id'].toString().trim()
+        : request['booking_id']?.toString().trim().isNotEmpty == true
+        ? request['booking_id'].toString().trim()
+        : (request['reservation'] is Map &&
+            (request['reservation']['id']?.toString().trim().isNotEmpty ??
+                false))
+        ? request['reservation']['id'].toString().trim()
+        : '';
   }
 
   String _flightRequestId(Map<String, dynamic> request) {
-    return request['flight_request_id']?.toString() ??
-        request['request_id']?.toString() ??
-        request['id']?.toString() ??
-        request['reservation_id']?.toString() ??
-        request['booking_id']?.toString() ??
-        '';
+    return request['flight_request_id']?.toString().trim().isNotEmpty == true
+        ? request['flight_request_id'].toString().trim()
+        : request['request_id']?.toString().trim().isNotEmpty == true
+        ? request['request_id'].toString().trim()
+        : request['id']?.toString().trim().isNotEmpty == true &&
+            (request['reservation_id']?.toString().trim().isEmpty ?? true)
+        ? request['id'].toString().trim()
+        : '';
   }
 
   _ContractModel _contractModelForRequest(
@@ -1382,130 +1392,130 @@ class _ClientContractReplicaDocument extends StatelessWidget {
                       _ReplicaMetaText('Total: ${model.finalPriceLabel}'),
                     ],
                   ),
-                const SizedBox(height: 22),
-                const _ReplicaSectionTitle('ANEXO A — RESUMEN COMERCIAL'),
-                const SizedBox(height: 12),
-                ...summaryRows.map(
-                  (row) => _ReplicaSummaryRow(
-                    leftLabel: row.$1,
-                    leftValue: row.$2,
-                    rightLabel: row.$3,
-                    rightValue: row.$4,
+                  const SizedBox(height: 22),
+                  const _ReplicaSectionTitle('ANEXO A — RESUMEN COMERCIAL'),
+                  const SizedBox(height: 12),
+                  ...summaryRows.map(
+                    (row) => _ReplicaSummaryRow(
+                      leftLabel: row.$1,
+                      leftValue: row.$2,
+                      rightLabel: row.$3,
+                      rightValue: row.$4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 22),
-                const _ReplicaSectionTitle('Itinerario'),
-                const SizedBox(height: 12),
-                _ReplicaItineraryTable(legs: model.legs),
-                const SizedBox(height: 22),
-                const _ReplicaSectionTitle('Desglose comercial'),
-                const SizedBox(height: 12),
-                _ReplicaBreakdownTable(model: model),
-                const SizedBox(height: 14),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final vertical = constraints.maxWidth < 560;
-                    final cards = [
-                      _ReplicaBulletCard(
-                        title: 'Incluye',
-                        items: _includesItems,
-                      ),
-                      _ReplicaBulletCard(
-                        title: 'No incluye, salvo pacto expreso',
-                        items: _excludesItems,
-                      ),
-                    ];
+                  const SizedBox(height: 22),
+                  const _ReplicaSectionTitle('Itinerario'),
+                  const SizedBox(height: 12),
+                  _ReplicaItineraryTable(legs: model.legs),
+                  const SizedBox(height: 22),
+                  const _ReplicaSectionTitle('Desglose comercial'),
+                  const SizedBox(height: 12),
+                  _ReplicaBreakdownTable(model: model),
+                  const SizedBox(height: 14),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final vertical = constraints.maxWidth < 560;
+                      final cards = [
+                        _ReplicaBulletCard(
+                          title: 'Incluye',
+                          items: _includesItems,
+                        ),
+                        _ReplicaBulletCard(
+                          title: 'No incluye, salvo pacto expreso',
+                          items: _excludesItems,
+                        ),
+                      ];
 
-                    if (vertical) {
-                      return Column(
+                      if (vertical) {
+                        return Column(
+                          children: [
+                            cards[0],
+                            const SizedBox(height: 12),
+                            cards[1],
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          cards[0],
-                          const SizedBox(height: 12),
-                          cards[1],
+                          Expanded(child: cards[0]),
+                          const SizedBox(width: 12),
+                          Expanded(child: cards[1]),
                         ],
                       );
-                    }
-
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: cards[0]),
-                        const SizedBox(width: 12),
-                        Expanded(child: cards[1]),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 18),
-                const _ReplicaSectionTitle('Contrato'),
-                const SizedBox(height: 10),
-                ..._contractPreviewParagraphs(model).map(
-                  (paragraph) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      paragraph,
-                      style: const TextStyle(
-                        color: Color(0xFF4E473D),
-                        height: 1.45,
-                        fontWeight: FontWeight.w600,
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  const _ReplicaSectionTitle('Contrato'),
+                  const SizedBox(height: 10),
+                  ..._contractPreviewParagraphs(model).map(
+                    (paragraph) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        paragraph,
+                        style: const TextStyle(
+                          color: Color(0xFF4E473D),
+                          height: 1.45,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                const _ReplicaSectionTitle('Condiciones operativas'),
-                const SizedBox(height: 10),
-                ..._operationalConditions.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '• $item',
-                      style: const TextStyle(
-                        color: Color(0xFF4E473D),
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
+                  const SizedBox(height: 10),
+                  const _ReplicaSectionTitle('Condiciones operativas'),
+                  const SizedBox(height: 10),
+                  ..._operationalConditions.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '• $item',
+                        style: const TextStyle(
+                          color: Color(0xFF4E473D),
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                const _ReplicaSectionTitle('Clausulas'),
-                const SizedBox(height: 12),
-                ...legalSections.map(
-                  (section) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _ReplicaLegalCard(section: section),
+                  const SizedBox(height: 18),
+                  const _ReplicaSectionTitle('Clausulas'),
+                  const SizedBox(height: 12),
+                  ...legalSections.map(
+                    (section) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _ReplicaLegalCard(section: section),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                const _ReplicaSectionTitle('Cuentas para pago'),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children:
-                      _bankAccounts
-                          .map(
-                            (account) => SizedBox(
-                              width:
-                                  MediaQuery.sizeOf(context).width > 520
-                                      ? 240
-                                      : double.infinity,
-                              child: _ReplicaBankCard(account: account),
-                            ),
-                          )
-                          .toList(),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.',
-                  style: TextStyle(
-                    color: Color(0xFF4E473D),
-                    height: 1.45,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 18),
+                  const _ReplicaSectionTitle('Cuentas para pago'),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children:
+                        _bankAccounts
+                            .map(
+                              (account) => SizedBox(
+                                width:
+                                    MediaQuery.sizeOf(context).width > 520
+                                        ? 240
+                                        : double.infinity,
+                                child: _ReplicaBankCard(account: account),
+                              ),
+                            )
+                            .toList(),
                   ),
-                ),
-                const SizedBox(height: 18),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'El Cliente reconoce y acepta que, por razones administrativas, fiscales, operativas o de cobranza, los pagos podrán realizarse a cuentas bancarias de terceros autorizados expresamente por el Prestador del Servicio.',
+                    style: TextStyle(
+                      color: Color(0xFF4E473D),
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   const _ReplicaSectionTitle('Firmas'),
                   const SizedBox(height: 18),
                   const Divider(color: Color(0xFF1C2430), thickness: 2),

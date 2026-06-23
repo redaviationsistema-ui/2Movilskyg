@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -101,12 +102,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   Future<void> _pickIneFront() async {
     final selected = await _selectDocumentImage('INE');
     if (selected == null) return;
+    await _logFileDiagnostics('INE selected', selected);
     final optimized = await _optimizeImageForProcessing(selected);
     if (!mounted) return;
 
-    debugPrint(
-      '[INE] Archivo seleccionado: original=${selected.path} optimized=${optimized.path}',
-    );
+    await _logFileDiagnostics('INE optimized', optimized);
 
     setState(() {
       _ineFront = optimized;
@@ -142,6 +142,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       File(recoveredFile.path),
     );
     if (!mounted) return;
+    await _logFileDiagnostics('INE recovered optimized', optimized);
 
     setState(() {
       _ineFront = optimized;
@@ -205,7 +206,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
     setState(() => _scanningDocument = true);
     debugPrint(
-      '[INE] Iniciando escaneo local. files=${images.map((file) => file.path).join(', ')}',
+      '[INE] Iniciando escaneo local platform=${Platform.operatingSystem} files=${images.map((file) => file.path).join(', ')}',
     );
     try {
       final result = await RegistrationOcrService.scanIne(images);
@@ -214,7 +215,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       );
       _applyLocalIneResult(result);
     } catch (error) {
-      debugPrint('[INE] Error en escaneo local: $error');
+      debugPrint(
+        '[INE] Error en escaneo local platform=${Platform.operatingSystem}: $error',
+      );
     }
 
     if (!_hasUsefulIneData()) {
@@ -225,18 +228,23 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         await _scanIneInBackend(images);
       } on ApiException catch (apiError) {
         if (!mounted) return;
+        final normalizedError = _normalizeClientDocumentMessage(
+          apiError.message,
+        );
         setState(() {
           _applyIneFallback(images.first);
           _documentScanMessage =
-              '${apiError.message} La INE ya quedo cargada; completa o corrige los datos manualmente.';
+              '$normalizedError La foto de la INE se guardo en este formulario; completa o corrige los datos manualmente.';
         });
-        debugPrint('[INE] Error backend: ${apiError.message}');
+        debugPrint(
+          '[INE] Error backend platform=${Platform.operatingSystem} message=${apiError.message} payload=${jsonEncode(apiError.payload ?? const {})}',
+        );
       } catch (error) {
         if (!mounted) return;
         setState(() {
           _applyIneFallback(images.first);
           _documentScanMessage =
-              'La INE ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
+              'La foto de la INE se guardo en este formulario. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
         });
         debugPrint('[INE] Fallo backend sin detalle tipado: $error');
       }
@@ -280,12 +288,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   Future<void> _scanIneInBackend(List<File> images) async {
     for (final image in images) {
-      debugPrint('[INE] Enviando imagen al backend: ${image.path}');
+      await _logFileDiagnostics('INE backend upload', image);
+      debugPrint(
+        '[INE] Enviando imagen al backend: field=documento documentType=INE path=${image.path}',
+      );
       final response = await _api.scanRegistrationDocument(
         document: image,
         documentType: 'INE',
       );
-      debugPrint('[INE] Respuesta backend cruda: $response');
+      debugPrint('[INE] Respuesta backend completa: ${jsonEncode(response)}');
       _applyBackendIneResponse(response);
       if (_hasUsefulIneData()) {
         debugPrint(
@@ -532,6 +543,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   Future<File> _optimizeImageForProcessing(File source) async {
     try {
+      await _logFileDiagnostics('Image before optimization', source);
       final bytes = await source.readAsBytes();
       final decoded = img.decodeImage(bytes);
       if (decoded == null) return source;
@@ -553,6 +565,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           '${path.basenameWithoutExtension(source.path)}_optimized.jpg';
       final optimizedFile = File(path.join(tempDir.path, fileName));
       await optimizedFile.writeAsBytes(output, flush: true);
+      await _logFileDiagnostics('Image after optimization', optimizedFile);
       return optimizedFile;
     } catch (_) {
       return source;
@@ -774,7 +787,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       ),
       _FileButton(
         title: 'ESCANEA TU INE ',
-        value: _ineFront?.path.split(Platform.pathSeparator).last,
+        value: _ineFront == null ? null : _ineFileLabel(),
         loading: _scanningDocument,
         onTap: _pickIneFront,
       ),
@@ -832,7 +845,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
             _selfie == null
                 ? 'Abrir camara y capturar selfie'
                 : 'Repetir selfie',
-        value: _selfie?.path.split(Platform.pathSeparator).last,
+        value: _selfie == null ? null : _selfieFileLabel(),
         loading: _validatingSelfie,
         onTap: _captureSelfie,
       ),
@@ -1042,6 +1055,42 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   void _setIfPresent(TextEditingController controller, dynamic value) {
     final text = value?.toString().trim() ?? '';
     if (text.isNotEmpty) controller.text = text;
+  }
+
+  Future<void> _logFileDiagnostics(String label, File file) async {
+    try {
+      final bytes = await file.length();
+      debugPrint(
+        '[INE] $label path=${file.path} name=${path.basename(file.path)} bytes=$bytes',
+      );
+    } catch (error) {
+      debugPrint(
+        '[INE] $label path=${file.path} name=${path.basename(file.path)} bytes=unavailable error=$error',
+      );
+    }
+  }
+
+  String _normalizeClientDocumentMessage(String message) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return 'No fue posible procesar la INE.';
+
+    return trimmed
+        .replaceAll(RegExp('licencia', caseSensitive: false), 'INE')
+        .replaceAll(RegExp('license', caseSensitive: false), 'INE');
+  }
+
+  String _ineFileLabel() {
+    if (_ineFront == null) return '';
+    if (_hasUsefulIneData()) return 'INE escaneada';
+    if (_scanningDocument) return 'Procesando INE...';
+    return 'INE cargada';
+  }
+
+  String _selfieFileLabel() {
+    if (_selfie == null) return '';
+    if (_validatingSelfie) return 'Validando selfie...';
+    if (_selfieHasFace) return 'Selfie validada';
+    return 'Selfie cargada';
   }
 }
 

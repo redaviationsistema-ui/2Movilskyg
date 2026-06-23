@@ -2,7 +2,7 @@ name: red_sky
 description: "Red Sky mobile marketplace for private flights."
 publish_to: 'none'
 
-version: 1.0.0+6
+version: 1.0.0+7
 
 environment:
   sdk: ^3.7.0
@@ -20,6 +20,7 @@ dependencies:
   dropdown_search: ^5.0.6
   pdf: ^3.10.8
   http: ^1.2.0
+  http_parser: ^4.1.2
   image: ^4.5.4
   sqflite: ^2.3.3+1
   path: ^1.9.0

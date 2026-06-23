@@ -82,7 +82,7 @@ class RegistrationOcrService {
   }
 
   static Future<String> _scanText(String path) async {
-    if (!Platform.isAndroid) return '';
+    if (!Platform.isAndroid && !Platform.isIOS) return '';
     final response = await _ocrChannel.invokeMapMethod<String, dynamic>(
       'recognizeText',
       {'path': path},
@@ -243,9 +243,10 @@ class RegistrationOcrService {
     final singleYear = RegExp(r'VIGENCIA[:\s-]*(20\d{2})').firstMatch(text);
     if (singleYear != null) return '${singleYear.group(1)}-12-31';
 
-    final standaloneDateMatches = RegExp(
-      r'\b(20\d{2})[-/](\d{2})[-/](\d{2})\b',
-    ).allMatches(text).toList();
+    final standaloneDateMatches =
+        RegExp(
+          r'\b(20\d{2})[-/](\d{2})[-/](\d{2})\b',
+        ).allMatches(text).toList();
     if (standaloneDateMatches.isNotEmpty) {
       final match = standaloneDateMatches.last;
       return '${match.group(1)}-${match.group(2)}-${match.group(3)}';
@@ -302,7 +303,11 @@ class RegistrationOcrService {
         }).toList();
 
     if (nameCandidates.isEmpty) return '';
-    return nameCandidates.take(3).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return nameCandidates
+        .take(3)
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   static String _extractCityBase(String rawText) {
@@ -322,9 +327,10 @@ class RegistrationOcrService {
         lines
             .skip(addressIndex + 1)
             .takeWhile(
-              (line) => !RegExp(
-                r'CLAVE|CURP|FECHA|SECCI[O0]N|A[ÑN]O|SEXO|VIGENCIA|ESTADO|MUNICIPIO',
-              ).hasMatch(line),
+              (line) =>
+                  !RegExp(
+                    r'CLAVE|CURP|FECHA|SECCI[O0]N|A[ÑN]O|SEXO|VIGENCIA|ESTADO|MUNICIPIO',
+                  ).hasMatch(line),
             )
             .toList();
 

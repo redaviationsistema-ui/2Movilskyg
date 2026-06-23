@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:path/path.dart' as path;
 
 class BackendUser {
   final String id;
@@ -451,24 +453,78 @@ class ApiClient {
 
   Future<Map<String, dynamic>> sendClientContractForSignature({
     required String reservationId,
+    String? flightRequestId,
     required Map<String, dynamic> contractPayload,
   }) {
-    return postFirstAvailable(
-      [
-        '/cliente/reservas/$reservationId/contrato/docusign',
-        '/client/reservations/$reservationId/contract/docusign',
-        '/cliente/reservas/$reservationId/contrato/enviar',
-        '/client/reservations/$reservationId/contract/send',
-        '/contracts/send',
-      ],
-      authenticated: true,
-      body: {
-        'reservation_id': reservationId,
-        'flight_request_id': reservationId,
-        'booking_id': reservationId,
-        ...contractPayload,
-      },
-    );
+    final normalizedReservationId = reservationId.trim();
+    final normalizedFlightRequestId = flightRequestId?.trim() ?? '';
+    final paths = <String>[];
+
+    void addPath(String value) {
+      if (value.isEmpty || paths.contains(value)) return;
+      paths.add(value);
+    }
+
+    if (normalizedReservationId.isNotEmpty) {
+      addPath('/cliente/reservas/$normalizedReservationId/contrato/docusign');
+      addPath(
+        '/client/reservations/$normalizedReservationId/contract/docusign',
+      );
+      addPath('/cliente/reservas/$normalizedReservationId/contrato/enviar');
+      addPath('/client/reservations/$normalizedReservationId/contract/send');
+    }
+
+    if (normalizedFlightRequestId.isNotEmpty) {
+      addPath(
+        '/cliente/solicitudes/$normalizedFlightRequestId/contrato/docusign',
+      );
+      addPath(
+        '/client/flight-requests/$normalizedFlightRequestId/contract/docusign',
+      );
+      addPath(
+        '/cliente/solicitudes/$normalizedFlightRequestId/contrato/enviar',
+      );
+      addPath(
+        '/client/flight-requests/$normalizedFlightRequestId/contract/send',
+      );
+    }
+
+    final body = {
+      if (normalizedReservationId.isNotEmpty)
+        'reservation_id': normalizedReservationId,
+      if (normalizedFlightRequestId.isNotEmpty)
+        'flight_request_id': normalizedFlightRequestId,
+      if (normalizedReservationId.isNotEmpty)
+        'booking_id': normalizedReservationId,
+      ...contractPayload,
+    };
+
+    return () async {
+      try {
+        return await writeFirstAvailable(
+          paths,
+          authenticated: true,
+          body: body,
+        );
+      } on ApiException catch (error) {
+        final status = error.statusCode ?? 0;
+        final attemptedPaths = paths.join(', ');
+        if (status == 404 || status == 405) {
+          throw ApiException(
+            'No fue posible preparar DocuSign porque el backend no expone una ruta compatible para este contrato. Rutas probadas: $attemptedPaths',
+            statusCode: error.statusCode,
+            cause: error,
+            payload: error.payload,
+          );
+        }
+        throw ApiException(
+          'No fue posible preparar DocuSign. ${error.message} Rutas probadas: $attemptedPaths',
+          statusCode: error.statusCode,
+          cause: error,
+          payload: error.payload,
+        );
+      }
+    }();
   }
 
   Future<Map<String, dynamic>> getClientContractStatus(String contractId) {
@@ -861,10 +917,10 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getCrewAvailabilityStatuses() {
-    return getFirstAvailable(
-      const ['/sobrecargo/availability/statuses', '/crew/availability/statuses'],
-      authenticated: true,
-    );
+    return getFirstAvailable(const [
+      '/sobrecargo/availability/statuses',
+      '/crew/availability/statuses',
+    ], authenticated: true);
   }
 
   Future<Map<String, dynamic>> saveCrewAvailabilityDay({
@@ -1065,6 +1121,7 @@ class ApiClient {
       try {
         return await post(path, body: body, authenticated: authenticated);
       } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error)) rethrow;
         lastError = error;
       }
     }
@@ -1252,14 +1309,58 @@ class ApiClient {
           ..fields.addAll(fields);
 
     for (final entry in files.entries) {
-      request.files.add(
-        await http.MultipartFile.fromPath(entry.key, entry.value.path),
-      );
+      request.files.add(await _buildMultipartFile(entry.key, entry.value));
     }
 
+    debugPrint(
+      '[API multipart] path=$path fields=${fields.keys.toList()} fileFields=${files.keys.toList()}',
+    );
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
+    debugPrint(
+      '[API multipart] response path=$path status=${response.statusCode} body=${response.body}',
+    );
     return _decode(response, baseUrl);
+  }
+
+  Future<http.MultipartFile> _buildMultipartFile(
+    String fieldName,
+    File file,
+  ) async {
+    final bytes = await file.readAsBytes();
+    final fileName = _normalizedUploadFileName(file);
+    final contentType = _contentTypeForFile(fileName);
+
+    debugPrint(
+      '[API multipart] file path=${file.path} name=$fileName bytes=${bytes.length} field=$fieldName contentType=${contentType.mimeType}',
+    );
+
+    return http.MultipartFile.fromBytes(
+      fieldName,
+      bytes,
+      filename: fileName,
+      contentType: contentType,
+    );
+  }
+
+  String _normalizedUploadFileName(File file) {
+    final originalName = path.basename(file.path).trim();
+    final extension = path.extension(originalName).toLowerCase();
+
+    if (extension == '.jpg' || extension == '.jpeg') return originalName;
+
+    return '${path.basenameWithoutExtension(originalName)}.jpg';
+  }
+
+  MediaType _contentTypeForFile(String fileName) {
+    final extension = path.extension(fileName).toLowerCase();
+    return switch (extension) {
+      '.jpg' || '.jpeg' => MediaType('image', 'jpeg'),
+      '.png' => MediaType('image', 'png'),
+      '.heic' => MediaType('image', 'heic'),
+      '.pdf' => MediaType('application', 'pdf'),
+      _ => MediaType('application', 'octet-stream'),
+    };
   }
 
   Future<Map<String, dynamic>> _request(
@@ -1289,33 +1390,47 @@ class ApiClient {
     Map<String, String>? query,
   }) async {
     final uri = _uri(candidate, path, query);
+    final requestHeaders = _headers(authenticated: authenticated);
+    _logHttpRequest(
+      method: method,
+      uri: uri,
+      headers: requestHeaders,
+      body: body,
+    );
 
     switch (method) {
       case 'POST':
-        return http.post(
+        final response = await http.post(
           uri,
-          headers: _headers(authenticated: authenticated),
+          headers: requestHeaders,
           body: jsonEncode(body ?? {}),
         );
+        _logHttpResponse(method: method, uri: uri, response: response);
+        return response;
       case 'PATCH':
-        return http.patch(
+        final response = await http.patch(
           uri,
-          headers: _headers(authenticated: authenticated),
+          headers: requestHeaders,
           body: jsonEncode(body ?? {}),
         );
+        _logHttpResponse(method: method, uri: uri, response: response);
+        return response;
       case 'PUT':
-        return http.put(
+        final response = await http.put(
           uri,
-          headers: _headers(authenticated: authenticated),
+          headers: requestHeaders,
           body: jsonEncode(body ?? {}),
         );
+        _logHttpResponse(method: method, uri: uri, response: response);
+        return response;
       case 'DELETE':
-        return http.delete(
-          uri,
-          headers: _headers(authenticated: authenticated),
-        );
+        final response = await http.delete(uri, headers: requestHeaders);
+        _logHttpResponse(method: method, uri: uri, response: response);
+        return response;
       default:
-        return http.get(uri, headers: _headers(authenticated: authenticated));
+        final response = await http.get(uri, headers: requestHeaders);
+        _logHttpResponse(method: method, uri: uri, response: response);
+        return response;
     }
   }
 
@@ -1331,6 +1446,72 @@ class ApiClient {
 
   String _normalizeBaseUrl(String value) {
     return value.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  void _logHttpRequest({
+    required String method,
+    required Uri uri,
+    required Map<String, String> headers,
+    Map<String, dynamic>? body,
+  }) {
+    debugPrint(
+      '[API ${Platform.isIOS
+          ? 'iOS'
+          : Platform.isAndroid
+          ? 'Android'
+          : Platform.operatingSystem}] request method=$method uri=$uri headers=${_sanitizeHeaders(headers)} body=${_sanitizeBody(body)}',
+    );
+  }
+
+  void _logHttpResponse({
+    required String method,
+    required Uri uri,
+    required http.Response response,
+  }) {
+    debugPrint(
+      '[API ${Platform.isIOS
+          ? 'iOS'
+          : Platform.isAndroid
+          ? 'Android'
+          : Platform.operatingSystem}] response method=$method uri=$uri status=${response.statusCode} body=${response.body}',
+    );
+  }
+
+  Map<String, String> _sanitizeHeaders(Map<String, String> headers) {
+    return headers.map((key, value) {
+      final normalized = key.toLowerCase();
+      if (normalized == 'authorization') {
+        final hasBearer = value.startsWith('Bearer ');
+        final token = hasBearer ? value.substring(7) : value;
+        final masked =
+            token.isEmpty
+                ? ''
+                : token.length <= 8
+                ? '***'
+                : '${token.substring(0, 4)}***${token.substring(token.length - 2)}';
+        return MapEntry(key, hasBearer ? 'Bearer $masked' : masked);
+      }
+      return MapEntry(key, value);
+    });
+  }
+
+  Map<String, dynamic> _sanitizeBody(Map<String, dynamic>? body) {
+    final payload = Map<String, dynamic>.from(body ?? const {});
+    const secretKeys = {
+      'password',
+      'password_confirmation',
+      'token',
+      'access_token',
+      'refresh_token',
+      'client_secret',
+    };
+
+    payload.updateAll((key, value) {
+      if (secretKeys.contains(key.toLowerCase())) return '***';
+      return value;
+    });
+
+    return payload;
   }
 
   Map<String, String> _headers({required bool authenticated}) {
