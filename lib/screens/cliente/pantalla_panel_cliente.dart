@@ -433,14 +433,13 @@ class _QuickAccessCard extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: ClientThemeColors.accentGradient,
-                ),
+                color: ClientThemeColors.darkCardSoft,
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: ClientThemeColors.accentBorder),
               ),
               child: Icon(
                 icon,
-                color: ClientThemeColors.textOnAccent,
+                color: ClientThemeColors.accent,
                 size: 20,
               ),
             ),

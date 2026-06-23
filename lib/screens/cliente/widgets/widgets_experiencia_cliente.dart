@@ -278,10 +278,11 @@ class ActionShortcutCard extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: palette.accentGradient),
+                color: palette.surfaceStrong,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: palette.accentBorder),
               ),
-              child: Icon(icon, color: palette.textOnAccent),
+              child: Icon(icon, color: palette.accent),
             ),
             const SizedBox(height: 14),
             Text(

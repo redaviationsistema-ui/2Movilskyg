@@ -1511,12 +1511,13 @@ class _EmptyFlightsCard extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: palette.accentGradient),
+              color: palette.surfaceStrong,
               borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.accentBorder),
             ),
             child: Icon(
               Icons.flight_takeoff_rounded,
-              color: palette.textOnAccent,
+              color: palette.accent,
             ),
           ),
           const SizedBox(height: 18),

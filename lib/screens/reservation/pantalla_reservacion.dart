@@ -8,8 +8,8 @@ import '../../core/acceso_comercial_cliente.dart';
 import '../../models/aeropuerto.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
+import '../cliente/views/pantalla_pago_cliente.dart';
 import '../cliente/widgets/widgets_flujo_movil_cliente.dart';
-import '../subscription/pantalla_centro_membresia.dart';
 import 'pantalla_vista_previa_cotizacion.dart';
 import 'widgets/hoja_selector_aeropuerto.dart';
 import 'widgets/contenido_pantalla_reservacion.dart';
@@ -141,8 +141,19 @@ class _ReservationScreenState extends State<ReservationScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
-            (_) => const MembershipCenterScreen(
-              audience: MembershipAudience.client,
+            (_) => ClientPaymentScreen(
+              request: const {},
+              commercialAccessMode: true,
+              onPaymentComplete: () async {
+                await context
+                    .read<AuthProvider>()
+                    .refreshCommercialAccessStatus();
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                await context
+                    .read<ReservationProvider>()
+                    .loadClientWorkspaceData(force: true);
+              },
             ),
       ),
     );

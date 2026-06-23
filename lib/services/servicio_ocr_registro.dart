@@ -25,6 +25,13 @@ class RegistrationOcrService {
     return _parseIne(rawText);
   }
 
+  static Future<String> scanTextFile(File image) async {
+    debugPrint(
+      '[DOC OCR] scanTextFile path=${image.path} platform=${Platform.operatingSystem}',
+    );
+    return _scanText(image.path);
+  }
+
   static Future<RegistrationOcrResult> scanIne(List<File> images) async {
     final scanner = MobileScannerController(
       formats: const [
@@ -477,7 +484,7 @@ class RegistrationOcrService {
     required int maxLength,
   }) {
     final match = RegExp(
-      '$labelPattern[:\\s-]*([A-Z0-9\\s]{${minLength},${maxLength}})',
+      '$labelPattern[:\\s-]*([A-Z0-9\\s]{$minLength,$maxLength})',
     ).firstMatch(text);
     return match?.group(1)?.trim();
   }

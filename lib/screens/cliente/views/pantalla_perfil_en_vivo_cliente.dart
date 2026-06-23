@@ -563,14 +563,15 @@ class _AccountHeaderCard extends StatelessWidget {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: palette.accentGradient),
+                  color: palette.surfaceStrong,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: palette.accentBorder),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   initial,
                   style: TextStyle(
-                    color: palette.textOnAccent,
+                    color: palette.accent,
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
                   ),

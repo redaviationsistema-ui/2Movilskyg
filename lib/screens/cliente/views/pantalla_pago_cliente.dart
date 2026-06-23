@@ -69,7 +69,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       _emailController.text = initialEmail;
     }
     _bindCheckoutReturnLinks();
-    if (!widget.commercialAccessMode && _paymentMethod == 'card') {
+    if (_paymentMethod == 'card') {
       unawaited(_ensureStripeCardReady());
     }
   }
@@ -101,22 +101,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   Future<void> _ensureStripeCardReady({bool forceRefresh = false}) async {
-    if (widget.commercialAccessMode) return;
     if (_paymentMethod != 'card') return;
     if (_stripeCardLoading) return;
     if (!forceRefresh && _stripeCardReady && _cardPaymentIntentSeed != null) {
-      return;
-    }
-
-    final flightRequestId = _flightRequestId(widget.request);
-    final reservationId = _reservationId(widget.request);
-    if (flightRequestId.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _stripeCardReady = false;
-        _stripeCardError =
-            'No encontramos la reserva para preparar la tarjeta.';
-      });
       return;
     }
 
@@ -128,22 +115,40 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     try {
-      final effectiveReservationId = await _ensureReservationId(
-        flightRequestId: flightRequestId,
-        reservationId: reservationId,
-        logPrefix: '[Pago]',
-      );
-      final intent = await ApiClient.instance.createClientPaymentIntent(
-        flightRequestId: flightRequestId,
-        paymentPayload: {
-          'contact_email': _emailController.text.trim(),
-          'reservation_id': effectiveReservationId,
-        },
-      );
+      late final Map<String, dynamic> intent;
+      if (widget.commercialAccessMode) {
+        intent = await _createCommercialAccessIntentSeed();
+      } else {
+        final flightRequestId = _flightRequestId(widget.request);
+        final reservationId = _reservationId(widget.request);
+        if (flightRequestId.isEmpty) {
+          throw const ApiException(
+            'No encontramos la reserva para preparar la tarjeta.',
+          );
+        }
+        final effectiveReservationId = await _ensureReservationId(
+          flightRequestId: flightRequestId,
+          reservationId: reservationId,
+          logPrefix: '[Pago]',
+        );
+        intent = await ApiClient.instance.createClientPaymentIntent(
+          flightRequestId: flightRequestId,
+          paymentPayload: {
+            'contact_email': _emailController.text.trim(),
+            'reservation_id': effectiveReservationId,
+          },
+        );
+      }
       final publishableKey = _publishableKey(intent);
+      final clientSecret = _clientSecret(intent);
       if (publishableKey.isEmpty) {
         throw const ApiException(
           'El backend no devolvio la llave publica de Stripe para preparar la tarjeta.',
+        );
+      }
+      if (clientSecret.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio client_secret para habilitar la tarjeta en este flujo.',
         );
       }
 
@@ -158,9 +163,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       });
     } on ApiException catch (error) {
       if (!mounted) return;
+      final shouldFallbackToCheckout =
+          widget.commercialAccessMode &&
+          _shouldFallbackCommercialAccessToCheckout(error.message);
       setState(() {
         _stripeCardReady = false;
         _stripeCardError = error.message;
+        if (shouldFallbackToCheckout && widget.commercialAccessMode) {
+          _inlineMessage =
+              'El backend rechazo la preparacion de tarjeta para acceso comercial: ${error.message}';
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -175,6 +187,23 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         });
       }
     }
+  }
+
+  Future<Map<String, dynamic>> _createCommercialAccessIntentSeed() {
+    final provisionalSuccessUrl = _buildCommercialAccessReturnUrl(
+      'success',
+      includeStripeSessionPlaceholder: true,
+    );
+    final provisionalCancelUrl = _buildCommercialAccessReturnUrl('cancel');
+    return ApiClient.instance.createClientAccessCheckout(
+      paymentPayload: {
+        'contact_email': _emailController.text.trim(),
+        'payment_method': 'card',
+      },
+      successUrl: provisionalSuccessUrl,
+      cancelUrl: provisionalCancelUrl,
+      returnUrl: provisionalSuccessUrl,
+    );
   }
 
   void _handleBack() {
@@ -277,7 +306,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             _submitting
                 ? 'Procesando...'
                 : widget.commercialAccessMode
-                ? 'Activar acceso comercial'
+                ? (_paymentMethod == 'card'
+                    ? 'Pagar ahora'
+                    : 'Activar acceso comercial')
                 : _paymentMethod == 'card'
                 ? 'Pagar ahora'
                 : _paymentMethod == 'wire'
@@ -527,13 +558,38 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                     ),
                     const SizedBox(height: 12),
                     if (widget.commercialAccessMode)
-                      const _CompactPaymentOption(
-                        label: 'Stripe Checkout',
-                        subtitle: 'Activa o renueva tu acceso comercial',
-                        selected: true,
-                        expanded: true,
-                        onTap: null,
-                        child: SizedBox.shrink(),
+                      Column(
+                        children: [
+                          _CompactPaymentOption(
+                            label: 'Tarjeta Corporativa',
+                            subtitle: 'Visa • Mastercard • Amex',
+                            selected: _paymentMethod == 'card',
+                            expanded: _paymentMethod == 'card',
+                            onTap: () {
+                              setState(() {
+                                _paymentMethod = 'card';
+                                _inlineMessage = '';
+                              });
+                              unawaited(_ensureStripeCardReady());
+                            },
+                            child: _buildCardPaymentPanel(),
+                          ),
+                          const SizedBox(height: 10),
+                          _CompactPaymentOption(
+                            label: 'Stripe Checkout',
+                            subtitle:
+                                'Activa o renueva tu acceso comercial en la pagina segura de Stripe',
+                            selected: _paymentMethod == 'link',
+                            expanded: _paymentMethod == 'link',
+                            onTap: () {
+                              setState(() {
+                                _paymentMethod = 'link';
+                                _inlineMessage = '';
+                              });
+                            },
+                            child: _buildLinkPaymentPanel(),
+                          ),
+                        ],
                       )
                     else ...[
                       _CompactPaymentOption(
@@ -673,6 +729,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               Text(
                 _stripeCardError.isNotEmpty
                     ? _stripeCardError
+                    : widget.commercialAccessMode
+                    ? 'Estamos preparando el formulario seguro de tarjeta para activar tu acceso.'
                     : 'Estamos preparando el campo seguro de tarjeta.',
                 style: const TextStyle(
                   color: Color(0xFFD5E2EE),
@@ -881,7 +939,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   bool get _canSubmit {
     if (_emailController.text.trim().isEmpty) return false;
-    if (widget.commercialAccessMode || _paymentMethod == 'link') return true;
+    if (_paymentMethod == 'link') return true;
     if (_paymentMethod == 'card') {
       return _cardDetails?.complete ?? false;
     }
@@ -890,7 +948,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   Future<void> _submitPayment() async {
     if (widget.commercialAccessMode) {
-      await _submitCommercialAccessPayment();
+      if (_paymentMethod == 'card') {
+        await _submitCommercialAccessCardPayment();
+      } else {
+        await _submitCommercialAccessPayment();
+      }
       return;
     }
     if (_paymentMethod == 'link') {
@@ -1153,6 +1215,105 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
   }
 
+  Future<void> _submitCommercialAccessCardPayment() async {
+    final customerName = _customerName(context);
+    setState(() {
+      _submitting = true;
+      _inlineMessage = 'Preparando pago seguro con Stripe...';
+    });
+
+    try {
+      await _ensureStripeCardReady();
+      if (!_stripeCardReady || _cardPaymentIntentSeed == null) {
+        throw ApiException(
+          _stripeCardError.isNotEmpty
+              ? _stripeCardError
+              : 'Stripe no esta listo para capturar la tarjeta.',
+        );
+      }
+
+      final intent = Map<String, dynamic>.from(_cardPaymentIntentSeed!);
+      final clientSecret = _clientSecret(intent);
+      final publishableKey = _publishableKey(intent);
+      var status = _paymentStatus(intent);
+
+      if (!(_cardDetails?.complete ?? false)) {
+        throw const ApiException(
+          'Completa correctamente los datos de la tarjeta antes de continuar.',
+        );
+      }
+
+      if (clientSecret.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio client_secret para confirmar el pago del acceso comercial.',
+        );
+      }
+      if (publishableKey.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio la llave publica de Stripe para confirmar el pago del acceso comercial.',
+        );
+      }
+
+      if (status != 'succeeded' && status != 'paid') {
+        Stripe.publishableKey = publishableKey;
+        await Stripe.instance.applySettings();
+
+        final paymentIntent = await Stripe.instance.confirmPayment(
+          paymentIntentClientSecret: clientSecret,
+          data: PaymentMethodParams.card(
+            paymentMethodData: PaymentMethodData(
+              billingDetails: BillingDetails(
+                name: customerName,
+                email: _emailController.text.trim(),
+              ),
+            ),
+          ),
+        );
+        status = paymentIntent.status.name.toLowerCase();
+      }
+
+      if (status == 'succeeded' || status == 'paid') {
+        final active = await _waitForCommercialAccessActivation();
+        if (!mounted) return;
+        if (active) {
+          setState(() {
+            _inlineMessage = 'Acceso comercial activado.';
+          });
+          widget.onPaymentComplete();
+          return;
+        }
+
+        setState(() {
+          _inlineMessage =
+              'Stripe confirmo el cargo, pero el backend aun no refleja el acceso. Intenta de nuevo en unos segundos.';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'Stripe recibio el pago. Esperando confirmacion final del acceso comercial.';
+      });
+    } on StripeException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            error.error.localizedMessage ?? 'Stripe no pudo confirmar el pago.';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _inlineMessage = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage = 'No fue posible procesar el acceso comercial: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _submitReservationCheckoutLink() async {
     final flightRequestId = _flightRequestId(widget.request);
     final reservationId = _reservationId(widget.request);
@@ -1299,6 +1460,19 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<bool> _waitForCommercialAccessActivation() async {
+    final auth = context.read<AuthProvider>();
+    for (var attempt = 0; attempt < 4; attempt++) {
+      await auth.refreshCommercialAccessStatus();
+      final accessState = resolveCommercialAccessState(auth.accessData);
+      if (accessState.canReserve || accessState.hasPaidAccess) {
+        return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+    }
+    return false;
   }
 
   String _routeLabel(Map<String, dynamic> request) {
@@ -1489,7 +1663,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   String _paymentMethodSummaryLabel() {
-    if (widget.commercialAccessMode) return 'Stripe Checkout';
+    if (widget.commercialAccessMode) {
+      if (_paymentMethod == 'card') return 'Tarjeta corporativa';
+      return 'Stripe Checkout';
+    }
     switch (_paymentMethod) {
       case 'wire':
         return 'Transferencia bancaria';
@@ -1554,6 +1731,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     return false;
+  }
+
+  bool _shouldFallbackCommercialAccessToCheckout(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('datos invalidos') ||
+        normalized.contains('datos inválidos') ||
+        normalized.contains('invalid') ||
+        normalized.contains('client_secret') ||
+        normalized.contains('paymentintent') ||
+        normalized.contains('payment intent');
   }
 
   String _firstText(Map<String, dynamic> payload, List<String> keys) {

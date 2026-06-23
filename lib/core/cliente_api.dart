@@ -177,6 +177,7 @@ class ApiClient {
     required String password,
     required String passwordConfirmation,
     String base = '',
+    String baseAirportCode = '',
     String birthDate = '',
     String nationality = '',
     String documentIssueDate = '',
@@ -202,7 +203,7 @@ class ApiClient {
         'operational_role': 'sobrecargo',
         'company_name': 'Red Aviation',
         'base': base,
-        'base_airport': base,
+        'base_airport': baseAirportCode.isEmpty ? base : baseAirportCode,
         'birth_date': birthDate,
         'nationality': nationality,
         'document_type': 'Licencia de sobrecargo',
@@ -1680,7 +1681,9 @@ class ApiClient {
     dynamic decodedRaw;
     try {
       decodedRaw =
-          response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+          response.body.isEmpty
+              ? <String, dynamic>{}
+              : jsonDecode(response.body);
     } on FormatException catch (error) {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw ApiException(

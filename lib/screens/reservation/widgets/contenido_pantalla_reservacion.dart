@@ -75,6 +75,8 @@ class ReservationScreenContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final needsCommercialAccess =
+        !hasActiveMembership && remainingFreeQuotes <= 0;
     final isPrimaryFormReady =
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
@@ -107,6 +109,61 @@ class ReservationScreenContent extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (needsCommercialAccess) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: palette.surfaceSoft,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: palette.accent.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Prueba gratuita consumida',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tu siguiente paso es activar el acceso comercial para poder reservar, firmar contrato y pagar el vuelo.',
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 13,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: onOpenMembership,
+                    icon: const Icon(Icons.lock_open_rounded),
+                    label: const Text('Activar acceso comercial'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: palette.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 10),
           ConciergeCard(
@@ -543,11 +600,12 @@ class QuickActionCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: palette.accentGradient),
+                  color: palette.surfaceStrong,
                   borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: palette.accentBorder),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, color: palette.textOnAccent, size: 20),
+                child: Icon(icon, color: palette.accent, size: 20),
               ),
               const SizedBox(height: 12),
               Text(
@@ -780,10 +838,7 @@ class InlinePreferenceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
-    final accentIcon =
-        Theme.of(context).brightness == Brightness.dark
-            ? palette.accent
-            : palette.primary;
+    final accentIcon = palette.accent;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -807,8 +862,9 @@ class InlinePreferenceButton extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: palette.accentGradient),
+                color: palette.surfaceStrong,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: palette.accentBorder),
               ),
               alignment: Alignment.center,
               child: Icon(icon, size: 18, color: accentIcon),
@@ -827,7 +883,7 @@ class InlinePreferenceButton extends StatelessWidget {
             ),
             Icon(
               Icons.keyboard_arrow_right_rounded,
-              color: accentIcon,
+              color: palette.accent,
               size: 22,
             ),
           ],

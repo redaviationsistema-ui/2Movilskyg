@@ -11,7 +11,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/cliente_api.dart';
+import '../../models/aeropuerto.dart';
 import '../../providers/proveedor_autenticacion.dart';
+import '../../services/servicio_aeropuertos.dart';
+import '../../services/servicio_ocr_registro.dart';
 import '../marketplace/pantalla_inicio_mercado.dart';
 
 class CrewRegisterScreen extends StatefulWidget {
@@ -43,14 +46,23 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   final _passwordController = TextEditingController();
   final _passwordConfirmationController = TextEditingController();
 
+  List<Airport> _airports = const [];
+  Airport? _selectedBaseAirport;
   File? _document;
   int _currentStep = 0;
   bool _readingDocument = false;
+  bool _loadingAirports = false;
   bool _passwordVisible = false;
   bool _passwordConfirmationVisible = false;
   String _scanRaw = '';
   String _scanStatus = '';
   String _documentMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAirports();
+  }
 
   @override
   void dispose() {
@@ -72,6 +84,24 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     super.dispose();
   }
 
+  Future<void> _loadAirports() async {
+    setState(() => _loadingAirports = true);
+    try {
+      final airports = await AirportService.getAirports();
+      if (!mounted) return;
+      setState(() {
+        _airports = airports;
+        _selectedBaseAirport = _resolveAirportFromText(_baseController.text);
+      });
+    } catch (error) {
+      debugPrint('[CREW BASE] Failed to load airports error=$error');
+    } finally {
+      if (mounted) {
+        setState(() => _loadingAirports = false);
+      }
+    }
+  }
+
   Future<void> _pickDocument() async {
     final selected = await _selectDocumentImage();
     if (selected == null) return;
@@ -82,26 +112,54 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     setState(() {
       _document = optimized;
       _readingDocument = true;
-      _documentMessage = 'Escaneando licencia en backend...';
+      _documentMessage = 'Analizando licencia...';
     });
 
+    var localOcrDetected = false;
+
     try {
-      final response = await _api.scanRegistrationDocument(
-        document: _document!,
-        documentType: 'auto',
+      final localText = await RegistrationOcrService.scanTextFile(optimized);
+      if (localText.trim().isNotEmpty) {
+        _applyDocumentText(localText);
+        localOcrDetected = _hasUsefulLicenseData();
+      }
+    } catch (error) {
+      debugPrint(
+        '[CREW DOC] Local OCR failed path=${optimized.path} error=$error',
       );
-      _applyDocumentResponse(response);
+    }
+
+    try {
+      if (!localOcrDetected) {
+        setState(() {
+          _documentMessage = 'Escaneando licencia en backend...';
+        });
+        final response = await _api.scanRegistrationDocument(
+          document: _document!,
+          documentType: 'auto',
+        );
+        _applyDocumentResponse(response);
+      } else {
+        setState(() {
+          _documentMessage =
+              'Lectura local completada. Revisa y corrige los datos detectados si hace falta.';
+        });
+      }
     } on ApiException catch (error) {
       setState(() {
         _applyDocumentFallback(optimized);
         _documentMessage =
-            '${error.message} La licencia ya quedo cargada; completa o corrige los datos manualmente.';
+            localOcrDetected
+                ? 'La licencia se cargo y se leyo parcialmente en el dispositivo. Revisa y completa los datos manualmente.'
+                : '${error.message} La licencia ya quedo cargada; completa o corrige los datos manualmente.';
       });
     } catch (_) {
       setState(() {
         _applyDocumentFallback(optimized);
         _documentMessage =
-            'La licencia ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
+            localOcrDetected
+                ? 'La licencia se cargo y se leyo parcialmente en el dispositivo. Revisa y completa los datos manualmente.'
+                : 'La licencia ya quedo cargada. No se pudo leer automaticamente, pero puedes completar los datos manualmente.';
       });
     } finally {
       if (mounted) setState(() => _readingDocument = false);
@@ -150,9 +208,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     }
   }
 
-  Future<bool> _ensureCameraPermission({
-    required String contextLabel,
-  }) async {
+  Future<bool> _ensureCameraPermission({required String contextLabel}) async {
     try {
       final status = await Permission.camera.request();
       if (status.isGranted) return true;
@@ -236,31 +292,23 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   }
 
   void _applyDocumentText(String rawText) {
-    final normalized = rawText.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
-    final license =
-        RegExp(
-          r'(?:LICENCIA|LICENSE|CERTIFICADO)[:\s-]*([A-Z0-9-]{5,24})',
-        ).firstMatch(normalized)?.group(1) ??
-        RegExp(r'\b[A-Z]{2,5}-?\d{4,12}\b').firstMatch(normalized)?.group(0);
-    final category = RegExp(
-      r'(?:CATEGORIA|CARGO|CLASE|CATEGORY)[:\s-]*([A-Z0-9 /.-]{3,})',
-    ).firstMatch(normalized)?.group(1);
-    final issueDate = RegExp(
-      r'(?:EXPEDICION|EMISION|ISSUE)[:\s-]*(\d{2,4}[-/]\d{2}[-/]\d{2,4})',
-    ).firstMatch(normalized)?.group(1);
-    final expiration = RegExp(
-      r'(?:VIGENCIA|EXPIRA|VALID UNTIL)[:\s-]*(\d{2,4}[-/]\d{2}[-/]\d{2,4})',
-    ).firstMatch(normalized)?.group(1);
-    final issuingCountry = RegExp(
-      r'(?:PAIS(?: EMISOR)?|COUNTRY(?: OF ISSUE)?)[:\s-]*([A-Z ]{3,})',
-    ).firstMatch(normalized)?.group(1);
-    final nationality = RegExp(
-      r'(?:NACIONALIDAD|NATIONALITY)[:\s-]*([A-Z ]{3,})',
-    ).firstMatch(normalized)?.group(1);
+    final parsed = _parseCrewLicenseText(rawText);
+    final license = parsed['license_number'];
+    final category = parsed['license_category'];
+    final issueDate = parsed['issue_date'];
+    final expiration = parsed['expiration_date'];
+    final issuingCountry = parsed['issuing_country'];
+    final nationality = parsed['nationality'];
+    final fullName = parsed['name'];
+    final birthDate = parsed['birth_date'];
 
     setState(() {
       _scanRaw = rawText;
       _scanStatus = rawText.trim().isEmpty ? 'pending' : 'scanned';
+      if (fullName != null) _nameController.text = fullName;
+      if (birthDate != null) {
+        _birthDateController.text = _normalizeDate(birthDate);
+      }
       if (license != null) _licenseController.text = license;
       if (category != null) _licenseCategoryController.text = category.trim();
       if (issueDate != null) {
@@ -275,6 +323,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       if (nationality != null) {
         _nationalityController.text = _toTitle(nationality);
       }
+      _syncBaseSelection();
       _licenseStatusController.text = _documentStatus(
         _licenseExpirationController.text,
       );
@@ -283,6 +332,41 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
               ? 'Documento cargado. Completa los datos manualmente.'
               : 'Documento leido. Revisa licencia y vigencia.';
     });
+  }
+
+  Map<String, String> _parseCrewLicenseText(String rawText) {
+    final lines =
+        rawText
+            .split('\n')
+            .map((line) => line.trim())
+            .where((line) => line.isNotEmpty)
+            .toList();
+    final normalizedLines =
+        lines
+            .map((line) => _normalizeOcrLine(line))
+            .where((line) => line.isNotEmpty)
+            .toList();
+    final normalizedText = normalizedLines.join('\n');
+
+    final licenseNumber = _extractCrewLicenseNumber(normalizedLines);
+    final category = _extractCrewCategory(normalizedLines);
+    final fullName = _extractCrewName(normalizedLines);
+    final birthDate = _extractCrewBirthDate(normalizedLines);
+    final expirationDate = _extractCrewExpirationDate(normalizedLines);
+    final issueDate = _extractCrewIssueDate(normalizedText);
+    final nationality = _extractCrewNationality(normalizedLines);
+    final issuingCountry = _extractCrewIssuingCountry(normalizedLines);
+
+    return {
+      if (licenseNumber.isNotEmpty) 'license_number': licenseNumber,
+      if (category.isNotEmpty) 'license_category': category,
+      if (fullName.isNotEmpty) 'name': fullName,
+      if (birthDate.isNotEmpty) 'birth_date': birthDate,
+      if (expirationDate.isNotEmpty) 'expiration_date': expirationDate,
+      if (issueDate.isNotEmpty) 'issue_date': issueDate,
+      if (nationality.isNotEmpty) 'nationality': nationality,
+      if (issuingCountry.isNotEmpty) 'issuing_country': issuingCountry,
+    };
   }
 
   void _applyDocumentResponse(Map<String, dynamic> response) {
@@ -364,7 +448,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
 
   void _applyDocumentFallback(File document) {
     _scanStatus = 'pending_manual_review';
-    _scanRaw = '';
+    _scanRaw = _scanRaw.trim().isEmpty ? '' : _scanRaw;
     if (_licenseTypeController.text.trim().isEmpty) {
       _licenseTypeController.text = 'Licencia de sobrecargo';
     }
@@ -378,6 +462,14 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         _licenseController.text = inferred;
       }
     }
+  }
+
+  bool _hasUsefulLicenseData() {
+    return _licenseController.text.trim().isNotEmpty ||
+        _licenseCategoryController.text.trim().isNotEmpty ||
+        _licenseIssueDateController.text.trim().isNotEmpty ||
+        _licenseExpirationController.text.trim().isNotEmpty ||
+        _nationalityController.text.trim().isNotEmpty;
   }
 
   Future<void> _submit() async {
@@ -394,7 +486,8 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       name: _nameController.text,
       email: _emailController.text,
       phone: _phoneController.text,
-      base: _baseController.text,
+      base: _baseLabelForBackend(),
+      baseAirportCode: _selectedBaseAirportCode(),
       birthDate: _birthDateController.text,
       nationality: _nationalityController.text,
       licenseNumber: _licenseController.text,
@@ -553,7 +646,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       ),
       _field(_nameController, 'Nombre completo'),
       _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
-      _field(_baseController, 'Base operativa'),
+      _baseField(),
       _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
       _field(_nationalityController, 'Nacionalidad del titular'),
       const SizedBox(height: 14),
@@ -689,6 +782,147 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     );
   }
 
+  Widget _baseField() {
+    if (_airports.isEmpty) {
+      return _field(
+        _baseController,
+        'Base operativa',
+        hint:
+            _loadingAirports
+                ? 'Cargando bases operativas...'
+                : 'Escribe la base operativa',
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Autocomplete<Airport>(
+        optionsBuilder: (textEditingValue) {
+          final query = textEditingValue.text.trim().toLowerCase();
+          if (query.isEmpty) {
+            return _airports.take(8);
+          }
+          return _airports
+              .where((airport) {
+                return airport.city.toLowerCase().contains(query) ||
+                    airport.name.toLowerCase().contains(query) ||
+                    (airport.state ?? '').toLowerCase().contains(query) ||
+                    (airport.iata ?? '').toLowerCase().contains(query) ||
+                    (airport.icao ?? '').toLowerCase().contains(query);
+              })
+              .take(12);
+        },
+        displayStringForOption: _airportDisplayLabel,
+        onSelected: (airport) {
+          _selectedBaseAirport = airport;
+          _baseController.text = _airportDisplayLabel(airport);
+        },
+        fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+          if (controller.text != _baseController.text) {
+            controller.value = TextEditingValue(
+              text: _baseController.text,
+              selection: TextSelection.collapsed(
+                offset: _baseController.text.length,
+              ),
+            );
+          }
+          return TextFormField(
+            controller: controller,
+            focusNode: focusNode,
+            onChanged: (value) {
+              _baseController.text = value;
+              _selectedBaseAirport = _resolveAirportFromText(value);
+            },
+            decoration: InputDecoration(
+              labelText: 'Base operativa',
+              hintText: 'Buscar aeropuerto, ciudad o codigo',
+              filled: true,
+              fillColor: Colors.white,
+              prefixIcon: _iconForLabel('Base operativa'),
+              suffixIcon:
+                  _loadingAirports
+                      ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                      : null,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 17,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFDDE6EE)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFFE0B86E),
+                  width: 1.4,
+                ),
+              ),
+            ),
+            validator: (value) {
+              final text = value?.trim() ?? '';
+              if (text.isEmpty) return 'Completa Base operativa.';
+              return null;
+            },
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) {
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 280,
+                  minWidth: 280,
+                  maxWidth: 520,
+                ),
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final airport = options.elementAt(index);
+                    final code =
+                        airport.iata?.trim().isNotEmpty == true
+                            ? airport.iata!.trim().toUpperCase()
+                            : airport.icao?.trim().toUpperCase() ?? '';
+                    return ListTile(
+                      leading: const Icon(Icons.flight_rounded),
+                      title: Text(airport.city),
+                      subtitle: Text(
+                        [
+                          airport.name,
+                          if ((airport.state ?? '').trim().isNotEmpty)
+                            airport.state!.trim(),
+                          if (code.isNotEmpty) code,
+                        ].join(' • '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => onSelected(airport),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget? _iconForLabel(String label) {
     final normalized = label.toLowerCase();
     if (normalized.contains('correo')) return const Icon(Icons.alternate_email);
@@ -703,6 +937,77 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       return const Icon(Icons.lock_rounded);
     }
     return const Icon(Icons.person_outline_rounded);
+  }
+
+  String _airportDisplayLabel(Airport airport) {
+    final code =
+        airport.iata?.trim().isNotEmpty == true
+            ? airport.iata!.trim().toUpperCase()
+            : airport.icao?.trim().toUpperCase() ?? '';
+    if (code.isNotEmpty) {
+      return '${airport.city} - $code';
+    }
+    return '${airport.city} - ${airport.name}';
+  }
+
+  String _selectedBaseAirportCode() {
+    final icao = _selectedBaseAirport?.icao?.trim().toUpperCase() ?? '';
+    if (icao.isNotEmpty) return icao;
+    return _selectedBaseAirport?.iata?.trim().toUpperCase() ?? '';
+  }
+
+  String _baseLabelForBackend() {
+    if (_selectedBaseAirport == null) {
+      return _baseController.text.trim();
+    }
+    final city = _selectedBaseAirport!.city.trim();
+    if (city.isNotEmpty) return city;
+    return _baseController.text.trim();
+  }
+
+  void _syncBaseSelection() {
+    _selectedBaseAirport = _resolveAirportFromText(_baseController.text);
+  }
+
+  Airport? _resolveAirportFromText(String text) {
+    final query = _normalizeAirportSearch(text);
+    if (query.isEmpty || _airports.isEmpty) return null;
+
+    for (final airport in _airports) {
+      final icao = airport.icao?.trim().toUpperCase() ?? '';
+      final iata = airport.iata?.trim().toUpperCase() ?? '';
+      final city = airport.city.trim().toUpperCase();
+      final name = airport.name.trim().toUpperCase();
+      final label = _airportDisplayLabel(airport).toUpperCase();
+
+      if (query == icao ||
+          query == iata ||
+          query == city ||
+          query == label ||
+          query == '$city - $icao' ||
+          query == '$city - $iata' ||
+          query == name) {
+        return airport;
+      }
+    }
+
+    for (final airport in _airports) {
+      final haystack = [
+        airport.city,
+        airport.name,
+        airport.state ?? '',
+        airport.iata ?? '',
+        airport.icao ?? '',
+        _airportDisplayLabel(airport),
+      ].map(_normalizeAirportSearch).join(' ');
+      if (haystack.contains(query)) return airport;
+    }
+
+    return null;
+  }
+
+  String _normalizeAirportSearch(String value) {
+    return value.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
   void _showMessage(String message) {
@@ -742,6 +1047,192 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                   : '${word[0].toUpperCase()}${word.substring(1)}',
         )
         .join(' ');
+  }
+
+  String _normalizeOcrLine(String value) {
+    const replacements = {
+      'Á': 'A',
+      'É': 'E',
+      'Í': 'I',
+      'Ó': 'O',
+      'Ú': 'U',
+      'Ü': 'U',
+      'Ñ': 'N',
+    };
+    var normalized = value.toUpperCase();
+    replacements.forEach((source, target) {
+      normalized = normalized.replaceAll(source, target);
+    });
+    return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _extractCrewLicenseNumber(List<String> lines) {
+    for (final line in lines) {
+      final match = RegExp(
+        r'\b\d{6,}(?:-\d{2,})?\b',
+      ).firstMatch(line)?.group(0);
+      if (match != null && !_looksLikeDate(match)) {
+        return match;
+      }
+    }
+    return '';
+  }
+
+  String _extractCrewCategory(List<String> lines) {
+    for (final line in lines) {
+      if (line.contains('SOBRECARGO') || line.contains('CABIN CREW MEMBER')) {
+        return _toTitle(
+          line
+              .replaceAll(RegExp(r'[^A-Z/ ]'), ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim(),
+        );
+      }
+    }
+    return '';
+  }
+
+  String _extractCrewName(List<String> lines) {
+    final blacklist = <String>{
+      'COMUNICACIONES',
+      'AFAC',
+      'LICENCIA',
+      'FEDERAL',
+      'AVIACION',
+      'ESTADOS',
+      'UNIDOS',
+      'MEXICANOS',
+      'PERSONAL',
+      'TECNICO',
+      'AERONAUTICO',
+      'MEXICO',
+      'MEXICANO',
+      'MEXICAN',
+      'VIGENCIA',
+      'EXPIRATION',
+      'CAMSCANNER',
+      'FIRMA',
+      'TITULAR',
+      'CIUDAD',
+    };
+
+    final categoryIndex = lines.indexWhere(
+      (line) =>
+          line.contains('SOBRECARGO') || line.contains('CABIN CREW MEMBER'),
+    );
+    if (categoryIndex != -1) {
+      for (var index = categoryIndex + 1; index < lines.length; index++) {
+        final candidate = lines[index];
+        if (_looksLikePersonName(candidate, blacklist)) {
+          return _toTitle(candidate);
+        }
+      }
+    }
+
+    for (final line in lines) {
+      if (_looksLikePersonName(line, blacklist)) {
+        return _toTitle(line);
+      }
+    }
+    return '';
+  }
+
+  bool _looksLikePersonName(String line, Set<String> blacklist) {
+    if (line.length < 8) return false;
+    if (RegExp(r'\d').hasMatch(line)) return false;
+    final words = line.split(' ').where((word) => word.isNotEmpty).toList();
+    if (words.length < 2 || words.length > 5) return false;
+    if (words.any((word) => blacklist.contains(word))) return false;
+    return words.every((word) => word.length > 1);
+  }
+
+  String _extractCrewBirthDate(List<String> lines) {
+    for (final line in lines) {
+      if (line.contains('VIGENCIA') || line.contains('EXPIRATION')) continue;
+      final match = RegExp(
+        r'\b(\d{2}/\d{2}/\d{4})\b',
+      ).firstMatch(line)?.group(1);
+      if (match != null) return match;
+    }
+    return '';
+  }
+
+  String _extractCrewExpirationDate(List<String> lines) {
+    for (var index = 0; index < lines.length; index++) {
+      final line = lines[index];
+      if (line.contains('VIGENCIA') || line.contains('EXPIRATION')) {
+        final sameLine = RegExp(
+          r'\b(\d{2}/\d{2}/\d{4})\b',
+        ).firstMatch(line)?.group(1);
+        if (sameLine != null) return sameLine;
+        if (index + 1 < lines.length) {
+          final nextLine = RegExp(
+            r'\b(\d{2}/\d{2}/\d{4})\b',
+          ).firstMatch(lines[index + 1])?.group(1);
+          if (nextLine != null) return nextLine;
+        }
+      }
+    }
+    return '';
+  }
+
+  String _extractCrewIssueDate(String text) {
+    final slashDate = RegExp(
+      r'(?:EXPEDICION|EMISION|ISSUE)[:\s-]*(\d{2}/\d{2}/\d{4})',
+    ).firstMatch(text)?.group(1);
+    if (slashDate != null) return slashDate;
+
+    final writtenDate = RegExp(
+      r'A\s+(\d{1,2})\s+DE\s+([A-Z]+)\s+DE\s+(\d{4})',
+    ).firstMatch(text);
+    if (writtenDate == null) return '';
+
+    const months = {
+      'ENERO': '01',
+      'FEBRERO': '02',
+      'MARZO': '03',
+      'ABRIL': '04',
+      'MAYO': '05',
+      'JUNIO': '06',
+      'JULIO': '07',
+      'AGOSTO': '08',
+      'SEPTIEMBRE': '09',
+      'SETIEMBRE': '09',
+      'OCTUBRE': '10',
+      'NOVIEMBRE': '11',
+      'DICIEMBRE': '12',
+    };
+    final day = writtenDate.group(1)!.padLeft(2, '0');
+    final month = months[writtenDate.group(2)!];
+    final year = writtenDate.group(3)!;
+    if (month == null) return '';
+    return '$year-$month-$day';
+  }
+
+  String _extractCrewNationality(List<String> lines) {
+    for (final line in lines) {
+      if (line.contains('MEXICANO') || line.contains('MEXICAN')) {
+        return 'Mexicana';
+      }
+    }
+    return '';
+  }
+
+  String _extractCrewIssuingCountry(List<String> lines) {
+    for (final line in lines) {
+      if (line.contains('ESTADOS UNIDOS MEXICANOS')) {
+        return 'Mexico';
+      }
+    }
+    for (final line in lines) {
+      if (line == 'MEXICO') return 'Mexico';
+    }
+    return '';
+  }
+
+  bool _looksLikeDate(String value) {
+    return RegExp(r'^\d{2}/\d{2}/\d{4}$').hasMatch(value) ||
+        RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value);
   }
 
   Map<String, dynamic> _map(dynamic value) {

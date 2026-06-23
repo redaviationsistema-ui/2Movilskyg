@@ -176,6 +176,7 @@ class ClientMobileBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    final inactiveColor = palette.textPrimary.withValues(alpha: 0.78);
     const items = [
       (label: 'Buscar', icon: Icons.search_rounded),
       (label: 'Reservas', icon: Icons.flight_rounded),
@@ -242,7 +243,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                           Icon(
                             item.icon,
                             size: 17,
-                            color: isActive ? onPrimary : palette.textSecondary,
+                            color: isActive ? onPrimary : inactiveColor,
                           ),
                           const SizedBox(width: 5),
                           Flexible(
@@ -255,7 +256,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                                   color:
                                       isActive
                                           ? onPrimary
-                                          : palette.textSecondary,
+                                          : inactiveColor,
                                   fontWeight:
                                       isActive
                                           ? FontWeight.w900
@@ -313,6 +314,7 @@ class SegmentedTripSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    final inactiveColor = palette.textPrimary.withValues(alpha: 0.74);
     const options = [
       (
         value: 'Solo ida',
@@ -346,12 +348,11 @@ class SegmentedTripSelector extends StatelessWidget {
                       horizontal: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isActive ? palette.primary : Colors.transparent,
+                      color: isActive ? palette.primary : palette.surface,
                       borderRadius: BorderRadius.circular(14),
-                      border:
-                          isActive
-                              ? Border.all(color: palette.accentBorder)
-                              : null,
+                      border: Border.all(
+                        color: isActive ? palette.accentBorder : palette.border,
+                      ),
                       boxShadow:
                           isActive
                               ? [
@@ -369,14 +370,14 @@ class SegmentedTripSelector extends StatelessWidget {
                         Icon(
                           option.icon,
                           size: 15,
-                          color: isActive ? onPrimary : palette.textSecondary,
+                          color: isActive ? onPrimary : inactiveColor,
                         ),
                         const SizedBox(height: 3),
                         Text(
                           option.label,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: isActive ? onPrimary : palette.textSecondary,
+                            color: isActive ? onPrimary : inactiveColor,
                             fontWeight: FontWeight.w900,
                             fontSize: 12,
                             letterSpacing: -0.2,
@@ -446,12 +447,13 @@ class ConciergeField extends StatelessWidget {
   final String? secondaryValue;
   final String placeholder;
   final String? helperText;
-  static const Color _iconBlue = ClientThemeColors.brandNavy;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isPlaceholder = value == placeholder;
+    final fieldIconColor = palette.textPrimary.withValues(alpha: 0.72);
+    final fieldChevronColor = palette.textPrimary.withValues(alpha: 0.82);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,9 +495,10 @@ class ConciergeField extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: palette.surfaceSoft,
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: palette.border),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(leadingIcon, size: 18, color: _iconBlue),
+                    child: Icon(leadingIcon, size: 18, color: fieldIconColor),
                   ),
                   const SizedBox(width: 12),
                 ],
@@ -551,9 +554,9 @@ class ConciergeField extends StatelessWidget {
                   ),
                 ),
                 trailing ??
-                    const Icon(
+                    Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: ClientThemeColors.muted,
+                      color: fieldChevronColor,
                       size: 23,
                     ),
               ],

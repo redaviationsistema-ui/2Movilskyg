@@ -167,6 +167,7 @@ class AuthProvider extends ChangeNotifier {
     required String password,
     required String passwordConfirmation,
     String base = '',
+    String baseAirportCode = '',
     String birthDate = '',
     String nationality = '',
     String licenseNumber = '',
@@ -192,6 +193,7 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         passwordConfirmation: passwordConfirmation,
         base: base.trim(),
+        baseAirportCode: baseAirportCode.trim().toUpperCase(),
         birthDate: birthDate.trim(),
         nationality: nationality.trim(),
         licenseNumber: licenseNumber.trim(),
@@ -386,13 +388,17 @@ class AuthProvider extends ChangeNotifier {
     for (final entry in rawErrors.entries) {
       final messages = entry.value;
       if (messages is List) {
-        details.addAll(messages.where((item) => item != null).map((item) {
-          final field = entry.key == 'email' ? 'Correo' : entry.key;
-          return '$field: $item';
-        }));
+        details.addAll(
+          messages.where((item) => item != null).map((item) {
+            final field = entry.key == 'email' ? 'Correo' : entry.key;
+            return '$field: $item';
+          }),
+        );
       }
     }
 
-    return details.isEmpty ? error.message : '${error.message}\n${details.join('\n')}';
+    return details.isEmpty
+        ? error.message
+        : '${error.message}\n${details.join('\n')}';
   }
 }
