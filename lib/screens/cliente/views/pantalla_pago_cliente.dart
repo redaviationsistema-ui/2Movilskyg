@@ -109,6 +109,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     final flightRequestId = _flightRequestId(widget.request);
+    final reservationId = _reservationId(widget.request);
     if (flightRequestId.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -127,9 +128,17 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     try {
+      final effectiveReservationId = await _ensureReservationId(
+        flightRequestId: flightRequestId,
+        reservationId: reservationId,
+        logPrefix: '[Pago]',
+      );
       final intent = await ApiClient.instance.createClientPaymentIntent(
         flightRequestId: flightRequestId,
-        paymentPayload: {'contact_email': _emailController.text.trim()},
+        paymentPayload: {
+          'contact_email': _emailController.text.trim(),
+          'reservation_id': effectiveReservationId,
+        },
       );
       final publishableKey = _publishableKey(intent);
       if (publishableKey.isEmpty) {
@@ -447,6 +456,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GlassInfoCard(
+                backgroundColor: ClientThemeColors.brandNavy,
+                borderColor: const Color(0xFF29445A),
+                shadowColor: const Color(0x1A102438),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -499,6 +511,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GlassInfoCard(
+                backgroundColor: ClientThemeColors.brandNavy,
+                borderColor: const Color(0xFF29445A),
+                shadowColor: const Color(0x1A102438),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -574,6 +589,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: GlassInfoCard(
+                backgroundColor: ClientThemeColors.brandNavy,
+                borderColor: const Color(0xFF29445A),
+                shadowColor: const Color(0x1A102438),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -664,7 +682,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => unawaited(_ensureStripeCardReady(forceRefresh: true)),
+                onPressed:
+                    () => unawaited(_ensureStripeCardReady(forceRefresh: true)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Color(0xFF8BA4B8)),
@@ -899,6 +918,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     });
 
     try {
+      final effectiveReservationId = await _ensureReservationId(
+        flightRequestId: flightRequestId,
+        reservationId: reservationId,
+        logPrefix: '[Pago]',
+      );
       if (_paymentMethod == 'wire') {
         final payload = await ApiClient.instance.createClientWireIntent(
           flightRequestId: flightRequestId,
@@ -906,6 +930,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'contact_email': _emailController.text.trim(),
             'payment_method': 'wire',
             'reference_note': _wireReferenceController.text.trim(),
+            'reservation_id': effectiveReservationId,
           },
         );
         final instructions = _extractWireInstructions(payload);
@@ -934,13 +959,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               ? Map<String, dynamic>.from(_cardPaymentIntentSeed!)
               : await ApiClient.instance.createClientPaymentIntent(
                 flightRequestId: flightRequestId,
-                paymentPayload: {'contact_email': _emailController.text.trim()},
+                paymentPayload: {
+                  'contact_email': _emailController.text.trim(),
+                  'reservation_id': effectiveReservationId,
+                },
               );
       final responseReservationId = _responseReservationId(intent);
-      final effectiveReservationId =
+      final confirmedReservationId =
           responseReservationId.isNotEmpty
               ? responseReservationId
-              : reservationId;
+              : effectiveReservationId;
 
       var status = _paymentStatus(intent);
       final clientSecret = _clientSecret(intent);
@@ -981,7 +1009,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       if (status == 'succeeded' || status == 'paid') {
         reservationProvider.markPaymentConfirmed(
           flightRequestId: flightRequestId,
-          reservationId: effectiveReservationId,
+          reservationId: confirmedReservationId,
           paymentIntentId: _paymentIntentId(intent),
           brand: _cardBrand(),
         );
@@ -989,7 +1017,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           await ApiClient.instance.confirmClientPaymentIntent(
             flightRequestId: flightRequestId,
             paymentPayload: {
-              'reservation_id': effectiveReservationId,
+              'reservation_id': confirmedReservationId,
               'flight_request_id': flightRequestId,
               'payment_intent_id': _paymentIntentId(intent),
               'brand': _cardBrand(),
@@ -1001,12 +1029,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         } on ApiException catch (error) {
           if (!_isMissingPaymentConfirmRoute(error)) rethrow;
         }
-        if (effectiveReservationId.isNotEmpty) {
+        if (confirmedReservationId.isNotEmpty) {
           try {
             await ApiClient.instance.confirmClientPayment(
-              reservationId: effectiveReservationId,
+              reservationId: confirmedReservationId,
               paymentPayload: {
-                'reservation_id': effectiveReservationId,
+                'reservation_id': confirmedReservationId,
                 'flight_request_id': flightRequestId,
                 'payment_intent_id': _paymentIntentId(intent),
                 'brand': _cardBrand(),
@@ -1127,6 +1155,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   Future<void> _submitReservationCheckoutLink() async {
     final flightRequestId = _flightRequestId(widget.request);
+    final reservationId = _reservationId(widget.request);
     if (flightRequestId.isEmpty) {
       setState(() {
         _inlineMessage =
@@ -1141,9 +1170,17 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     });
 
     try {
+      final effectiveReservationId = await _ensureReservationId(
+        flightRequestId: flightRequestId,
+        reservationId: reservationId,
+        logPrefix: '[Pago]',
+      );
       final payload = await ApiClient.instance.createClientCheckout(
         flightRequestId: flightRequestId,
-        paymentPayload: {'contact_email': _emailController.text.trim()},
+        paymentPayload: {
+          'contact_email': _emailController.text.trim(),
+          'reservation_id': effectiveReservationId,
+        },
         successUrl: _buildCommercialAccessReturnUrl(
           'success',
           includeStripeSessionPlaceholder: true,
@@ -1248,12 +1285,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       setState(() {
+        _waitingForCommercialAccessReturn = false;
         _inlineMessage =
             'Stripe regreso a la app, pero el backend aun no confirma el acceso. Toca de nuevo cuando Stripe termine de validar.';
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _waitingForCommercialAccessReturn = false;
         _inlineMessage =
             'No fue posible validar automaticamente el acceso comercial: $error';
       });
@@ -1300,6 +1339,27 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                 false))
         ? request['reservation']['id'].toString().trim()
         : '';
+  }
+
+  Future<String> _ensureReservationId({
+    required String flightRequestId,
+    required String reservationId,
+    required String logPrefix,
+  }) async {
+    debugPrint(
+      '$logPrefix flightRequestId=$flightRequestId reservationId=$reservationId',
+    );
+    final resolvedReservationId = await ApiClient.instance
+        .ensureClientReservation(
+          flightRequestId: flightRequestId,
+          existingReservationId: reservationId,
+        );
+    if (reservationId.trim().isEmpty) {
+      debugPrint('$logPrefix reservation creada: $resolvedReservationId');
+    }
+    widget.request['reservation_id'] = resolvedReservationId;
+    widget.request['booking_id'] = resolvedReservationId;
+    return resolvedReservationId;
   }
 
   Map<String, dynamic> _extractWireInstructions(Map<String, dynamic> payload) {
@@ -1590,9 +1650,7 @@ class _PaymentRow extends StatelessWidget {
               style: TextStyle(
                 color:
                     onDark
-                        ? (emphasize
-                            ? Colors.white
-                            : const Color(0xFFD6E1EA))
+                        ? (emphasize ? Colors.white : const Color(0xFFD6E1EA))
                         : (emphasize
                             ? const Color(0xFF111111)
                             : const Color(0xFF625D55)),

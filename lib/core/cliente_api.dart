@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,6 +46,8 @@ class ApiClient {
   static final ApiClient instance = ApiClient._();
   static const String _defaultBaseUrl =
       'https://uber-aviones.onrender.com/api/v1/';
+  static const Duration _requestTimeout = Duration(seconds: 35);
+  static const Duration _multipartTimeout = Duration(seconds: 60);
 
   String? _token;
 
@@ -433,6 +436,70 @@ class ApiClient {
       authenticated: true,
       body: payload,
     );
+  }
+
+  Future<Map<String, dynamic>> createClientReservation({
+    required String flightRequestId,
+  }) {
+    final normalizedFlightRequestId = flightRequestId.trim();
+    if (normalizedFlightRequestId.isEmpty) {
+      throw const ApiException(
+        'No existe flight_request asociado para crear la reserva.',
+      );
+    }
+
+    return () async {
+      try {
+        return await postFirstAvailable(
+          const ['/cliente/reservas', '/client/reservations'],
+          authenticated: true,
+          body: {'flight_request_id': normalizedFlightRequestId},
+        );
+      } on ApiException catch (error) {
+        final status = error.statusCode ?? 0;
+        if (status == 404) {
+          throw ApiException(
+            'No existe flight_request para crear la reserva.',
+            statusCode: error.statusCode,
+            cause: error,
+            payload: error.payload,
+          );
+        }
+        throw ApiException(
+          'No fue posible crear reservation. ${error.message}',
+          statusCode: error.statusCode,
+          cause: error,
+          payload: error.payload,
+        );
+      }
+    }();
+  }
+
+  Future<String> ensureClientReservation({
+    required String flightRequestId,
+    String? existingReservationId,
+  }) async {
+    final normalizedReservationId = existingReservationId?.trim() ?? '';
+    if (normalizedReservationId.isNotEmpty) {
+      return normalizedReservationId;
+    }
+
+    final payload = await createClientReservation(
+      flightRequestId: flightRequestId,
+    );
+    final reservationId = _firstTextValue(payload, const [
+      'reservation_id',
+      'reservationId',
+      'booking_id',
+      'bookingId',
+      'id',
+    ]);
+    if (reservationId.isEmpty) {
+      throw const ApiException(
+        'No fue posible crear reservation porque el backend no devolvio reservation_id.',
+      );
+    }
+    return reservationId;
   }
 
   Future<Map<String, dynamic>> signClientContract({
@@ -1229,9 +1296,12 @@ class ApiClient {
         decoded =
             response.body.isEmpty
                 ? const {}
-                : jsonDecode(response.body) as Map<String, dynamic>;
+                : (jsonDecode(response.body) as Map<String, dynamic>);
       } catch (_) {
-        decoded = const {};
+        decoded = {
+          'raw_body': response.body,
+          'content_type': response.headers['content-type'],
+        };
       }
       throw ApiException(
         decoded['message']?.toString() ??
@@ -1322,8 +1392,37 @@ class ApiClient {
     debugPrint(
       '[API multipart] path=$path fields=${fields.keys.toList()} fileFields=${files.keys.toList()}',
     );
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    http.StreamedResponse streamedResponse;
+    try {
+      streamedResponse = await request.send().timeout(_multipartTimeout);
+    } on TimeoutException catch (error) {
+      throw ApiException(
+        'La carga de archivos excedio el tiempo de espera. Verifica tu conexion e intenta de nuevo.',
+        cause: error,
+      );
+    } on SocketException catch (error) {
+      throw ApiException(
+        'No fue posible conectar con el servidor para subir archivos.',
+        cause: error,
+      );
+    } on HttpException catch (error) {
+      throw ApiException(
+        'La carga de archivos fallo antes de completarse.',
+        cause: error,
+      );
+    }
+
+    http.Response response;
+    try {
+      response = await http.Response.fromStream(
+        streamedResponse,
+      ).timeout(_multipartTimeout);
+    } on TimeoutException catch (error) {
+      throw ApiException(
+        'La respuesta del servidor por la carga de archivos tardo demasiado.',
+        cause: error,
+      );
+    }
     debugPrint(
       '[API multipart] response path=$path status=${response.statusCode} body=${response.body}',
     );
@@ -1407,37 +1506,70 @@ class ApiClient {
 
     switch (method) {
       case 'POST':
-        final response = await http.post(
-          uri,
-          headers: requestHeaders,
-          body: jsonEncode(body ?? {}),
+        final response = await _guardHttpRequest(
+          () => http.post(
+            uri,
+            headers: requestHeaders,
+            body: jsonEncode(body ?? {}),
+          ),
         );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
       case 'PATCH':
-        final response = await http.patch(
-          uri,
-          headers: requestHeaders,
-          body: jsonEncode(body ?? {}),
+        final response = await _guardHttpRequest(
+          () => http.patch(
+            uri,
+            headers: requestHeaders,
+            body: jsonEncode(body ?? {}),
+          ),
         );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
       case 'PUT':
-        final response = await http.put(
-          uri,
-          headers: requestHeaders,
-          body: jsonEncode(body ?? {}),
+        final response = await _guardHttpRequest(
+          () => http.put(
+            uri,
+            headers: requestHeaders,
+            body: jsonEncode(body ?? {}),
+          ),
         );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
       case 'DELETE':
-        final response = await http.delete(uri, headers: requestHeaders);
+        final response = await _guardHttpRequest(
+          () => http.delete(uri, headers: requestHeaders),
+        );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
       default:
-        final response = await http.get(uri, headers: requestHeaders);
+        final response = await _guardHttpRequest(
+          () => http.get(uri, headers: requestHeaders),
+        );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
+    }
+  }
+
+  Future<http.Response> _guardHttpRequest(
+    Future<http.Response> Function() request,
+  ) async {
+    try {
+      return await request().timeout(_requestTimeout);
+    } on TimeoutException catch (error) {
+      throw ApiException(
+        'El servidor tardo demasiado en responder. Intenta de nuevo.',
+        cause: error,
+      );
+    } on SocketException catch (error) {
+      throw ApiException(
+        'No fue posible conectar con el servidor.',
+        cause: error,
+      );
+    } on HttpException catch (error) {
+      throw ApiException(
+        'La conexion con el servidor se interrumpio.',
+        cause: error,
+      );
     }
   }
 
@@ -1545,8 +1677,32 @@ class ApiClient {
     http.Response response,
     String candidateBaseUrl,
   ) {
-    final dynamic decodedRaw =
-        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+    dynamic decodedRaw;
+    try {
+      decodedRaw =
+          response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+    } on FormatException catch (error) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          'El servidor devolvio una respuesta invalida (HTTP ${response.statusCode}).',
+          statusCode: response.statusCode,
+          cause: error,
+          payload: {
+            'raw_body': response.body,
+            'content_type': response.headers['content-type'],
+          },
+        );
+      }
+      throw ApiException(
+        'La respuesta del servidor no se pudo interpretar correctamente.',
+        statusCode: response.statusCode,
+        cause: error,
+        payload: {
+          'raw_body': response.body,
+          'content_type': response.headers['content-type'],
+        },
+      );
+    }
     final Map<String, dynamic> decoded =
         decodedRaw is Map<String, dynamic>
             ? decodedRaw
@@ -1570,6 +1726,31 @@ class ApiClient {
     }
 
     return decoded;
+  }
+
+  String _firstTextValue(Map<String, dynamic>? payload, List<String> keys) {
+    if (payload == null) return '';
+    for (final key in keys) {
+      final value = payload[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+
+    final data = payload['data'];
+    if (data is Map) {
+      final value = _firstTextValue(Map<String, dynamic>.from(data), keys);
+      if (value.isNotEmpty) return value;
+    }
+
+    final reservation = payload['reservation'];
+    if (reservation is Map) {
+      final value = _firstTextValue(
+        Map<String, dynamic>.from(reservation),
+        keys,
+      );
+      if (value.isNotEmpty) return value;
+    }
+
+    return '';
   }
 
   List<Map<String, dynamic>> _asListOfMaps(dynamic value) {

@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
@@ -183,12 +184,22 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     );
     if (source == null) return null;
 
+    debugPrint(
+      '[INE] Selector origen=$source platform=${Platform.operatingSystem} title=$title',
+    );
+    await _logIosMediaPermissions('before_select_$source');
+
     if (source == _DocumentImageSource.camera) {
+      final hasPermission = await _ensureCameraPermission(
+        contextLabel: 'capturar $title',
+      );
+      if (!hasPermission) return null;
       final picked = await _picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.rear,
         imageQuality: 96,
       );
+      debugPrint('[INE] PATH IMAGEN: ${picked?.path}');
       return picked == null ? null : File(picked.path);
     }
 
@@ -196,8 +207,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       type: FileType.image,
       allowMultiple: false,
     );
-    final path = result?.files.single.path;
-    return path == null ? null : File(path);
+    final selectedPath = result?.files.single.path;
+    debugPrint('[INE] PATH IMAGEN: $selectedPath');
+    return selectedPath == null ? null : File(selectedPath);
   }
 
   Future<void> _scanIneLocally() async {
@@ -213,6 +225,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       debugPrint(
         '[INE] Resultado local: method=${result.method} rawTextLength=${result.rawText.length} fields=${result.fields}',
       );
+      debugPrint('[INE] OCR TEXT: ${result.rawText}');
+      debugPrint('[INE] DATOS EXTRAIDOS: ${result.fields}');
       _applyLocalIneResult(result);
     } catch (error) {
       debugPrint(
@@ -255,6 +269,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   void _applyLocalIneResult(RegistrationOcrResult result) {
     final data = result.fields;
+    debugPrint('[INE] Aplicando resultado local method=${result.method}');
     setState(() {
       _ineScanRaw = result.rawText;
       _ineScanStatus =
@@ -284,6 +299,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               ? 'No se detectaron datos claros. Intenta con fotos derechas, completas y sin reflejos.'
               : 'Escaneo ${result.method} completado: ${detected.join(', ')}. Revisa los datos.';
     });
+    _logControllerValues('post_local_apply');
   }
 
   Future<void> _scanIneInBackend(List<File> images) async {
@@ -296,6 +312,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         document: image,
         documentType: 'INE',
       );
+      debugPrint('[INE] OCR RESPONSE: ${jsonEncode(response)}');
       debugPrint('[INE] Respuesta backend completa: ${jsonEncode(response)}');
       _applyBackendIneResponse(response);
       if (_hasUsefulIneData()) {
@@ -336,6 +353,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         rawText.isEmpty
             ? const <String, String>{}
             : RegistrationOcrService.parseIneText(rawText);
+    debugPrint('[INE] OCR TEXT: $rawText');
+    debugPrint('[INE] DATOS EXTRAIDOS: $parsedRaw');
     debugPrint(
       '[INE] Backend parse: rawTextLength=${rawText.length} parsedRaw=$parsedRaw',
     );
@@ -410,6 +429,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               ? 'Escaneo de INE completado. Revisa los datos detectados antes de continuar.'
               : 'Se leyo parcialmente la INE. Completa los campos faltantes manualmente.';
     });
+    _logControllerValues('post_backend_apply');
     debugPrint(
       '[INE] Estado final tras backend: status=$_ineScanStatus document=${_documentNumberController.text} curp=${_ineCurpController.text} cic=${_ineCicController.text} ocr=${_ineOcrController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
     );
@@ -447,6 +467,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   Future<void> _captureSelfie() async {
+    final hasPermission = await _ensureCameraPermission(
+      contextLabel: 'capturar la selfie',
+    );
+    if (!hasPermission) return;
     final picked = await _picker.pickImage(
       source: ImageSource.camera,
       preferredCameraDevice: CameraDevice.front,
@@ -560,9 +584,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               : decoded;
 
       final output = img.encodeJpg(resized, quality: 85);
-      final tempDir = await getTemporaryDirectory();
+      final tempDir = await _processingDirectory();
       final fileName =
-          '${path.basenameWithoutExtension(source.path)}_optimized.jpg';
+          '${path.basenameWithoutExtension(source.path)}_${DateTime.now().millisecondsSinceEpoch}_optimized.jpg';
       final optimizedFile = File(path.join(tempDir.path, fileName));
       await optimizedFile.writeAsBytes(output, flush: true);
       await _logFileDiagnostics('Image after optimization', optimizedFile);
@@ -1054,7 +1078,104 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   void _setIfPresent(TextEditingController controller, dynamic value) {
     final text = value?.toString().trim() ?? '';
-    if (text.isNotEmpty) controller.text = text;
+    if (text.isNotEmpty) {
+      debugPrint(
+        '[INE] Controller update target=${_controllerLabel(controller)} old="${controller.text}" new="$text"',
+      );
+      controller.text = text;
+      return;
+    }
+    debugPrint(
+      '[INE] Controller skip target=${_controllerLabel(controller)} value="$text"',
+    );
+  }
+
+  String _controllerLabel(TextEditingController controller) {
+    if (identical(controller, _nameController)) return 'name';
+    if (identical(controller, _birthDateController)) return 'birth_date';
+    if (identical(controller, _nationalityController)) return 'nationality';
+    if (identical(controller, _baseController)) return 'base';
+    if (identical(controller, _documentNumberController)) {
+      return 'document_number';
+    }
+    if (identical(controller, _documentIssueDateController)) {
+      return 'document_issue_date';
+    }
+    if (identical(controller, _documentExpirationController)) {
+      return 'document_expiration';
+    }
+    if (identical(controller, _documentStatusController)) {
+      return 'document_status';
+    }
+    if (identical(controller, _ineCurpController)) return 'ine_curp';
+    if (identical(controller, _ineCicController)) return 'ine_cic';
+    if (identical(controller, _ineOcrController)) return 'ine_ocr';
+    return 'unknown';
+  }
+
+  void _logControllerValues(String stage) {
+    debugPrint(
+      '[INE] Controllers $stage: '
+      'name="${_nameController.text}", '
+      'birth_date="${_birthDateController.text}", '
+      'nationality="${_nationalityController.text}", '
+      'base="${_baseController.text}", '
+      'document_number="${_documentNumberController.text}", '
+      'document_issue_date="${_documentIssueDateController.text}", '
+      'document_expiration="${_documentExpirationController.text}", '
+      'document_status="${_documentStatusController.text}", '
+      'curp="${_ineCurpController.text}", '
+      'cic="${_ineCicController.text}", '
+      'ocr="${_ineOcrController.text}"',
+    );
+  }
+
+  Future<void> _logIosMediaPermissions(String stage) async {
+    if (!Platform.isIOS) return;
+    try {
+      final camera = await Permission.camera.status;
+      final photos = await Permission.photos.status;
+      final photosAddOnly = await Permission.photosAddOnly.status;
+      debugPrint(
+        '[INE][iOS] Permisos $stage camera=$camera photos=$photos photosAddOnly=$photosAddOnly',
+      );
+    } catch (error) {
+      debugPrint('[INE][iOS] Error consultando permisos $stage: $error');
+    }
+  }
+
+  Future<bool> _ensureCameraPermission({
+    required String contextLabel,
+  }) async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isGranted) return true;
+
+      if (!mounted) return false;
+
+      final message =
+          status.isPermanentlyDenied
+              ? 'Activa el permiso de camara en Configuracion para $contextLabel.'
+              : 'La app necesita permiso de camara para $contextLabel.';
+      _showMessage(message);
+      return false;
+    } catch (error) {
+      if (mounted) {
+        _showMessage('No fue posible validar el permiso de camara: $error');
+      }
+      return false;
+    }
+  }
+
+  Future<Directory> _processingDirectory() async {
+    final directory = await getApplicationSupportDirectory();
+    final processingDirectory = Directory(
+      path.join(directory.path, 'registration_processing'),
+    );
+    if (!await processingDirectory.exists()) {
+      await processingDirectory.create(recursive: true);
+    }
+    return processingDirectory;
   }
 
   Future<void> _logFileDiagnostics(String label, File file) async {

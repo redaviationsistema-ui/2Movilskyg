@@ -309,26 +309,35 @@ class GlassInfoCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(18),
+    this.backgroundColor,
+    this.borderColor,
+    this.shadowColor,
   });
 
   final Widget child;
   final EdgeInsets padding;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? shadowColor;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final effectiveBackgroundColor = backgroundColor ?? palette.surface;
+    final effectiveBorderColor =
+        borderColor ?? (isDark ? palette.accentBorder : palette.border);
+    final effectiveShadowColor =
+        shadowColor ?? Colors.black.withValues(alpha: isDark ? 0.10 : 0.06);
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: palette.surface,
+        color: effectiveBackgroundColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
+        border: Border.all(color: effectiveBorderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.10 : 0.06),
+            color: effectiveShadowColor,
             blurRadius: 18,
             offset: Offset(0, 10),
           ),

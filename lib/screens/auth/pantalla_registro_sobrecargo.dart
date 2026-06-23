@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/cliente_api.dart';
@@ -125,9 +126,9 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
               : decoded;
 
       final output = img.encodeJpg(resized, quality: 85);
-      final tempDir = await getTemporaryDirectory();
+      final tempDir = await _processingDirectory();
       final fileName =
-          '${path.basenameWithoutExtension(source.path)}_optimized.jpg';
+          '${path.basenameWithoutExtension(source.path)}_${DateTime.now().millisecondsSinceEpoch}_optimized.jpg';
       final optimizedFile = File(path.join(tempDir.path, fileName));
       await optimizedFile.writeAsBytes(output, flush: true);
       return optimizedFile;
@@ -147,6 +148,40 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         '[CREW DOC] $label path=${file.path} name=${path.basename(file.path)} bytes=unavailable platform=${Platform.operatingSystem} error=$error',
       );
     }
+  }
+
+  Future<bool> _ensureCameraPermission({
+    required String contextLabel,
+  }) async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isGranted) return true;
+
+      if (!mounted) return false;
+
+      final message =
+          status.isPermanentlyDenied
+              ? 'Activa el permiso de camara en Configuracion para $contextLabel.'
+              : 'La app necesita permiso de camara para $contextLabel.';
+      _showMessage(message);
+      return false;
+    } catch (error) {
+      if (mounted) {
+        _showMessage('No fue posible validar el permiso de camara: $error');
+      }
+      return false;
+    }
+  }
+
+  Future<Directory> _processingDirectory() async {
+    final directory = await getApplicationSupportDirectory();
+    final processingDirectory = Directory(
+      path.join(directory.path, 'crew_registration_processing'),
+    );
+    if (!await processingDirectory.exists()) {
+      await processingDirectory.create(recursive: true);
+    }
+    return processingDirectory;
   }
 
   Future<File?> _selectDocumentImage() async {
@@ -180,6 +215,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     if (source == null) return null;
 
     if (source == _DocumentImageSource.camera) {
+      final hasPermission = await _ensureCameraPermission(
+        contextLabel: 'capturar la licencia',
+      );
+      if (!hasPermission) return null;
       final picked = await _picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.rear,

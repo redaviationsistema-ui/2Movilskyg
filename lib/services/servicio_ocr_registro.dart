@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -39,13 +40,22 @@ class RegistrationOcrService {
     try {
       for (var index = 0; index < images.length; index++) {
         final source = images[index];
+        debugPrint(
+          '[INE OCR] scanIne imageIndex=$index total=${images.length} path=${source.path} platform=${Platform.operatingSystem}',
+        );
         try {
           final capture = await scanner.analyzeImage(source.path);
+          debugPrint(
+            '[INE OCR] barcode capture imageIndex=$index count=${capture?.barcodes.length ?? 0}',
+          );
           for (final barcode in capture?.barcodes ?? const <Barcode>[]) {
             final value = barcode.rawValue?.trim() ?? '';
             if (value.isNotEmpty) barcodeParts.add(value);
           }
-        } catch (_) {
+        } catch (error) {
+          debugPrint(
+            '[INE OCR] barcode analyze failed imageIndex=$index path=${source.path} error=$error',
+          );
           // El OCR sigue funcionando aunque el documento no exponga codigo.
         }
 
@@ -54,7 +64,10 @@ class RegistrationOcrService {
           if (text.isNotEmpty) {
             textParts.add(text);
           }
-        } catch (_) {
+        } catch (error) {
+          debugPrint(
+            '[INE OCR] text scan failed imageIndex=$index path=${source.path} error=$error',
+          );
           // Si el OCR de texto falla, aun podemos usar barcode o backend.
         }
       }
@@ -66,10 +79,16 @@ class RegistrationOcrService {
       if (barcodeParts.isNotEmpty) barcodeParts.join('\n\n'),
       if (textParts.isNotEmpty) textParts.join('\n\n'),
     ].join('\n\n');
+    final parsed = _parseIne(rawText);
+    debugPrint('[INE OCR] OCR TEXT: $rawText');
+    debugPrint('[INE OCR] DATOS EXTRAIDOS: $parsed');
+    debugPrint(
+      '[INE OCR] scanIne summary barcodeParts=${barcodeParts.length} textParts=${textParts.length} rawTextLength=${rawText.length}',
+    );
 
     return RegistrationOcrResult(
       rawText: rawText,
-      fields: _parseIne(rawText),
+      fields: parsed,
       method:
           barcodeParts.isNotEmpty && textParts.isNotEmpty
               ? 'codigo_y_texto'
@@ -83,32 +102,44 @@ class RegistrationOcrService {
 
   static Future<String> _scanText(String path) async {
     if (!Platform.isAndroid && !Platform.isIOS) return '';
+    debugPrint('[INE OCR] PATH IMAGEN: $path');
     final response = await _ocrChannel.invokeMapMethod<String, dynamic>(
       'recognizeText',
       {'path': path},
     );
-    return (response?['text'] ?? '').toString().trim();
+    debugPrint('[INE OCR] OCR RESPONSE: $response');
+    final text = (response?['text'] ?? '').toString().trim();
+    debugPrint('[INE OCR] OCR TEXT: $text');
+    return text;
   }
 
   static Map<String, String> _parseIne(String rawText) {
-    final normalized = rawText.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+    final normalized = _normalizeOcrText(rawText);
     final compact = normalized.replaceAll(RegExp(r'[^A-Z0-9<]'), '');
     final mrz = _parseMrz(rawText);
     final curp = _findCurp(normalized, compact);
     final electorKey = _findElectorKey(normalized, compact);
     final name = _extractName(rawText);
     final cityBase = _extractCityBase(rawText);
-    final birthDate = _birthDateFromCurp(curp);
+    final birthDate = _extractBirthDate(normalized, curp);
     final expiration = _extractExpiration(normalized);
     final cic =
-        RegExp(
-          r'(?:CIC|IDCIC)[:\s-]*(\d{8,12})',
-        ).firstMatch(normalized)?.group(1) ??
+        _extractLabeledDigits(
+          normalized,
+          labelPattern:
+              '(?:${_spacedKeywordPattern("CIC")}|ID\\s*${_spacedKeywordPattern("CIC")})',
+          minLength: 8,
+          maxLength: 12,
+        ) ??
         '';
     final ocr =
-        RegExp(
-          r'(?:OCR|IDENTIFICADOR)[:\s-]*(\d{10,14})',
-        ).firstMatch(normalized)?.group(1) ??
+        _extractLabeledDigits(
+          normalized,
+          labelPattern:
+              '(?:${_spacedKeywordPattern("OCR")}|${_spacedKeywordPattern("IDENTIFICADOR")})',
+          minLength: 10,
+          maxLength: 14,
+        ) ??
         '';
 
     final fallbackName = _extractNameFallback(rawText);
@@ -129,6 +160,9 @@ class RegistrationOcrService {
   }
 
   static String _findCurp(String normalized, String compact) {
+    final labeled = _extractFlexibleCurp(normalized);
+    if (labeled.isNotEmpty) return labeled;
+
     final direct = RegExp(
       r'[A-Z][AEIOUX][A-Z]{2}\d{6}[HM][A-Z]{5}[A-Z0-9]\d',
     ).firstMatch(normalized)?.group(0);
@@ -149,9 +183,13 @@ class RegistrationOcrService {
   }
 
   static String _findElectorKey(String normalized, String compact) {
-    final labeled = RegExp(
-      r'CLAVE(?: DE)? ELECTOR[:\s-]*([A-Z0-9\s]{17,26})',
-    ).firstMatch(normalized)?.group(1);
+    final labeled = _extractLabeledAlnum(
+      normalized,
+      labelPattern:
+          '${_spacedKeywordPattern("CLAVE")}(?:\\s+${_spacedKeywordPattern("DE")})?\\s+${_spacedKeywordPattern("ELECTOR")}',
+      minLength: 17,
+      maxLength: 26,
+    );
     final plain = compact.replaceAll('<', '');
     final candidates = <String>[
       if (labeled != null) labeled.replaceAll(RegExp(r'[^A-Z0-9]'), ''),
@@ -227,20 +265,40 @@ class RegistrationOcrService {
     return '$century${match.group(1)}-${match.group(2)}-${match.group(3)}';
   }
 
+  static String _extractBirthDate(String text, String curp) {
+    final labeled = RegExp(
+      '${_spacedKeywordPattern("FECHA")}(?:\\s+${_spacedKeywordPattern("DE")})?\\s+${_spacedKeywordPattern("NACIMIENTO")}[^0-9]*(\\d{2})[\\-/ ](\\d{2})[\\-/ ](\\d{4})',
+    ).firstMatch(text);
+    if (labeled != null) {
+      return '${labeled.group(3)}-${labeled.group(2)}-${labeled.group(1)}';
+    }
+
+    final labeledIso = RegExp(
+      '${_spacedKeywordPattern("FECHA")}(?:\\s+${_spacedKeywordPattern("DE")})?\\s+${_spacedKeywordPattern("NACIMIENTO")}[^0-9]*(\\d{4})[\\-/ ](\\d{2})[\\-/ ](\\d{2})',
+    ).firstMatch(text);
+    if (labeledIso != null) {
+      return '${labeledIso.group(1)}-${labeledIso.group(2)}-${labeledIso.group(3)}';
+    }
+
+    return _birthDateFromCurp(curp);
+  }
+
   static String _extractExpiration(String text) {
     final fullDate = RegExp(
-      r'VIGENCIA[:\s-]*(\d{4})[-/](\d{2})[-/](\d{2})',
+      '${_spacedKeywordPattern("VIGENCIA")}[:\\s-]*(\\d{4})[-/](\\d{2})[-/](\\d{2})',
     ).firstMatch(text);
     if (fullDate != null) {
       return '${fullDate.group(1)}-${fullDate.group(2)}-${fullDate.group(3)}';
     }
 
     final yearRange = RegExp(
-      r'VIGENCIA[:\s-]*(20\d{2})\s*[-/A ]+\s*(20\d{2})',
+      '${_spacedKeywordPattern("VIGENCIA")}[:\\s-]*(20\\d{2})\\s*[-/A ]+\\s*(20\\d{2})',
     ).firstMatch(text);
     if (yearRange != null) return '${yearRange.group(2)}-12-31';
 
-    final singleYear = RegExp(r'VIGENCIA[:\s-]*(20\d{2})').firstMatch(text);
+    final singleYear = RegExp(
+      '${_spacedKeywordPattern("VIGENCIA")}[:\\s-]*(20\\d{2})',
+    ).firstMatch(text);
     if (singleYear != null) return '${singleYear.group(1)}-12-31';
 
     final standaloneDateMatches =
@@ -257,25 +315,27 @@ class RegistrationOcrService {
 
   static String _extractName(String rawText) {
     final lines =
-        rawText
+        _normalizeOcrText(rawText)
             .split(RegExp(r'\r?\n'))
-            .map((line) => line.trim().toUpperCase())
+            .map((line) => line.trim())
             .where((line) => line.isNotEmpty)
             .toList();
-    final index = lines.indexWhere(
-      (line) => RegExp(r'^N[O0]MBRE').hasMatch(line),
-    );
+    final index = lines.indexWhere((line) {
+      return RegExp('^${_spacedKeywordPattern("NOMBRE")}').hasMatch(line);
+    });
     if (index < 0) return '';
 
     return lines
         .skip(index + 1)
-        .take(4)
+        .take(6)
         .where(
           (line) =>
               !RegExp(
-                r'DOMICILI[O0]|CLAVE|CURP|FECHA|SEXO|VIGENCIA|INSTITUTO',
+                '${_spacedKeywordPattern("DOMICILIO")}|${_spacedKeywordPattern("CLAVE")}|${_spacedKeywordPattern("CURP")}|${_spacedKeywordPattern("FECHA")}|${_spacedKeywordPattern("SEXO")}|${_spacedKeywordPattern("VIGENCIA")}|${_spacedKeywordPattern("INSTITUTO")}',
               ).hasMatch(line),
         )
+        .map(_cleanupInlineLabelNoise)
+        .where((line) => line.isNotEmpty)
         .join(' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -283,9 +343,9 @@ class RegistrationOcrService {
 
   static String _extractNameFallback(String rawText) {
     final lines =
-        rawText
+        _normalizeOcrText(rawText)
             .split(RegExp(r'\r?\n'))
-            .map((line) => line.trim().toUpperCase())
+            .map((line) => line.trim())
             .where((line) => line.isNotEmpty)
             .toList();
 
@@ -293,9 +353,9 @@ class RegistrationOcrService {
         lines.where((line) {
           if (line.length < 6) return false;
           if (RegExp(r'\d').hasMatch(line)) return false;
-          if (!RegExp(r'^[A-ZÁÉÍÓÚÑ ]+$').hasMatch(line)) return false;
+          if (!RegExp(r'^[A-Z ]+$').hasMatch(line)) return false;
           if (RegExp(
-            r'CURP|CLAVE|DOMICILI[O0]|SEXO|VIGENCIA|FECHA|INSTITUTO|ESTADO|MUNICIPIO|COLONIA|LOCALIDAD',
+            '${_spacedKeywordPattern("CURP")}|${_spacedKeywordPattern("CLAVE")}|${_spacedKeywordPattern("DOMICILIO")}|${_spacedKeywordPattern("SEXO")}|${_spacedKeywordPattern("VIGENCIA")}|${_spacedKeywordPattern("FECHA")}|${_spacedKeywordPattern("INSTITUTO")}|${_spacedKeywordPattern("ESTADO")}|${_spacedKeywordPattern("MUNICIPIO")}|${_spacedKeywordPattern("COLONIA")}|${_spacedKeywordPattern("LOCALIDAD")}',
           ).hasMatch(line)) {
             return false;
           }
@@ -312,14 +372,16 @@ class RegistrationOcrService {
 
   static String _extractCityBase(String rawText) {
     final lines =
-        rawText
+        _normalizeOcrText(rawText)
             .split(RegExp(r'\r?\n'))
-            .map((line) => line.trim().toUpperCase())
+            .map((line) => line.trim())
             .where((line) => line.isNotEmpty)
             .toList();
 
     final addressIndex = lines.indexWhere(
-      (line) => RegExp(r'^DOMICILI[O0]$|^DOMICILI[O0]\b').hasMatch(line),
+      (line) => RegExp(
+        '^${_spacedKeywordPattern("DOMICILIO")}\$|^${_spacedKeywordPattern("DOMICILIO")}\\b',
+      ).hasMatch(line),
     );
     if (addressIndex < 0) return '';
 
@@ -329,13 +391,13 @@ class RegistrationOcrService {
             .takeWhile(
               (line) =>
                   !RegExp(
-                    r'CLAVE|CURP|FECHA|SECCI[O0]N|A[ÑN]O|SEXO|VIGENCIA|ESTADO|MUNICIPIO',
+                    '${_spacedKeywordPattern("CLAVE")}|${_spacedKeywordPattern("CURP")}|${_spacedKeywordPattern("FECHA")}|SECCI[O0]N|A[ÑN]O|${_spacedKeywordPattern("SEXO")}|${_spacedKeywordPattern("VIGENCIA")}|${_spacedKeywordPattern("ESTADO")}|${_spacedKeywordPattern("MUNICIPIO")}',
                   ).hasMatch(line),
             )
             .toList();
 
     for (final line in addressLines.reversed) {
-      if (RegExp(r'^[A-ZÁÉÍÓÚÑ ]+,\s*[A-ZÁÉÍÓÚÑ. ]+$').hasMatch(line)) {
+      if (RegExp(r'^[A-Z ]+,\s*[A-Z. ]+$').hasMatch(line)) {
         return _toTitleCase(line);
       }
     }
@@ -359,6 +421,86 @@ class RegistrationOcrService {
                   : '${word[0].toUpperCase()}${word.substring(1)}',
         )
         .join(' ');
+  }
+
+  static String _normalizeOcrText(String value) {
+    return value
+        .toUpperCase()
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('Ü', 'U')
+        .replaceAll('Ñ', 'N')
+        .replaceAll('\r', '\n')
+        .replaceAll(RegExp(r'[ \t]+'), ' ')
+        .replaceAll(RegExp(r' *\n *'), '\n')
+        .trim();
+  }
+
+  static String _spacedKeywordPattern(String keyword) {
+    final normalized = _normalizeOcrText(keyword).replaceAll(' ', '');
+    return normalized.split('').map(RegExp.escape).join(r'[\s.:;-]*');
+  }
+
+  static String _cleanupInlineLabelNoise(String value) {
+    return value
+        .replaceAll(
+          RegExp(
+            '${_spacedKeywordPattern("NOMBRE")}|${_spacedKeywordPattern("APELLIDO")}|${_spacedKeywordPattern("PATERNO")}|${_spacedKeywordPattern("MATERNO")}',
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static String _extractFlexibleCurp(String text) {
+    final labeled = _extractLabeledAlnum(
+      text,
+      labelPattern: _spacedKeywordPattern('CURP'),
+      minLength: 18,
+      maxLength: 24,
+    );
+    if (labeled == null || labeled.isEmpty) return '';
+
+    final compact = labeled.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (compact.length < 18) return '';
+    return _normalizeCurpCandidate(compact.substring(0, 18));
+  }
+
+  static String? _extractLabeledAlnum(
+    String text, {
+    required String labelPattern,
+    required int minLength,
+    required int maxLength,
+  }) {
+    final match = RegExp(
+      '$labelPattern[:\\s-]*([A-Z0-9\\s]{${minLength},${maxLength}})',
+    ).firstMatch(text);
+    return match?.group(1)?.trim();
+  }
+
+  static String? _extractLabeledDigits(
+    String text, {
+    required String labelPattern,
+    required int minLength,
+    required int maxLength,
+  }) {
+    final raw = _extractLabeledAlnum(
+      text,
+      labelPattern: labelPattern,
+      minLength: minLength,
+      maxLength: maxLength + 8,
+    );
+    if (raw == null || raw.isEmpty) return null;
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < minLength) return null;
+    return digits.substring(
+      0,
+      digits.length > maxLength ? maxLength : digits.length,
+    );
   }
 
   static Map<String, String> _parseMrz(String rawText) {

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:signature/signature.dart';
@@ -734,9 +735,19 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     });
 
     try {
+      debugPrint(
+        '[DocuSign] flightRequestId=$flightRequestId reservationId=$reservationId',
+      );
+      final resolvedReservationId = await _resolveReservationIdForDocuSign(
+        request: request,
+        reservationId: reservationId,
+        flightRequestId: flightRequestId,
+      );
+      if (reservationId.trim().isEmpty) {
+        debugPrint('[DocuSign] reservation creada: $resolvedReservationId');
+      }
       final contractSnapshot = contractModel.toSnapshot(
-        reservationId:
-            reservationId.isNotEmpty ? reservationId : contractEntityId,
+        reservationId: resolvedReservationId,
         flightRequestId: flightRequestId,
         clientSignatureAnchor: '/sig_cliente/',
       );
@@ -751,51 +762,62 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       );
       final fullContractPlainText = _buildContractPlainText(contractModel);
       final returnUrl = _buildDocuSignReturnUrl(
-        reservationId:
-            reservationId.isNotEmpty ? reservationId : contractEntityId,
+        reservationId: resolvedReservationId,
         flightRequestId: flightRequestId,
       );
-      final payload = await ApiClient.instance.sendClientContractForSignature(
-        reservationId: reservationId,
-        flightRequestId: flightRequestId,
-        contractPayload: {
-          'id': contractEntityId,
-          'reservation':
-              reservationId.isNotEmpty ? reservationId : contractEntityId,
-          'booking_id':
-              reservationId.isNotEmpty ? reservationId : contractEntityId,
-          'reservation_id': reservationId,
-          'flight_request': flightRequestId,
-          'flight_request_id': flightRequestId,
-          'client_name': contractModel.customerName,
-          'client_email': customerEmail,
-          'route': contractModel.routeLabel,
-          'flight_date': contractModel.compactDepartureLabel,
-          'aircraft': contractModel.aircraftLabel,
-          'total': contractModel.finalPriceLabel,
-          'currency': 'USD',
-          'return_url': returnUrl,
-          'callback_url': returnUrl,
-          'return_path': kDocuSignReturnPath,
-          'contract_snapshot': contractSnapshot,
-          'contract_html': fullContractHtml,
-          'contract_markup': fullContractHtml,
-          'contract_plain_text': fullContractPlainText,
-          'document_html': fullContractHtml,
-          'full_contract_html': fullContractHtml,
-          'full_contract_text': fullContractPlainText,
-          'source_contract_path': _buildContractSourcePath(
-            reservationId.isNotEmpty ? reservationId : contractEntityId,
-          ),
-          'document_source': 'client_contract_full_html',
-          'regenerate': true,
-          'docusign': {
-            'provider': 'docusign',
-            'client_signature_anchor': '/sig_cliente/',
-          },
-          'return_context': 'mobile',
-        },
-      );
+      final payload = await () async {
+        try {
+          debugPrint(
+            '[DocuSign] enviando contrato para firma reservationId=$resolvedReservationId',
+          );
+          return await ApiClient.instance.sendClientContractForSignature(
+            reservationId: resolvedReservationId,
+            flightRequestId: flightRequestId,
+            contractPayload: {
+              'id': contractEntityId,
+              'reservation': resolvedReservationId,
+              'booking_id': resolvedReservationId,
+              'reservation_id': resolvedReservationId,
+              'flight_request': flightRequestId,
+              'flight_request_id': flightRequestId,
+              'client_name': contractModel.customerName,
+              'client_email': customerEmail,
+              'route': contractModel.routeLabel,
+              'flight_date': contractModel.compactDepartureLabel,
+              'aircraft': contractModel.aircraftLabel,
+              'total': contractModel.finalPriceLabel,
+              'currency': 'USD',
+              'return_url': returnUrl,
+              'callback_url': returnUrl,
+              'return_path': kDocuSignReturnPath,
+              'contract_snapshot': contractSnapshot,
+              'contract_html': fullContractHtml,
+              'contract_markup': fullContractHtml,
+              'contract_plain_text': fullContractPlainText,
+              'document_html': fullContractHtml,
+              'full_contract_html': fullContractHtml,
+              'full_contract_text': fullContractPlainText,
+              'source_contract_path': _buildContractSourcePath(
+                resolvedReservationId,
+              ),
+              'document_source': 'client_contract_full_html',
+              'regenerate': true,
+              'docusign': {
+                'provider': 'docusign',
+                'client_signature_anchor': '/sig_cliente/',
+              },
+              'return_context': 'mobile',
+            },
+          );
+        } on ApiException catch (error) {
+          throw ApiException(
+            'Error de DocuSign. ${error.message}',
+            statusCode: error.statusCode,
+            cause: error,
+            payload: error.payload,
+          );
+        }
+      }();
       final signingUrl = _extractSigningUrl(payload);
       _externalContractId = _extractContractId(payload);
       if (signingUrl.isEmpty) {
@@ -867,6 +889,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       if (!_contractReadyForPayment(statusPayload)) {
         if (!mounted) return;
         setState(() {
+          _waitingForExternalSignatureReturn = false;
           _submitMessage =
               'DocuSign regreso a la app, pero el backend aun no confirma la firma. Actualiza Mis vuelos en unos segundos.';
         });
@@ -883,6 +906,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _waitingForExternalSignatureReturn = false;
         _submitMessage =
             'No fue posible validar automaticamente la firma: $error';
       });
@@ -920,8 +944,16 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       final bytes = await ApiClient.instance.downloadClientContractPdf(
         contractEntityId,
       );
-      final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/contrato-$contractEntityId.pdf');
+      final directory = await getApplicationDocumentsDirectory();
+      final contractsDirectory = Directory(
+        path.join(directory.path, 'contracts'),
+      );
+      if (!await contractsDirectory.exists()) {
+        await contractsDirectory.create(recursive: true);
+      }
+      final file = File(
+        path.join(contractsDirectory.path, 'contrato-$contractEntityId.pdf'),
+      );
       await file.writeAsBytes(bytes, flush: true);
       final result = await OpenFilex.open(file.path);
 
@@ -976,6 +1008,22 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     final flightRequestId = _flightRequestId(request);
     if (flightRequestId.isNotEmpty) return flightRequestId;
     return '';
+  }
+
+  Future<String> _resolveReservationIdForDocuSign({
+    required Map<String, dynamic> request,
+    required String reservationId,
+    required String flightRequestId,
+  }) async {
+    final normalizedFlightRequestId = flightRequestId.trim();
+    final resolvedReservationId = await ApiClient.instance
+        .ensureClientReservation(
+          flightRequestId: normalizedFlightRequestId,
+          existingReservationId: reservationId,
+        );
+    request['reservation_id'] = resolvedReservationId;
+    request['booking_id'] = resolvedReservationId;
+    return resolvedReservationId;
   }
 
   _ContractModel _contractModelForRequest(
