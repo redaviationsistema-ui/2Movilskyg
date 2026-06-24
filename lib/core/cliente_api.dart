@@ -1498,12 +1498,6 @@ class ApiClient {
   }) async {
     final uri = _uri(candidate, path, query);
     final requestHeaders = _headers(authenticated: authenticated);
-    _logHttpRequest(
-      method: method,
-      uri: uri,
-      headers: requestHeaders,
-      body: body,
-    );
 
     switch (method) {
       case 'POST':
@@ -1588,70 +1582,19 @@ class ApiClient {
     return value.replaceAll(RegExp(r'/+$'), '');
   }
 
-  void _logHttpRequest({
-    required String method,
-    required Uri uri,
-    required Map<String, String> headers,
-    Map<String, dynamic>? body,
-  }) {
-    debugPrint(
-      '[API ${Platform.isIOS
-          ? 'iOS'
-          : Platform.isAndroid
-          ? 'Android'
-          : Platform.operatingSystem}] request method=$method uri=$uri headers=${_sanitizeHeaders(headers)} body=${_sanitizeBody(body)}',
-    );
-  }
-
   void _logHttpResponse({
     required String method,
     required Uri uri,
     required http.Response response,
-  }) {
-    debugPrint(
-      '[API ${Platform.isIOS
-          ? 'iOS'
-          : Platform.isAndroid
-          ? 'Android'
-          : Platform.operatingSystem}] response method=$method uri=$uri status=${response.statusCode} body=${response.body}',
-    );
-  }
-
-  Map<String, String> _sanitizeHeaders(Map<String, String> headers) {
-    return headers.map((key, value) {
-      final normalized = key.toLowerCase();
-      if (normalized == 'authorization') {
-        final hasBearer = value.startsWith('Bearer ');
-        final token = hasBearer ? value.substring(7) : value;
-        final masked =
-            token.isEmpty
-                ? ''
-                : token.length <= 8
-                ? '***'
-                : '${token.substring(0, 4)}***${token.substring(token.length - 2)}';
-        return MapEntry(key, hasBearer ? 'Bearer $masked' : masked);
-      }
-      return MapEntry(key, value);
-    });
-  }
-
-  Map<String, dynamic> _sanitizeBody(Map<String, dynamic>? body) {
-    final payload = Map<String, dynamic>.from(body ?? const {});
-    const secretKeys = {
-      'password',
-      'password_confirmation',
-      'token',
-      'access_token',
-      'refresh_token',
-      'client_secret',
-    };
-
-    payload.updateAll((key, value) {
-      if (secretKeys.contains(key.toLowerCase())) return '***';
-      return value;
-    });
-
-    return payload;
+  }) 
+  {
+    // debugPrint(
+    //   '[API ${Platform.isIOS
+    //       ? 'iOS'
+    //       : Platform.isAndroid
+    //       ? 'Android'
+    //       : Platform.operatingSystem}] response method=$method uri=$uri status=${response.statusCode} body=${response.body}',
+    // );
   }
 
   Map<String, String> _headers({required bool authenticated}) {
