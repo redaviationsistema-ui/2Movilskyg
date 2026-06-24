@@ -814,103 +814,194 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: ClientThemeColors.brandNavy,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = constraints.maxWidth;
+              final titleFontSize = (maxWidth * 0.06).clamp(16.0, 20.0).toDouble();
+              final subtitleFontSize = (maxWidth * 0.038).clamp(12.0, 14.0).toDouble();
+              final numberFontSize = (maxWidth * 0.082).clamp(18.0, 28.0).toDouble();
+              final chipFontSize = (maxWidth * 0.034).clamp(11.0, 13.0).toDouble();
+              final fieldFontSize = (maxWidth * 0.042).clamp(14.0, 16.0).toDouble();
+              final compactSpacing = maxWidth < 340;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Tarjeta Corporativa',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tarjeta Corporativa',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Visa • Mastercard • Amex',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: const Color(0xFFD5E2EE),
+                                fontWeight: FontWeight.w700,
+                                fontSize: subtitleFontSize,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compactSpacing ? 10 : 12,
+                            vertical: compactSpacing ? 6 : 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _cardBrandLabel(),
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: chipFontSize,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  SizedBox(height: compactSpacing ? 18 : 22),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compactSpacing ? 14 : 16,
+                      vertical: compactSpacing ? 16 : 18,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
+                      color: Colors.white.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                      ),
                     ),
-                    child: Text(
-                      _cardBrandLabel(),
-                      style: const TextStyle(
+                    child: Row(
+                      children: [
+                        _CardBrandMark(brand: _cardBrand()),
+                        SizedBox(width: compactSpacing ? 10 : 14),
+                        Expanded(
+                          child: FittedBox(
+                            alignment: Alignment.centerLeft,
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _cardProgressivePreview(),
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: const Color(0xFFF5B0A8),
+                                fontWeight: FontWeight.w800,
+                                fontSize: numberFontSize,
+                                letterSpacing: compactSpacing ? 0.6 : 0.9,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: compactSpacing ? 14 : 18),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compactSpacing ? 12 : 14,
+                      vertical: compactSpacing ? 16 : 18,
+                    ),
+                    child: CardField(
+                      controller: _stripeCardController,
+                      enablePostalCode: false,
+                      // Se usa solo para renderizar la vista previa dinamica.
+                      dangerouslyGetFullCardDetails: true,
+                      cursorColor: const Color(0xFFF5B0A8),
+                      numberHintText: '1234 5678 9012 3456',
+                      expirationHintText: 'MM/AA',
+                      cvcHintText: 'CVC',
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        hintStyle: TextStyle(
+                          color: const Color(0xFF9FB1C1),
+                          fontSize: fieldFontSize,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onCardChanged: (details) {
+                        setState(() {
+                          _cardDetails = details;
+                          if ((details?.complete ?? false) &&
+                              _inlineMessage.startsWith(
+                                'Completa correctamente los datos',
+                              )) {
+                            _inlineMessage = '';
+                          }
+                        });
+                      },
+                      style: TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                        fontSize: fieldFontSize,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
+                  SizedBox(height: compactSpacing ? 14 : 18),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _CardMetaItem(
+                          label: 'Titular',
+                          value: _cardHolderPreview(),
+                          alignEnd: false,
+                        ),
+                      ),
+                      SizedBox(width: compactSpacing ? 10 : 12),
+                      Expanded(
+                        child: _CardMetaItem(
+                          label: 'Vencimiento',
+                          value: _expiryPreview(),
+                          alignEnd: true,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Visa • Mastercard • Amex',
-                style: TextStyle(
-                  color: Color(0xFFD5E2EE),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFD8E0E8)),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 18,
-                ),
-                child: CardField(
-                  controller: _stripeCardController,
-                  enablePostalCode: false,
-                  dangerouslyGetFullCardDetails: false,
-                  cursorColor: ClientThemeColors.brandNavy,
-                  numberHintText: '1234 5678 9012 3456',
-                  expirationHintText: 'MM/AA',
-                  cvcHintText: 'CVC',
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  onCardChanged: (details) {
-                    setState(() {
-                      _cardDetails = details;
-                      if ((details?.complete ?? false) &&
-                          _inlineMessage.startsWith(
-                            'Completa correctamente los datos',
-                          )) {
-                        _inlineMessage = '';
-                      }
-                    });
-                  },
-                  style: const TextStyle(
-                    color: Color(0xFF111111),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _SecurityBullet(label: 'Pago seguro con Stripe'),
-              const SizedBox(height: 8),
-              const _SecurityBullet(label: 'Datos cifrados'),
-              const SizedBox(height: 8),
-              const _SecurityBullet(label: 'Sin almacenamiento local'),
-            ],
+              );
+            },
           ),
         ),
       ],
@@ -1699,18 +1790,29 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   bool _isContractSigned(Map<String, dynamic> request) {
     final contract = _asStringKeyMap(request['contract']);
+    final reservation = _asStringKeyMap(request['reservation']);
     final frontendState = _asStringKeyMap(request['frontend_state']);
+    final reservationFrontendState = _asStringKeyMap(reservation['frontend_state']);
     final contractFrontendState = _asStringKeyMap(contract['frontend_state']);
 
     final status =
         _firstTextFromMaps(
           const [
+            'docusign_status',
             'contract_status',
             'signature_status',
+            'ui_status',
             'status',
             'workflow_status',
           ],
-          [request, contract, frontendState, contractFrontendState],
+          [
+            request,
+            reservation,
+            contract,
+            frontendState,
+            reservationFrontendState,
+            contractFrontendState,
+          ],
         ).toLowerCase();
 
     if (const {
@@ -1718,6 +1820,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       'contract_signed',
       'completed',
       'complete',
+      'approved',
       'firmado',
       'contrato firmado',
       'pago pendiente',
@@ -1729,19 +1832,42 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     final signedPdf = _firstTextFromMaps(
-      const ['signed_pdf_url', 'signedPdfUrl', 'contract_pdf_url'],
-      [request, contract, frontendState, contractFrontendState],
+      const [
+        'signed_pdf_url',
+        'signedPdfUrl',
+        'contract_pdf_url',
+        'contract_url',
+        'contract_document_url',
+      ],
+      [
+        request,
+        reservation,
+        contract,
+        frontendState,
+        reservationFrontendState,
+        contractFrontendState,
+      ],
     );
     if (signedPdf.isNotEmpty) return true;
 
     return request['contract_signed'] == true ||
         request['contract_completed'] == true ||
+        request['contract_ready'] == true ||
+        reservation['contract_signed'] == true ||
+        reservation['contract_completed'] == true ||
+        reservation['contract_ready'] == true ||
         contract['contract_signed'] == true ||
         contract['contract_completed'] == true ||
+        contract['contract_ready'] == true ||
         frontendState['contract_signed'] == true ||
         frontendState['contract_completed'] == true ||
+        frontendState['contract_ready'] == true ||
+        reservationFrontendState['contract_signed'] == true ||
+        reservationFrontendState['contract_completed'] == true ||
+        reservationFrontendState['contract_ready'] == true ||
         contractFrontendState['contract_signed'] == true ||
-        contractFrontendState['contract_completed'] == true;
+        contractFrontendState['contract_completed'] == true ||
+        contractFrontendState['contract_ready'] == true;
   }
 
   Map<String, dynamic> _reservationCheckoutPayload({
@@ -1944,6 +2070,71 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     return brand[0].toUpperCase() + brand.substring(1);
   }
 
+  String _cardProgressivePreview() {
+    final rawNumber = (_cardDetails?.number ?? '').trim();
+    final digits = rawNumber.replaceAll(RegExp(r'\D'), '');
+    final numberComplete = _isCardNumberComplete(digits);
+    final expiryComplete = _isExpiryComplete();
+    final cvcReady = _isCvcReady();
+
+    if (!numberComplete) {
+      return _formatCardNumberPreview(digits);
+    }
+
+    final last4 = digits.length >= 4 ? digits.substring(digits.length - 4) : '••••';
+    final expiry = expiryComplete ? _expiryPreview() : 'MM/AA';
+    final cvc = cvcReady ? 'CVC' : 'C';
+    return '$last4  $expiry  $cvc';
+  }
+
+  String _formatCardNumberPreview(String digits) {
+    final expectedLength = _expectedCardLength();
+    final trimmed =
+        digits.length > expectedLength ? digits.substring(0, expectedLength) : digits;
+    final buffer = StringBuffer();
+    for (var index = 0; index < expectedLength; index++) {
+      if (index > 0 && index % 4 == 0) buffer.write(' ');
+      buffer.write(index < trimmed.length ? trimmed[index] : '•');
+    }
+    return buffer.toString();
+  }
+
+  int _expectedCardLength() {
+    final brand = _cardBrand();
+    if (brand.contains('amex') || brand.contains('american express')) {
+      return 15;
+    }
+    return 16;
+  }
+
+  bool _isCardNumberComplete(String digits) {
+    if (digits.length >= _expectedCardLength()) return true;
+    return _cardDetails?.validNumber == CardValidationState.Valid;
+  }
+
+  bool _isExpiryComplete() {
+    return _cardDetails?.validExpiryDate == CardValidationState.Valid;
+  }
+
+  bool _isCvcReady() {
+    return _cardDetails?.validCVC == CardValidationState.Valid;
+  }
+
+  String _cardHolderPreview() {
+    final holder = _customerName(context).trim().toUpperCase();
+    if (holder.isEmpty) return 'RED AVIATION';
+    return holder;
+  }
+
+  String _expiryPreview() {
+    final month = _cardDetails?.expiryMonth;
+    final year = _cardDetails?.expiryYear;
+    if (month == null || year == null) return 'MM/AA';
+    final normalizedMonth = month.toString().padLeft(2, '0');
+    final normalizedYear = (year % 100).toString().padLeft(2, '0');
+    return '$normalizedMonth/$normalizedYear';
+  }
+
   String _paymentMethodSummaryLabel() {
     if (widget.commercialAccessMode) {
       return _paymentMethod == 'card'
@@ -2049,11 +2240,28 @@ class _InputField extends StatelessWidget {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      cursorColor: ClientThemeColors.brandNavy,
+      style: const TextStyle(
+        color: Color(0xFF102438),
+        fontWeight: FontWeight.w700,
+      ),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         filled: true,
         fillColor: Colors.white,
+        labelStyle: const TextStyle(
+          color: Color(0xFF6C7680),
+          fontWeight: FontWeight.w600,
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: Color(0xFF102438),
+          fontWeight: FontWeight.w700,
+        ),
+        hintStyle: const TextStyle(
+          color: Color(0xFF9AA5AF),
+          fontWeight: FontWeight.w500,
+        ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
@@ -2081,6 +2289,132 @@ class _PaymentRoundActionButton extends StatelessWidget {
         ),
         child: Icon(icon, color: ClientThemeColors.brandNavy, size: 20),
       ),
+    );
+  }
+}
+
+class _CardBrandMark extends StatelessWidget {
+  const _CardBrandMark({required this.brand});
+
+  final String brand;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = brand.trim().toLowerCase();
+    if (normalized.contains('master')) {
+      return Container(
+        width: 40,
+        height: 28,
+        decoration: BoxDecoration(
+          color: const Color(0x1AFFFFFF),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: const [
+            Positioned(
+              left: 9,
+              child: CircleAvatar(radius: 8, backgroundColor: Color(0xFFEB001B)),
+            ),
+            Positioned(
+              right: 9,
+              child: CircleAvatar(radius: 8, backgroundColor: Color(0xFFF79E1B)),
+            ),
+          ],
+        ),
+      );
+    }
+    if (normalized.contains('visa')) {
+      return _CardBrandTextBadge(label: 'VISA');
+    }
+    if (normalized.contains('amex')) {
+      return _CardBrandTextBadge(label: 'AMEX');
+    }
+    return Container(
+      width: 40,
+      height: 28,
+      decoration: BoxDecoration(
+        color: const Color(0x1AFFFFFF),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(
+        Icons.credit_card_rounded,
+        color: Colors.white,
+        size: 18,
+      ),
+    );
+  }
+}
+
+class _CardBrandTextBadge extends StatelessWidget {
+  const _CardBrandTextBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 28),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x1AFFFFFF),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 11,
+            letterSpacing: 0.8,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CardMetaItem extends StatelessWidget {
+  const _CardMetaItem({
+    required this.label,
+    required this.value,
+    required this.alignEnd,
+  });
+
+  final String label;
+  final String value;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            color: Color(0xFF8FA4B8),
+            fontWeight: FontWeight.w700,
+            fontSize: 11,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2221,33 +2555,6 @@ class _CompactPaymentOption extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SecurityBullet extends StatelessWidget {
-  const _SecurityBullet({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(
-          Icons.check_circle_rounded,
-          color: ClientThemeColors.accent,
-          size: 16,
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
     );
   }
 }
