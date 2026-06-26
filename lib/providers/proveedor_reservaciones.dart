@@ -529,6 +529,98 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void markPaymentPending({
+    required String flightRequestId,
+    String reservationId = '',
+    String paymentMethod = 'stripe_checkout',
+    String checkoutSessionId = '',
+  }) {
+    if (flightRequestId.trim().isEmpty && reservationId.trim().isEmpty) return;
+
+    final pendingAt = DateTime.now().toIso8601String();
+    final normalizedFlightRequestId = flightRequestId.trim();
+    final normalizedReservationId = reservationId.trim();
+
+    flightRequests =
+        flightRequests.map((row) {
+          final item = Map<String, dynamic>.from(row);
+          final itemId = _resolveEntityId(item) ?? '';
+          final itemFlightRequestId =
+              _resolveEntityId(item['flight_request_id']) ??
+              _resolveEntityId(_nestedMap(item['flight_request'])['id']) ??
+              '';
+          final itemReservationId =
+              _resolveEntityId(item['reservation_id']) ??
+              _resolveEntityId(_nestedMap(item['reservation'])['id']) ??
+              '';
+
+          final matches =
+              (normalizedFlightRequestId.isNotEmpty &&
+                  (itemId == normalizedFlightRequestId ||
+                      itemFlightRequestId == normalizedFlightRequestId)) ||
+              (normalizedReservationId.isNotEmpty &&
+                  itemReservationId == normalizedReservationId);
+
+          if (!matches) return item;
+
+          final reservation = _nestedMap(item['reservation']);
+          final contract = _nestedMap(item['contract']);
+          final paymentOrder = _nestedMap(item['payment_order']);
+          final payments = _paymentsFromRow(item);
+
+          return {
+            ...item,
+            if (normalizedFlightRequestId.isNotEmpty)
+              'flight_request_id': normalizedFlightRequestId,
+            if (normalizedReservationId.isNotEmpty)
+              'reservation_id': normalizedReservationId,
+            'payment_method': paymentMethod,
+            'payment_status': 'pending',
+            'payment_completed': false,
+            'is_paid': false,
+            'status': 'payment_pending',
+            'workflow_status': 'pago pendiente',
+            'contract_status': 'signed',
+            if (checkoutSessionId.isNotEmpty)
+              'checkout_session_id': checkoutSessionId,
+            'updated_at': pendingAt,
+            'payment_order': {
+              ...paymentOrder,
+              'status': 'pending',
+              if (checkoutSessionId.isNotEmpty)
+                'checkout_session_id': checkoutSessionId,
+              if (paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
+            },
+            'payments': [
+              {
+                'status': 'pending',
+                'created_at': pendingAt,
+                if (checkoutSessionId.isNotEmpty)
+                  'checkout_session_id': checkoutSessionId,
+                if (paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
+              },
+              ...payments,
+            ],
+            'contract': {
+              ...contract,
+              'contract_status': contract['contract_status'] ?? 'signed',
+            },
+            'reservation': {
+              ...reservation,
+              if (normalizedReservationId.isNotEmpty)
+                'id': normalizedReservationId,
+              'status': 'pending_payment',
+              'payment_status': 'pending',
+              'contract_status': 'signed',
+              if (checkoutSessionId.isNotEmpty)
+                'checkout_session_id': checkoutSessionId,
+            },
+          };
+        }).toList();
+
+    notifyListeners();
+  }
+
   Map<String, dynamic> _buildBackendFlightRequestPayload({
     Map<String, dynamic>? quote,
   }) {

@@ -33,12 +33,13 @@ class CommercialAccessState {
 
   bool get canReserve =>
       !isExpired &&
-      (hasPaidAccess ||
-          isPastDue ||
-          _activeStatuses.contains(status));
+      (hasPaidAccess || isPastDue || _activeStatuses.contains(status));
 
   bool get requiresPayment =>
-      isSuspended || isPastDue || isExpired || (!hasPaidAccess && remainingFreeQuotes <= 0);
+      isSuspended ||
+      isPastDue ||
+      isExpired ||
+      (!hasPaidAccess && remainingFreeQuotes <= 0);
 
   String get statusLabel {
     if (isSuspended) {
@@ -47,9 +48,7 @@ class CommercialAccessState {
           : 'Suspendido';
     }
     if (isExpired) {
-      return expiresAtLabel.isNotEmpty
-          ? 'Vencido $expiresAtLabel'
-          : 'Vencido';
+      return expiresAtLabel.isNotEmpty ? 'Vencido $expiresAtLabel' : 'Vencido';
     }
     if (isPastDue) {
       return graceEndsAtLabel.isNotEmpty
@@ -57,7 +56,9 @@ class CommercialAccessState {
           : 'Pago pendiente';
     }
     if (hasPaidAccess || _activeStatuses.contains(status)) {
-      return expiresAtLabel.isNotEmpty ? 'Activo hasta $expiresAtLabel' : 'Activo';
+      return expiresAtLabel.isNotEmpty
+          ? 'Activo hasta $expiresAtLabel'
+          : 'Activo';
     }
     if (remainingFreeQuotes > 0) {
       return '$remainingFreeQuotes cotizacion gratis';
@@ -166,10 +167,14 @@ const Set<String> _suspendedStatuses = {
   'canceled',
 };
 
-CommercialAccessState resolveCommercialAccessState(Map<String, dynamic>? source) {
+CommercialAccessState resolveCommercialAccessState(
+  Map<String, dynamic>? source,
+) {
   final access = source ?? const <String, dynamic>{};
   final commercial = _map(
-    access['commercial_access'] ?? access['commercialAccess'] ?? access['access'],
+    access['commercial_access'] ??
+        access['commercialAccess'] ??
+        access['access'],
   );
   final subscription = _map(access['subscription'] ?? access['membership']);
 
@@ -213,8 +218,7 @@ CommercialAccessState resolveCommercialAccessState(Map<String, dynamic>? source)
   final isPastDue = _pastDueStatuses.contains(status);
   final isSuspended = _suspendedStatuses.contains(status);
   final isExpired =
-      !isPastDue &&
-      (isSuspended || _isDateExpired(expiresAtLabel));
+      !isPastDue && (isSuspended || _isDateExpired(expiresAtLabel));
 
   return CommercialAccessState(
     status: status,
@@ -258,6 +262,8 @@ Map<String, dynamic> syncCommercialAccessPayload(
       'billing_period_end': latestCommercial['billing_period_end'],
     if (latestCommercial['grace_period_ends_at'] != null)
       'grace_period_ends_at': latestCommercial['grace_period_ends_at'],
+    if (latestCommercial['payment_preview'] != null)
+      'payment_preview': latestCommercial['payment_preview'],
     if (latestCommercial['latest_payment'] != null)
       'latest_payment': latestCommercial['latest_payment'],
   };
@@ -276,12 +282,19 @@ Map<String, dynamic> syncCommercialAccessPayload(
       'billing_period_end': mergedCommercial['billing_period_end'],
     if (mergedCommercial['grace_period_ends_at'] != null)
       'grace_period_ends_at': mergedCommercial['grace_period_ends_at'],
+    if (latestSource['payment_preview'] != null)
+      'payment_preview': latestSource['payment_preview'],
+    if (latestSource['payment_preview'] == null &&
+        mergedCommercial['payment_preview'] != null)
+      'payment_preview': mergedCommercial['payment_preview'],
     if (mergedCommercial['latest_payment'] != null)
       'latest_payment': mergedCommercial['latest_payment'],
   };
 }
 
-Map<String, dynamic> consumeTrialQuoteLocally(Map<String, dynamic>? currentAccess) {
+Map<String, dynamic> consumeTrialQuoteLocally(
+  Map<String, dynamic>? currentAccess,
+) {
   final access = syncCommercialAccessPayload(currentAccess, currentAccess);
   final state = resolveCommercialAccessState(access);
 

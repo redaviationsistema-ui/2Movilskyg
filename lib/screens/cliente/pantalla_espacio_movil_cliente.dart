@@ -153,17 +153,22 @@ class _ClientMobileWorkspaceScreenState
             });
           },
           onConfirm: () async {
-            await context.read<ReservationProvider>().loadClientWorkspaceData(
-              force: true,
-            );
+            final reservationProvider = context.read<ReservationProvider>();
+            await reservationProvider.loadClientWorkspaceData(force: true);
             if (!mounted) return;
+            final refreshedRequest = _resolveLatestRequest(
+              reservationProvider,
+              activeRequest,
+            );
             setState(() {
+              _selectedRequestId = _preferredRequestId(refreshedRequest);
               _tripsStage = _TripsStage.payment;
             });
           },
         );
       case _TripsStage.payment:
         return ClientPaymentScreen(
+          key: ValueKey(_paymentScreenKey(activeRequest)),
           request: activeRequest ?? const {},
           showBackButton: false,
           onBack: () {
@@ -281,6 +286,61 @@ class _ClientMobileWorkspaceScreenState
     }
 
     return requests.first;
+  }
+
+  Map<String, dynamic>? _resolveLatestRequest(
+    ReservationProvider reservation,
+    Map<String, dynamic>? currentRequest,
+  ) {
+    final currentId = _preferredRequestId(currentRequest);
+    if (currentId != null && currentId.isNotEmpty) {
+      final byId = _findRequestById(reservation, currentId);
+      if (byId != null) return byId;
+    }
+
+    if (currentRequest == null || currentRequest.isEmpty) return null;
+
+    for (final request in reservation.flightRequests) {
+      if (_sameRequest(request, currentRequest)) return request;
+    }
+
+    return currentRequest;
+  }
+
+  String? _preferredRequestId(Map<String, dynamic>? request) {
+    if (request == null || request.isEmpty) return null;
+    return request['id']?.toString() ??
+        request['flight_request_id']?.toString() ??
+        request['request_id']?.toString() ??
+        request['reservation_id']?.toString() ??
+        request['booking_id']?.toString();
+  }
+
+  bool _sameRequest(Map<String, dynamic> left, Map<String, dynamic> right) {
+    final leftIds = {
+      left['id']?.toString(),
+      left['flight_request_id']?.toString(),
+      left['request_id']?.toString(),
+      left['reservation_id']?.toString(),
+      left['booking_id']?.toString(),
+    }..removeWhere((value) => value == null || value.isEmpty);
+    final rightIds = {
+      right['id']?.toString(),
+      right['flight_request_id']?.toString(),
+      right['request_id']?.toString(),
+      right['reservation_id']?.toString(),
+      right['booking_id']?.toString(),
+    }..removeWhere((value) => value == null || value.isEmpty);
+    return leftIds.any(rightIds.contains);
+  }
+
+  String _paymentScreenKey(Map<String, dynamic>? request) {
+    if (request == null || request.isEmpty) return 'payment-empty';
+    final id = _preferredRequestId(request) ?? 'no-id';
+    final workflow = request['workflow_status']?.toString() ?? '';
+    final contract = request['contract_status']?.toString() ?? '';
+    final signed = request['contract_signed'] == true ? 'signed' : 'unsigned';
+    return 'payment-$id-$workflow-$contract-$signed';
   }
 }
 

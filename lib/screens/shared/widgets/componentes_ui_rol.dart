@@ -36,36 +36,42 @@ class RoleDashboardScaffold extends StatelessWidget {
           end: Alignment.bottomCenter,
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                compact ? 16 : 20,
-                compact ? (topInset > 0 ? 10 : 16) : 18,
-                compact ? 16 : 20,
-                compact ? 10 : 12,
-              ),
-              child: _HeaderCard(
-                title: title,
-                subtitle: subtitle,
-                roleLabel: roleLabel,
-                palette: palette,
-              ),
-            ),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(34),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 16 : 20,
+                  compact ? (topInset > 0 ? 10 : 16) : 18,
+                  compact ? 16 : 20,
+                  compact ? 10 : 12,
                 ),
-                child: Container(
-                  color: palette.contentBackgroundColor,
-                  child: body,
+                child: _HeaderCard(
+                  title: title,
+                  subtitle: subtitle,
+                  roleLabel: roleLabel,
+                  palette: palette,
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(34),
+                  ),
+                  child: Container(
+                    color: palette.contentBackgroundColor,
+                    child: body,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -113,6 +119,7 @@ class _HeaderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: isCompact ? 48 : 52,
@@ -137,7 +144,9 @@ class _HeaderCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: palette.roleLabelColor,
+                        fontSize: isCompact ? 14 : 15,
                         fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -147,9 +156,10 @@ class _HeaderCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: isCompact ? 18 : 24,
-                        fontWeight: FontWeight.w800,
-                        height: 1.08,
+                        fontSize: isCompact ? 18 : 22,
+                        fontWeight: FontWeight.bold,
+                        height: 1.04,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ],
@@ -172,6 +182,8 @@ class _HeaderCard extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.84),
               fontSize: isCompact ? 13 : 14,
               height: 1.45,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.none,
             ),
           ),
         ],

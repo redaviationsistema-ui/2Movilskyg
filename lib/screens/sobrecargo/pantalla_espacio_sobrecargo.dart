@@ -633,9 +633,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
     return MediaQuery(
       data: mediaQuery.copyWith(
-        textScaler: mediaQuery.textScaler.clamp(
-          maxScaleFactor: compact ? 1.0 : 1.08,
-        ),
+        textScaler:
+            compact
+                ? TextScaler.noScaling
+                : mediaQuery.textScaler.clamp(maxScaleFactor: 1.0),
       ),
       child: RoleDashboardScaffold(
         title: _title,
@@ -738,9 +739,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           records: _availability,
           statuses: _availabilityStatuses,
           baseLabel: _resolvedBaseLabel,
-          coverageLabel: _profileForm['coverage']?.toString().trim().isNotEmpty == true
-              ? _profileForm['coverage'].toString().trim()
-              : _configForm['personalCoverage']?.toString().trim() ?? '',
+          coverageLabel:
+              _profileForm['coverage']?.toString().trim().isNotEmpty == true
+                  ? _profileForm['coverage'].toString().trim()
+                  : _configForm['personalCoverage']?.toString().trim() ?? '',
           isLoading: _availabilityLoading,
           onDateSelected: (date) => setState(() => _selectedDate = date),
           onMonthChanged: _loadAvailability,

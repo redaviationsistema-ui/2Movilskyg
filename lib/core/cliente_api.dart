@@ -617,6 +617,40 @@ class ApiClient {
     ], authenticated: true);
   }
 
+  Future<Map<String, dynamic>> getClientContract({
+    String reservationId = '',
+    String flightRequestId = '',
+  }) {
+    final normalizedReservationId = reservationId.trim();
+    final normalizedFlightRequestId = flightRequestId.trim();
+    final paths = <String>[];
+
+    void addPath(String value) {
+      if (value.isEmpty || paths.contains(value)) return;
+      paths.add(value);
+    }
+
+    if (normalizedReservationId.isNotEmpty) {
+      addPath('/cliente/reservas/$normalizedReservationId/contrato');
+      addPath('/client/reservations/$normalizedReservationId/contract');
+    }
+
+    if (normalizedFlightRequestId.isNotEmpty) {
+      addPath('/cliente/solicitudes/$normalizedFlightRequestId/contrato');
+      addPath('/client/flight-requests/$normalizedFlightRequestId/contract');
+      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato');
+      addPath('/client/reservations/$normalizedFlightRequestId/contract');
+    }
+
+    if (paths.isEmpty) {
+      throw const ApiException(
+        'No se encontro un identificador valido para consultar el contrato.',
+      );
+    }
+
+    return getFirstAvailable(paths, authenticated: true);
+  }
+
   Future<Uint8List> downloadClientContractPdf(String reservationId) {
     return downloadFirstAvailable([
       '/cliente/reservas/$reservationId/contrato/pdf',
@@ -689,6 +723,32 @@ class ApiClient {
       const ['/cliente/stripe/checkout/create', '/stripe/checkout/create'],
       authenticated: true,
       body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> getClientCheckoutSuccess({String? sessionId}) {
+    final query = <String, String>{
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'session_id': sessionId.trim(),
+    };
+
+    return getFirstAvailable(
+      const ['/cliente/stripe/checkout/success', '/stripe/checkout/success'],
+      authenticated: true,
+      query: query,
+    );
+  }
+
+  Future<Map<String, dynamic>> cancelClientCheckout({String? sessionId}) {
+    final query = <String, String>{
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'session_id': sessionId.trim(),
+    };
+
+    return getFirstAvailable(
+      const ['/cliente/stripe/checkout/cancel', '/stripe/checkout/cancel'],
+      authenticated: true,
+      query: query,
     );
   }
 
@@ -1586,8 +1646,7 @@ class ApiClient {
     required String method,
     required Uri uri,
     required http.Response response,
-  }) 
-  {
+  }) {
     // debugPrint(
     //   '[API ${Platform.isIOS
     //       ? 'iOS'

@@ -206,6 +206,13 @@ class _ActionCard extends StatelessWidget {
     required this.icon,
     required this.button,
     required this.onPressed,
+    this.titleColor = const Color(0xFF0E2338),
+    this.titleFontSize,
+    this.titleFontWeight = FontWeight.w900,
+    this.subtitleStyle,
+    this.buttonHeight = 52,
+    this.buttonRadius = 12,
+    this.padding = const EdgeInsets.all(16),
   });
 
   final String title;
@@ -213,6 +220,13 @@ class _ActionCard extends StatelessWidget {
   final IconData icon;
   final String button;
   final VoidCallback onPressed;
+  final Color titleColor;
+  final double? titleFontSize;
+  final FontWeight titleFontWeight;
+  final TextStyle? subtitleStyle;
+  final double buttonHeight;
+  final double buttonRadius;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -225,15 +239,22 @@ class _ActionCard extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF0E2338),
               foregroundColor: Colors.white,
+              minimumSize: Size.fromHeight(buttonHeight),
+              maximumSize: const Size(double.infinity, double.infinity),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(buttonRadius),
               ),
             ),
-            child: Text(button),
+            child: Text(
+              button,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
           );
 
           return Container(
-            padding: const EdgeInsets.all(16),
+            padding: padding,
             decoration: _panelDecoration(),
             child:
                 compact
@@ -262,20 +283,24 @@ class _ActionCard extends StatelessWidget {
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: compact ? 18 : 20,
-                                      fontWeight: FontWeight.w900,
+                                      fontSize:
+                                          titleFontSize ?? (compact ? 18 : 20),
+                                      fontWeight: titleFontWeight,
+                                      color: titleColor,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     subtitle,
-                                    maxLines: compact ? 4 : 3,
+                                    maxLines: compact ? 3 : 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Color(0xFF5F6975),
-                                      fontSize: compact ? 13 : 14,
-                                      height: 1.3,
-                                    ),
+                                    style:
+                                        subtitleStyle ??
+                                        TextStyle(
+                                          color: const Color(0xFF5F6975),
+                                          fontSize: compact ? 13 : 14,
+                                          height: 1.3,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -306,9 +331,10 @@ class _ActionCard extends StatelessWidget {
                                 title,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
+                                style: TextStyle(
+                                  fontSize: titleFontSize ?? 18,
+                                  fontWeight: titleFontWeight,
+                                  color: titleColor,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -316,11 +342,13 @@ class _ActionCard extends StatelessWidget {
                                 subtitle,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF5F6975),
-                                  fontSize: 14,
-                                  height: 1.3,
-                                ),
+                                style:
+                                    subtitleStyle ??
+                                    const TextStyle(
+                                      color: Color(0xFF5F6975),
+                                      fontSize: 14,
+                                      height: 1.3,
+                                    ),
                               ),
                             ],
                           ),
@@ -349,35 +377,52 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
     return _AnimatedEntry(
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(compact ? 14 : 16),
         decoration: _panelDecoration(),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: compact ? 36 : 40,
+              height: compact ? 36 : 40,
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF8E7),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: const Color(0xFFE0B86E)),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: compact ? 10 : 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFFFF3B30),
+                      fontSize: compact ? 14 : 17,
+                      fontWeight: FontWeight.bold,
+                      height: 1.1,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: compact ? 4 : 6),
                   Text(
                     subtitle,
-                    style: const TextStyle(color: Color(0xFF5F6975)),
+                    maxLines: compact ? 4 : 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF5F6975),
+                      fontSize: compact ? 12 : 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                    ),
                   ),
                 ],
               ),
@@ -397,43 +442,54 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
     return _AnimatedEntry(
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 16,
+          vertical: compact ? 12 : 13,
+        ),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [Color(0xFFFFF8E7), Colors.white],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(compact ? 16 : 18),
           border: Border.all(color: const Color(0xFFEBD39B)),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child:
                   isLoading
-                      ? const SizedBox(
-                        key: ValueKey('loading'),
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ? SizedBox(
+                        key: const ValueKey('loading'),
+                        width: compact ? 16 : 18,
+                        height: compact ? 16 : 18,
+                        child: const CircularProgressIndicator(strokeWidth: 2),
                       )
-                      : const Icon(
+                      : Icon(
                         Icons.radar_rounded,
-                        key: ValueKey('ready'),
+                        key: const ValueKey('ready'),
                         color: Color(0xFF7A5A18),
+                        size: compact ? 18 : 20,
                       ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: compact ? 8 : 10),
             Expanded(
               child: Text(
-                message,
-                style: const TextStyle(
+                message.trim().replaceAll(RegExp(r'\.+$'), ''),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
                   color: Color(0xFF7A5A18),
-                  fontWeight: FontWeight.w800,
+                  fontSize: compact ? 13 : 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
                 ),
               ),
             ),

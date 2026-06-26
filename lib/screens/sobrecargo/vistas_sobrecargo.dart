@@ -560,10 +560,11 @@ class _MissionHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.of(context).size.width < 430;
+    final hasAssignment = assignment != null;
 
     return _AnimatedEntry(
       child: Container(
-        padding: EdgeInsets.all(compact ? 14 : 18),
+        padding: EdgeInsets.all(compact ? 16 : 18),
         decoration: _panelDecoration(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -571,34 +572,63 @@ class _MissionHeroCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  width: compact ? 54 : 58,
+                  height: compact ? 54 : 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF2F8),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    Icons.flight_takeoff_rounded,
+                    color: Color(0xFF0E2338),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
+                        hasAssignment ? assignment!.code : 'OPS',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFFB7791F),
+                          fontSize: compact ? 12 : 13,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
                         assignment == null
                             ? 'Sin vuelo asignado'
                             : assignment!.route,
-                        maxLines: compact ? 2 : 2,
+                        maxLines: compact ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: compact ? 17 : 20,
-                          fontWeight: FontWeight.w900,
+                          fontSize: compact ? 16 : 18,
+                          fontWeight: FontWeight.bold,
                           color: const Color(0xFF0E2338),
-                          height: 1.05,
+                          height: 1.08,
+                          decoration: TextDecoration.none,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         assignment == null
                             ? 'Mantente disponible para recibir una nueva mision.'
-                            : '${assignment!.code} | ${assignment!.showTime} | ${assignment!.aircraft}',
-                        maxLines: compact ? 2 : 2,
+                            : '${assignment!.provider} · ${assignment!.aircraft}',
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFF5F6975),
                           height: 1.25,
-                          fontSize: compact ? 12 : 14,
+                          fontSize: compact ? 13 : 14,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
                         ),
                       ),
                     ],
@@ -614,17 +644,17 @@ class _MissionHeroCard extends StatelessWidget {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  _DarkMetricPill(label: assignment!.provider),
+                  _DarkMetricPill(label: assignment!.showTime),
                   _DarkMetricPill(
                     label:
-                        assignment!.serviceLevel.isEmpty
-                            ? 'Servicio por confirmar'
-                            : assignment!.serviceLevel,
+                        assignment!.origin.isEmpty
+                            ? 'Origen por definir'
+                            : assignment!.origin,
                   ),
                   _DarkMetricPill(
                     label:
                         assignment!.passengers > 0
-                            ? '${assignment!.passengers} pax'
+                            ? '${assignment!.passengers} pasajeros'
                             : 'Pax por confirmar',
                   ),
                 ],
@@ -645,9 +675,10 @@ class _MissionHeroCard extends StatelessWidget {
                   ? 'Sin checklist activo.'
                   : 'Checklist operativo al $checklistProgress%.',
               style: TextStyle(
-                color: Color(0xFF41566A),
-                fontWeight: FontWeight.w700,
-                fontSize: compact ? 13 : 14,
+                color: const Color(0xFF41566A),
+                fontWeight: FontWeight.w500,
+                fontSize: compact ? 12 : 13,
+                decoration: TextDecoration.none,
               ),
             ),
             SizedBox(height: compact ? 10 : 14),
@@ -655,9 +686,23 @@ class _MissionHeroCard extends StatelessWidget {
               alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
               child: FilledButton.icon(
                 onPressed: onOpenMissions,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 46),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
                 icon: const Icon(Icons.arrow_forward_rounded),
                 label: Text(
                   assignment == null ? 'Ver misiones' : 'Abrir mision',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
             ),
@@ -693,8 +738,9 @@ class _DarkMetricPill extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: Color(0xFF0E2338),
-          fontSize: compact ? 11 : 12,
-          fontWeight: FontWeight.w800,
+          fontSize: compact ? 10 : 11,
+          fontWeight: FontWeight.w500,
+          decoration: TextDecoration.none,
         ),
       ),
     );
@@ -1211,10 +1257,12 @@ class _OperationalStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+
     return _AnimatedEntry(
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(compact ? 16 : 18),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           gradient: const LinearGradient(
@@ -1234,8 +1282,8 @@ class _OperationalStrip extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 50,
-              height: 50,
+              width: compact ? 44 : 50,
+              height: compact ? 44 : 50,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFE0B86E), Color(0xFFF2D39C)],
@@ -1254,26 +1302,34 @@ class _OperationalStrip extends StatelessWidget {
                 children: [
                   Text(
                     status,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Color(0xFFE0B86E),
-                      fontWeight: FontWeight.w800,
+                      fontSize: compact ? 11 : 12,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                      fontSize: compact ? 14 : 17,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    maxLines: compact ? 2 : 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       color: Color(0xFFD8E2EA),
+                      fontSize: compact ? 12 : 13,
                       height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ],
@@ -1356,6 +1412,18 @@ class _MissionListState extends State<_MissionList> {
             subtitle: _primaryDetail(selected),
             icon: Icons.assignment_turned_in_rounded,
             button: primaryAction?.label ?? 'Sin accion',
+            titleColor: const Color(0xFFFF3B30),
+            titleFontSize: selected.canRespondToAssignment ? 24 : 22,
+            titleFontWeight: FontWeight.bold,
+            subtitleStyle: TextStyle(
+              color: const Color(0xFF4B5563),
+              fontSize: selected.canRespondToAssignment ? 16 : 15,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+            buttonHeight: 56,
+            buttonRadius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
             onPressed:
                 primaryAction == null
                     ? () {}
@@ -1433,7 +1501,7 @@ class _MissionListState extends State<_MissionList> {
 
   String _primaryDetail(CrewAssignment assignment) {
     if (assignment.canRespondToAssignment) {
-      return 'Confirma disponibilidad con ${widget.coordinationLabel} y revisa ruta, horario de presentacion y briefing.';
+      return 'Revisa ruta, horario de presentacion y briefing con operaciones.';
     }
     if (assignment.canCheckin) {
       return 'Presentate en aeropuerto/base. Hora limite: ${assignment.showTime} · Lugar: ${assignment.origin.isEmpty ? 'Pendiente por admin' : assignment.origin}.';
@@ -1873,7 +1941,7 @@ class _MissionHero extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFFB7791F),
-                          fontSize: compact ? 12 : 13,
+                          fontSize: compact ? 11 : 12,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.3,
                         ),
@@ -1884,10 +1952,10 @@ class _MissionHero extends StatelessWidget {
                         maxLines: compact ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: compact ? 22 : 26,
-                          fontWeight: FontWeight.w900,
+                          fontSize: compact ? 18 : 20,
+                          fontWeight: FontWeight.bold,
                           color: const Color(0xFF0E2338),
-                          height: 1.05,
+                          height: 1.1,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1898,8 +1966,8 @@ class _MissionHero extends StatelessWidget {
                         style: TextStyle(
                           color: Color(0xFF5F6975),
                           height: 1.3,
-                          fontSize: compact ? 13 : 14,
-                          fontWeight: FontWeight.w700,
+                          fontSize: compact ? 12 : 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1910,7 +1978,7 @@ class _MissionHero extends StatelessWidget {
                         style: TextStyle(
                           color: const Color(0xFF41566A),
                           height: 1.25,
-                          fontSize: compact ? 13 : 14,
+                          fontSize: compact ? 12 : 13,
                         ),
                       ),
                     ],
@@ -1991,7 +2059,8 @@ class _MissionInfoList extends StatelessWidget {
         for (var index = 0; index < rows.length; index++) ...[
           _MissionInfoRow(
             label: rows[index].$1,
-            value: rows[index].$2.isEmpty ? 'Pendiente por admin' : rows[index].$2,
+            value:
+                rows[index].$2.isEmpty ? 'Pendiente por admin' : rows[index].$2,
             compact: compact,
           ),
           if (index != rows.length - 1) const SizedBox(height: 8),
@@ -2023,8 +2092,8 @@ class _MissionInfoRow extends StatelessWidget {
             '$label:',
             style: TextStyle(
               color: const Color(0xFF5F6975),
-              fontSize: compact ? 12 : 13,
-              fontWeight: FontWeight.w700,
+              fontSize: compact ? 11 : 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -2036,8 +2105,8 @@ class _MissionInfoRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: const Color(0xFF0E2338),
-              fontSize: compact ? 13 : 14,
-              fontWeight: FontWeight.w800,
+              fontSize: compact ? 12 : 13,
+              fontWeight: FontWeight.w600,
               height: 1.25,
             ),
           ),
@@ -2074,7 +2143,9 @@ class _MissionProgressCard extends StatelessWidget {
             final item = items[index];
             final colors = _colorsFor(item.tone);
             return Padding(
-              padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 10),
+              padding: EdgeInsets.only(
+                bottom: index == items.length - 1 ? 0 : 10,
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2167,17 +2238,39 @@ class _MissionSecondaryActions extends StatelessWidget {
 
     return Wrap(
       spacing: compact ? 8 : 10,
-      runSpacing: compact ? 8 : 10,
+      runSpacing: 8,
       children:
           actions
               .map(
-                (action) => OutlinedButton.icon(
-                  onPressed: () => onTap(action),
-                  icon: Icon(action.icon),
-                  label: Text(
-                    action.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                (action) => ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: 48,
+                    minWidth: compact ? 0 : 170,
+                  ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => onTap(action),
+                    icon: Icon(action.icon, size: 20),
+                    label: Text(
+                      action.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 14 : 18,
+                        vertical: 12,
+                      ),
+                      side: const BorderSide(color: Color(0xFFD4DCE6)),
+                      foregroundColor: const Color(0xFF22364A),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
                   ),
                 ),
               )
@@ -2202,90 +2295,116 @@ class _MissionChecklistCard extends StatelessWidget {
     final compact = MediaQuery.of(context).size.width < 430;
 
     return Container(
-      padding: EdgeInsets.all(compact ? 14 : 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: _panelDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Checklist operativo',
             style: TextStyle(
-              fontSize: compact ? 16 : 18,
-              fontWeight: FontWeight.w900,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFFF3B30),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           ...stages.map((stage) {
             final expanded = stage.id == expandedStageId;
             final colors = _pillColors(stage.state);
             return Container(
-              margin: const EdgeInsets.only(bottom: 10),
+              margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FBFD),
-                borderRadius: BorderRadius.circular(14),
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Column(
                 children: [
                   Material(
                     type: MaterialType.transparency,
-                    child: ListTile(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
                       onTap: () => onToggle(stage.id),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: compact ? 12 : 14,
-                        vertical: compact ? 0 : 2,
-                      ),
-                      title: Text(
-                        stage.label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: compact ? 14 : 15,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 14 : 16,
+                          vertical: compact ? 12 : 14,
                         ),
-                      ),
-                      subtitle: Text(
-                        stage.state,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: compact ? 12 : 13),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.$1,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              stage.state,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.$2,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    stage.label,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: const Color(0xFF0E2338),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: compact ? 15 : 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _stageSupportText(stage),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: const Color(0xFF667085),
+                                      fontSize: compact ? 13 : 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            expanded
-                                ? Icons.keyboard_arrow_up_rounded
-                                : Icons.keyboard_arrow_down_rounded,
-                          ),
-                        ],
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Wrap(
+                                spacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.$1,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      stage.state,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: colors.$2,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    expanded
+                                        ? Icons.keyboard_arrow_up_rounded
+                                        : Icons.keyboard_arrow_down_rounded,
+                                    color: const Color(0xFF4B5563),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                   if (expanded)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children:
@@ -2309,12 +2428,13 @@ class _MissionChecklistCard extends StatelessWidget {
                                         Expanded(
                                           child: Text(
                                             point,
-                                            maxLines: 4,
+                                            maxLines: 3,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              color: Color(0xFF41566A),
-                                              height: 1.35,
-                                              fontSize: compact ? 13 : 14,
+                                              color: const Color(0xFF374151),
+                                              height: 1.3,
+                                              fontSize: compact ? 15 : 16,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ),
@@ -2344,7 +2464,12 @@ class _MissionChecklistCard extends StatelessWidget {
     if (normalized.contains('admin')) {
       return (const Color(0xFFEAF2F8), const Color(0xFF173B55));
     }
-    return (const Color(0xFFFFF8E7), const Color(0xFFB7791F));
+    return (const Color(0xFFFFF5DE), const Color(0xFFB7791F));
+  }
+
+  String _stageSupportText(_MissionStage stage) {
+    if (stage.points.isEmpty) return stage.state;
+    return stage.points.first;
   }
 }
 
@@ -2495,7 +2620,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: stateValue,
+                initialValue: stateValue,
                 decoration: const InputDecoration(
                   labelText: 'Estado de agenda',
                 ),
@@ -2514,7 +2639,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: blockTypeValue.isEmpty ? null : blockTypeValue,
+                initialValue: blockTypeValue.isEmpty ? null : blockTypeValue,
                 decoration: const InputDecoration(labelText: 'Tipo de bloqueo'),
                 items:
                     const [
@@ -2871,11 +2996,8 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
               selectedBuilder:
                   (context, day, focusedDay) => _dayCell(day, true),
               outsideBuilder:
-                  (context, day, focusedDay) => _dayCell(
-                    day,
-                    false,
-                    isOutsideMonth: true,
-                  ),
+                  (context, day, focusedDay) =>
+                      _dayCell(day, false, isOutsideMonth: true),
               markerBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
             rowHeight: compact ? 78 : 90,
@@ -2909,16 +3031,18 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                   style: TextStyle(color: Color(0xFF5F6975)),
                 ),
                 const SizedBox(height: 12),
-                ...activity.take(6).map(
-                  (item) => _InfoTile(
-                    icon: Icons.history_rounded,
-                    title: '${_dateLabel(item.date)} | ${item.label}',
-                    subtitle:
-                        item.comment.isEmpty
-                            ? 'Actualizado desde ${item.origin.toLowerCase()}.'
-                            : item.comment,
-                  ),
-                ),
+                ...activity
+                    .take(6)
+                    .map(
+                      (item) => _InfoTile(
+                        icon: Icons.history_rounded,
+                        title: '${_dateLabel(item.date)} | ${item.label}',
+                        subtitle:
+                            item.comment.isEmpty
+                                ? 'Actualizado desde ${item.origin.toLowerCase()}.'
+                                : item.comment,
+                      ),
+                    ),
               ],
             ),
           ),
@@ -2947,7 +3071,9 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
               keys.map((key) {
                 final status = _statusFor(key);
                 final count =
-                    widget.records.where((item) => item.statusKey == key).length;
+                    widget.records
+                        .where((item) => item.statusKey == key)
+                        .length;
                 return Container(
                   width: cardWidth,
                   padding: const EdgeInsets.all(13),
@@ -2962,7 +3088,9 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                           children: [
                             Text(
                               '$count dias',
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                             Text(
                               _summaryLabelForKey(key),
@@ -3049,9 +3177,10 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
     final operation = _operationFor(day);
     final displayStatus = _displayStatusForDay(day, record, operation);
     final status = _statusFor(displayStatus.$1);
-    final color = displayStatus.$1 == 'POR_CONFIRMAR'
-        ? const Color(0xFFF8E2BD)
-        : status.color;
+    final color =
+        displayStatus.$1 == 'POR_CONFIRMAR'
+            ? const Color(0xFFF8E2BD)
+            : status.color;
     return Center(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -3059,16 +3188,15 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
         height: 66,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
-          color: isOutsideMonth
-              ? const Color(0xFFF8F4EC)
-              : color.withValues(
-                  alpha: displayStatus.$1 == 'POR_CONFIRMAR' ? 0.9 : 0.18,
-                ),
+          color:
+              isOutsideMonth
+                  ? const Color(0xFFF8F4EC)
+                  : color.withValues(
+                    alpha: displayStatus.$1 == 'POR_CONFIRMAR' ? 0.9 : 0.18,
+                  ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected
-                ? const Color(0xFF0E2338)
-                : const Color(0xFFE8EDF2),
+            color: selected ? const Color(0xFF0E2338) : const Color(0xFFE8EDF2),
             width: selected ? 2 : 1,
           ),
         ),
@@ -3078,9 +3206,10 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
             Text(
               '${day.day}',
               style: TextStyle(
-                color: isOutsideMonth
-                    ? const Color(0xFF94A3B8)
-                    : const Color(0xFF15293A),
+                color:
+                    isOutsideMonth
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF15293A),
                 fontWeight: FontWeight.w900,
                 fontSize: 12,
               ),
@@ -3092,9 +3221,10 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: isOutsideMonth
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF41566A),
+                  color:
+                      isOutsideMonth
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF41566A),
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   fontSize: 10,
                   height: 1.1,
@@ -3163,10 +3293,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
       ),
       child: Text(
         status.label,
-        style: TextStyle(
-          color: status.color,
-          fontWeight: FontWeight.w800,
-        ),
+        style: TextStyle(color: status.color, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -3209,7 +3336,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: _selectedStatus,
+            initialValue: _selectedStatus,
             decoration: const InputDecoration(
               labelText: 'Estado',
               border: OutlineInputBorder(),
@@ -3421,7 +3548,7 @@ class _ProfileView extends StatelessWidget {
               onChanged: (value) => onChanged('coverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: selectedProfileState,
+              initialValue: selectedProfileState,
               decoration: const InputDecoration(labelText: 'Estado perfil'),
               items:
                   profileStates
@@ -3649,7 +3776,8 @@ class _SettingsView extends StatelessWidget {
               onChanged: (value) => onChanged('personalCoverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: form['escalationMode']?.toString() ?? 'Admin primero',
+              initialValue:
+                  form['escalationMode']?.toString() ?? 'Admin primero',
               decoration: const InputDecoration(labelText: 'Escalamiento'),
               items:
                   const [
@@ -3774,7 +3902,7 @@ class _DocumentComposerState extends State<_DocumentComposer> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _category,
+          initialValue: _category,
           decoration: const InputDecoration(labelText: 'Categoria'),
           items:
               const ['Certificacion', 'Identidad', 'Idioma', 'Experiencia']
@@ -3905,7 +4033,7 @@ class _DocumentTile extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: selectedStatus,
+            initialValue: selectedStatus,
             decoration: const InputDecoration(labelText: 'Estado'),
             items:
                 statusOptions
