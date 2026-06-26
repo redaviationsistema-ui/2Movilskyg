@@ -752,7 +752,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         clientSignatureAnchor: '/sig_cliente/',
       );
       final assets = await Future.wait([
-        _assetToDataUrl('assets/Logo.png'),
+        _assetToDataUrl('assets/logo.png'),
         _assetToDataUrl('assets/contract_margin.png'),
       ]);
       final fullContractHtml = _buildContractHtmlDocument(

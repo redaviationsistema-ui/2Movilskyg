@@ -30,7 +30,7 @@ class ReservationPdf {
         totals.isInternational ? "Vuelo Internacional" : "Vuelo Nacional";
 
     final logo = pw.MemoryImage(
-      (await rootBundle.load("assets/Logo.png")).buffer.asUint8List(),
+      (await rootBundle.load("assets/logo.png")).buffer.asUint8List(),
     );
 
     pdf.addPage(

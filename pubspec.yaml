@@ -14,8 +14,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
-  #intl: ^0.19.0
-  intl: ^0.20.0
+  intl: ^0.19.0
+  #intl: ^0.20.0
   uuid: ^4.3.3
   dropdown_search: ^5.0.6
   pdf: ^3.10.8
@@ -55,9 +55,9 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/Logo.png
+  image_path: assets/logo.png
   remove_alpha_ios: true
   background_color: "#FFFFFF"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: assets/Logo.png
+  adaptive_icon_foreground: assets/logo.png
   min_sdk_android: 21

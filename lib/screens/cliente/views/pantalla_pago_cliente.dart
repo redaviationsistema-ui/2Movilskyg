@@ -37,9 +37,13 @@ class ClientPaymentScreen extends StatefulWidget {
   final Uri? initialCheckoutReturnUri;
 
   static int _activeCommercialAccessHandlers = 0;
+  static int _activeReservationPaymentHandlers = 0;
 
   static bool get hasActiveCommercialAccessHandler =>
       _activeCommercialAccessHandlers > 0;
+
+  static bool get hasActiveReservationPaymentHandler =>
+      _activeReservationPaymentHandlers > 0;
 
   @override
   State<ClientPaymentScreen> createState() => _ClientPaymentScreenState();
@@ -72,6 +76,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     super.initState();
     if (widget.commercialAccessMode) {
       ClientPaymentScreen._activeCommercialAccessHandlers++;
+    } else {
+      ClientPaymentScreen._activeReservationPaymentHandlers++;
     }
     WidgetsBinding.instance.addObserver(this);
     _emailController.addListener(_refresh);
@@ -114,6 +120,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (widget.commercialAccessMode) {
       if (ClientPaymentScreen._activeCommercialAccessHandlers > 0) {
         ClientPaymentScreen._activeCommercialAccessHandlers--;
+      }
+    } else {
+      if (ClientPaymentScreen._activeReservationPaymentHandlers > 0) {
+        ClientPaymentScreen._activeReservationPaymentHandlers--;
       }
     }
     super.dispose();
@@ -281,7 +291,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
     final checkoutResult =
         uri.queryParameters['checkout']?.trim().toLowerCase() ?? '';
-    final sessionId = uri.queryParameters['session_id']?.trim() ?? '';
+    final sessionId =
+        (uri.queryParameters['session_id'] ??
+                uri.queryParameters['checkout_session_id'] ??
+                uri.queryParameters['checkoutSessionId'] ??
+                uri.queryParameters['sessionId'] ??
+                '')
+            .trim();
 
     if (sessionId.isNotEmpty) {
       if (widget.commercialAccessMode) {
@@ -343,11 +359,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     bool includeStripeSessionPlaceholder = false,
   }) {
     if (includeStripeSessionPlaceholder) {
-      return '$kMobileCheckoutReturnScheme://$kMobileCheckoutReturnHost'
-          '$kMobileCheckoutReturnPath'
-          '?checkout=$checkout'
-          '&session_id={CHECKOUT_SESSION_ID}'
-          '&refresh=commercial_access';
+      return Uri(
+        scheme: kMobileCheckoutReturnScheme,
+        host: kMobileCheckoutReturnHost,
+        path: kMobileCheckoutReturnPath,
+        queryParameters: {
+          'checkout': checkout,
+          'session_id': '{CHECKOUT_SESSION_ID}',
+          'refresh': 'commercial_access',
+        },
+      ).toString();
     }
 
     return Uri(
@@ -375,26 +396,51 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final basePath = baseUri.path.replaceFirst(RegExp(r'/+$'), '');
     final normalizedCheckout = checkout == 'cancel' ? 'cancelled' : checkout;
 
-    return '${baseUri.origin}$basePath/client/access-payment/mobile-return'
-        '?checkout=$normalizedCheckout'
-        '&session_id={CHECKOUT_SESSION_ID}';
+    return Uri.parse(
+      '${baseUri.origin}$basePath/client/access-payment/mobile-return',
+    ).replace(
+      queryParameters: {
+        'checkout': normalizedCheckout,
+        'session_id': '{CHECKOUT_SESSION_ID}',
+        'refresh': 'commercial_access',
+      },
+    ).toString();
   }
 
   String _buildReservationPaymentBackendReturnUrl(String checkout) {
+    final reservationId = _reservationId(widget.request);
+    final flightRequestId = _flightRequestId(widget.request);
+
     final baseUri = Uri.tryParse(ApiClient.instance.baseUrl);
     if (baseUri == null || baseUri.scheme.isEmpty || baseUri.host.isEmpty) {
-      return _buildCommercialAccessReturnUrl(
-        checkout,
-        includeStripeSessionPlaceholder: true,
-      );
+      return Uri(
+        scheme: kMobileCheckoutReturnScheme,
+        host: kMobileCheckoutReturnHost,
+        path: kMobileCheckoutReturnPath,
+        queryParameters: {
+          'checkout': checkout,
+          'session_id': '{CHECKOUT_SESSION_ID}',
+          'refresh': 'flight_payment',
+          'reservation_id': reservationId,
+          'flight_request_id': flightRequestId,
+        },
+      ).toString();
     }
 
     final basePath = baseUri.path.replaceFirst(RegExp(r'/+$'), '');
     final normalizedCheckout = checkout == 'cancel' ? 'cancelled' : checkout;
 
-    return '${baseUri.origin}$basePath/client/flight-payment/mobile-return'
-        '?checkout=$normalizedCheckout'
-        '&session_id={CHECKOUT_SESSION_ID}';
+    return Uri.parse(
+      '${baseUri.origin}$basePath/client/flight-payment/mobile-return',
+    ).replace(
+      queryParameters: {
+        'checkout': normalizedCheckout,
+        'session_id': '{CHECKOUT_SESSION_ID}',
+        'refresh': 'flight_payment',
+        'reservation_id': reservationId,
+        'flight_request_id': flightRequestId,
+      },
+    ).toString();
   }
 
   @override
@@ -424,11 +470,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                 ? 'Procesando...'
                 : widget.commercialAccessMode
                 ? 'Activar acceso comercial'
-                : _paymentMethod == 'card'
-                ? 'Pagar ahora'
-                : _paymentMethod == 'wire'
-                ? 'Generar referencia bancaria'
-                : 'Pagar ahora',
+                : 'Abrir Stripe Checkout',
         onPressed: _canSubmit && !_submitting ? _submitPayment : null,
         isLoading: _submitting,
       ),
@@ -459,9 +501,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: const Text(
-                'Configura tu pago',
-                style: TextStyle(
+              child: Text(
+                widget.commercialAccessMode
+                    ? 'Configura tu pago'
+                    : 'Pago de vuelo',
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF111111),
@@ -674,7 +718,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                     ),
                     _PaymentRow(
                       label: 'Metodo',
-                      value: _paymentMethodSummaryLabel(),
+                      value:
+                          widget.commercialAccessMode
+                              ? _paymentMethodSummaryLabel()
+                              : 'Stripe Checkout externo',
                       onDark: true,
                     ),
                     _PaymentRow(
@@ -688,23 +735,38 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               ),
             ),
             const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: GlassInfoCard(
-                backgroundColor: ClientThemeColors.brandNavy,
-                borderColor: const Color(0xFF29445A),
-                shadowColor: const Color(0x1A102438),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Metodo de pago',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+            if (!widget.commercialAccessMode)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _ExternalCheckoutCard(
+                  title: 'Checkout externo',
+                  description:
+                      'El cobro se completa fuera de la app en Stripe. Al terminar, volveras automaticamente para validar tu reserva.',
+                  status:
+                      _waitingForReservationCheckoutReturn
+                          ? 'Esperando regreso de Stripe'
+                          : 'Listo para abrir enlace seguro',
+                ),
+              ),
+            if (!widget.commercialAccessMode) const SizedBox(height: 12),
+            if (widget.commercialAccessMode)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: GlassInfoCard(
+                  backgroundColor: ClientThemeColors.brandNavy,
+                  borderColor: const Color(0xFF29445A),
+                  shadowColor: const Color(0x1A102438),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Metodo de pago',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 12),
                     if (widget.commercialAccessMode)
                       Column(
@@ -1155,18 +1217,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final reservationId = _reservationId(widget.request);
     final customerName = _customerName(context);
     final reservationProvider = context.read<ReservationProvider>();
-    final contractSigned = await _resolveContractSignedState();
-    if (!contractSigned) {
-      _debugStripeCheckoutState(
-        label: 'bloqueado_por_contrato',
-        flightRequestId: flightRequestId,
-        reservationId: reservationId,
-      );
-      setState(() {
-        _inlineMessage = 'Primero debes firmar el contrato';
-      });
-      return;
-    }
     if (flightRequestId.isEmpty) {
       setState(() {
         _inlineMessage = 'No encontramos la reserva para iniciar el pago.';
@@ -1552,20 +1602,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   Future<void> _submitReservationCheckoutLink() async {
     final flightRequestId = _flightRequestId(widget.request);
     final reservationId = _reservationId(widget.request);
+    final effectiveFlightRequestId =
+        flightRequestId.isNotEmpty ? flightRequestId : reservationId;
     final reservationProvider = context.read<ReservationProvider>();
-    final contractSigned = await _resolveContractSignedState();
-    if (!contractSigned) {
-      _debugStripeCheckoutState(
-        label: 'bloqueado_por_contrato',
-        flightRequestId: flightRequestId,
-        reservationId: reservationId,
-      );
-      setState(() {
-        _inlineMessage = 'Primero debes firmar el contrato';
-      });
-      return;
-    }
-    if (flightRequestId.isEmpty) {
+    if (effectiveFlightRequestId.isEmpty) {
       setState(() {
         _inlineMessage =
             'No encontramos la reserva para abrir el link de pago.';
@@ -1579,23 +1619,32 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     });
 
     try {
-      final effectiveReservationId = await _ensureReservationId(
-        flightRequestId: flightRequestId,
-        reservationId: reservationId,
-        logPrefix: '[Pago]',
-      );
+      unawaited(_resolveContractSignedState(refreshWorkspace: true));
+      final effectiveReservationId =
+          reservationId.isNotEmpty
+              ? reservationId
+              : await _ensureReservationId(
+                flightRequestId: effectiveFlightRequestId,
+                reservationId: reservationId,
+                logPrefix: '[Pago]',
+              );
       final paymentPayload = _reservationCheckoutPayload(
         reservationId: effectiveReservationId,
       );
+      await _syncReservationReadyForCheckout(
+        reservationId: effectiveReservationId,
+        flightRequestId: effectiveFlightRequestId,
+      );
       _debugStripeCheckoutState(
         label: 'antes_checkout',
-        flightRequestId: flightRequestId,
+        flightRequestId: effectiveFlightRequestId,
         reservationId: effectiveReservationId,
         endpoint:
-            '/cliente/stripe/checkout/create, fallback /stripe/checkout/create',
+            '/cliente/stripe/checkout/create, fallback '
+            '/client/stripe/checkout/create, /stripe/checkout/create',
         body: {
-          'flight_request_id': flightRequestId,
-          'booking_id': flightRequestId,
+          'flight_request_id': effectiveFlightRequestId,
+          'booking_id': effectiveFlightRequestId,
           'success_url': _buildReservationPaymentBackendReturnUrl('success'),
           'cancel_url': _buildReservationPaymentBackendReturnUrl('cancel'),
           'return_url': _buildReservationPaymentBackendReturnUrl('success'),
@@ -1603,7 +1652,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         },
       );
       final payload = await ApiClient.instance.createClientCheckout(
-        flightRequestId: flightRequestId,
+        flightRequestId: effectiveFlightRequestId,
         paymentPayload: paymentPayload,
         successUrl: _buildReservationPaymentBackendReturnUrl('success'),
         cancelUrl: _buildReservationPaymentBackendReturnUrl('cancel'),
@@ -1618,10 +1667,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       ]);
       _debugStripeCheckoutState(
         label: 'respuesta_checkout',
-        flightRequestId: flightRequestId,
+        flightRequestId: effectiveFlightRequestId,
         reservationId: effectiveReservationId,
         endpoint:
-            '/cliente/stripe/checkout/create, fallback /stripe/checkout/create',
+            '/cliente/stripe/checkout/create, fallback '
+            '/client/stripe/checkout/create, /stripe/checkout/create',
         body: paymentPayload,
         response: payload,
         checkoutUrl: redirectUrl,
@@ -1648,7 +1698,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       reservationProvider.markPaymentPending(
-        flightRequestId: flightRequestId,
+        flightRequestId: effectiveFlightRequestId,
         reservationId: effectiveReservationId,
         checkoutSessionId: _reservationCheckoutSessionId,
       );
@@ -1664,7 +1714,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         '[Pago][StripeCheckout] error_backend=${error.message} payload=${jsonEncode(error.payload ?? const {})}',
       );
       if (!mounted) return;
-      setState(() => _inlineMessage = error.message);
+      setState(() {
+        _inlineMessage =
+            _isContractGateError(error)
+                ? 'La firma ya fue enviada. Estamos sincronizando el estado de pago; vuelve a tocar Abrir Stripe Checkout en unos segundos.'
+                : error.message;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1673,6 +1728,55 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _syncReservationReadyForCheckout({
+    required String reservationId,
+    required String flightRequestId,
+  }) async {
+    final normalizedReservationId = reservationId.trim();
+    if (normalizedReservationId.isEmpty) return;
+
+    final payload = {
+      'reservation_id': normalizedReservationId,
+      'booking_id': normalizedReservationId,
+      if (flightRequestId.trim().isNotEmpty)
+        'flight_request_id': flightRequestId.trim(),
+      'status': 'pending_payment',
+      'workflow_status': 'pago pendiente',
+      'contract_status': 'signed',
+      'payment_status': 'pending',
+      'frontend_state': {
+        'ready_for_payment': true,
+        'next_action': 'go_to_payment',
+        'ui_status': 'completed',
+      },
+      'signed_at': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      final synced = await ApiClient.instance.signClientContract(
+        reservationId: normalizedReservationId,
+        contractPayload: payload,
+      );
+      _mergeRequestSnapshot(synced);
+    } catch (error) {
+      debugPrint('[Pago][ready_for_checkout_sync_ignored] $error');
+    }
+  }
+
+  bool _isContractGateError(ApiException error) {
+    final message = [
+      error.message,
+      error.payload?['message']?.toString() ?? '',
+      error.payload?['error']?.toString() ?? '',
+    ].join(' ').toLowerCase();
+
+    return message.contains('firmar') ||
+        message.contains('firma') ||
+        message.contains('contrato') ||
+        message.contains('contract') ||
+        message.contains('sign');
   }
 
   Future<void> _validateReservationCheckoutReturn() async {
@@ -1689,7 +1793,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
     try {
       Map<String, dynamic>? successPayload;
-      for (var attempt = 0; attempt < 4; attempt++) {
+      Map<String, dynamic> refreshedMatch = const <String, dynamic>{};
+      for (var attempt = 0; attempt < 5; attempt++) {
         successPayload = await ApiClient.instance
             .getClientCheckoutSuccess(
               sessionId:
@@ -1705,15 +1810,25 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           break;
         }
 
-        await Future<void>.delayed(const Duration(milliseconds: 900));
+        await reservationProvider.loadClientWorkspaceData(force: true);
+        refreshedMatch = _matchingRequestFromProvider(reservationProvider);
+        if (refreshedMatch.isNotEmpty &&
+            (_requestIndicatesPaymentConfirmed(refreshedMatch) ||
+                _requestIndicatesPaymentPending(refreshedMatch))) {
+          break;
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
       }
 
       if (successPayload != null && successPayload.isNotEmpty) {
         _mergeRequestSnapshot(successPayload);
       }
 
-      await reservationProvider.loadClientWorkspaceData(force: true);
-      final refreshedMatch = _matchingRequestFromProvider(reservationProvider);
+      if (refreshedMatch.isEmpty) {
+        await reservationProvider.loadClientWorkspaceData(force: true);
+        refreshedMatch = _matchingRequestFromProvider(reservationProvider);
+      }
       if (refreshedMatch.isNotEmpty) {
         _mergeRequestSnapshot(refreshedMatch);
       }
@@ -1722,6 +1837,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           refreshedMatch.isNotEmpty ? refreshedMatch : widget.request;
 
       if (_requestIndicatesPaymentConfirmed(currentSnapshot)) {
+        final effectiveReservationId =
+            _reservationId(currentSnapshot).isNotEmpty
+                ? _reservationId(currentSnapshot)
+                : reservationId;
+        reservationProvider.markPaymentConfirmed(
+          flightRequestId: flightRequestId,
+          reservationId: effectiveReservationId,
+          paymentIntentId: _paymentIntentId(currentSnapshot),
+          brand: _cardBrand(),
+        );
         if (!mounted) return;
         setState(() {
           _waitingForReservationCheckoutReturn = false;
@@ -1879,26 +2004,51 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   String _flightRequestId(Map<String, dynamic> request) {
-    return request['flight_request_id']?.toString().trim().isNotEmpty == true
-        ? request['flight_request_id'].toString().trim()
-        : request['request_id']?.toString().trim().isNotEmpty == true
-        ? request['request_id'].toString().trim()
-        : request['id']?.toString().trim().isNotEmpty == true &&
-            (request['reservation_id']?.toString().trim().isEmpty ?? true)
-        ? request['id'].toString().trim()
-        : '';
+    final reservation = _asStringKeyMap(request['reservation']);
+    final flightRequest = _asStringKeyMap(request['flight_request']);
+    final data = _asStringKeyMap(request['data']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final dataFlightRequest = _asStringKeyMap(data['flight_request']);
+    final direct = _firstTextFromMaps(
+      const [
+        'flight_request_id',
+        'flightRequestId',
+        'request_id',
+        'requestId',
+        'solicitud_id',
+      ],
+      [request, reservation, data, dataReservation],
+    );
+    if (direct.isNotEmpty) return direct;
+
+    final nested = _firstTextFromMaps(const ['id'], [
+      flightRequest,
+      dataFlightRequest,
+    ]);
+    if (nested.isNotEmpty) return nested;
+
+    final hasReservationIdentity =
+        _reservationId(request).isNotEmpty || reservation.isNotEmpty;
+    final id = request['id']?.toString().trim() ?? '';
+    return id.isNotEmpty && !hasReservationIdentity ? id : '';
   }
 
   String _reservationId(Map<String, dynamic> request) {
-    return request['reservation_id']?.toString().trim().isNotEmpty == true
-        ? request['reservation_id'].toString().trim()
-        : request['booking_id']?.toString().trim().isNotEmpty == true
-        ? request['booking_id'].toString().trim()
-        : (request['reservation'] is Map &&
-            (request['reservation']['id']?.toString().trim().isNotEmpty ??
-                false))
-        ? request['reservation']['id'].toString().trim()
-        : '';
+    final reservation = _asStringKeyMap(request['reservation']);
+    final data = _asStringKeyMap(request['data']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final direct = _firstTextFromMaps(
+      const [
+        'reservation_id',
+        'reservationId',
+        'booking_id',
+        'bookingId',
+      ],
+      [request, data],
+    );
+    if (direct.isNotEmpty) return direct;
+
+    return _firstTextFromMaps(const ['id'], [reservation, dataReservation]);
   }
 
   Future<String> _ensureReservationId({
@@ -1938,7 +2088,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   void _syncContractWarningVisibility() {
     final shouldClear =
-        _inlineMessage.trim() == 'Primero debes firmar el contrato' &&
+        _inlineMessage.toLowerCase().contains('firmar') &&
         _contractAllowsPayment(widget.request);
     if (!shouldClear) return;
     if (!mounted) return;
@@ -2053,17 +2203,27 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   void _mergeRequestSnapshot(Map<String, dynamic> snapshot) {
     if (snapshot.isEmpty) return;
     widget.request.addAll(snapshot);
-    final reservation = _asStringKeyMap(snapshot['reservation']);
+    final data = _asStringKeyMap(snapshot['data']);
+    final reservation = {
+      ..._asStringKeyMap(data['reservation']),
+      ..._asStringKeyMap(snapshot['reservation']),
+    };
     if (reservation.isNotEmpty) {
       final currentReservation = _asStringKeyMap(widget.request['reservation']);
       widget.request['reservation'] = {...currentReservation, ...reservation};
     }
-    final contract = _asStringKeyMap(snapshot['contract']);
+    final contract = {
+      ..._asStringKeyMap(data['contract']),
+      ..._asStringKeyMap(snapshot['contract']),
+    };
     if (contract.isNotEmpty) {
       final currentContract = _asStringKeyMap(widget.request['contract']);
       widget.request['contract'] = {...currentContract, ...contract};
     }
-    final frontendState = _asStringKeyMap(snapshot['frontend_state']);
+    final frontendState = {
+      ..._asStringKeyMap(data['frontend_state']),
+      ..._asStringKeyMap(snapshot['frontend_state']),
+    };
     if (frontendState.isNotEmpty) {
       final currentState = _asStringKeyMap(widget.request['frontend_state']);
       widget.request['frontend_state'] = {...currentState, ...frontendState};
@@ -2103,25 +2263,74 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final contract = _asStringKeyMap(payload['contract']);
     final reservation = _asStringKeyMap(payload['reservation']);
     final data = _asStringKeyMap(payload['data']);
+    final dataState = _asStringKeyMap(data['frontend_state']);
+    final dataContract = _asStringKeyMap(data['contract']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
     final reservationState = _asStringKeyMap(reservation['frontend_state']);
     final nestedState = _asStringKeyMap(contract['frontend_state']);
+    final dataReservationState = _asStringKeyMap(
+      dataReservation['frontend_state'],
+    );
+    final dataContractState = _asStringKeyMap(dataContract['frontend_state']);
+    final statusSummary = _asStringKeyMap(payload['status_summary']);
+    final dataStatusSummary = _asStringKeyMap(data['status_summary']);
+    final nextAction = _firstTextFromMaps(
+      const ['next_action', 'nextAction'],
+      [
+        payload,
+        state,
+        reservation,
+        reservationState,
+        contract,
+        nestedState,
+        data,
+        dataState,
+        dataReservation,
+        dataReservationState,
+        dataContract,
+        dataContractState,
+      ],
+    ).toLowerCase();
 
-    return state['ready_for_payment'] == true ||
-        reservation['ready_for_payment'] == true ||
-        reservationState['ready_for_payment'] == true ||
-        contract['ready_for_payment'] == true ||
-        nestedState['ready_for_payment'] == true ||
-        data['ready_for_payment'] == true;
+    return _isTruthyValue(state['ready_for_payment']) ||
+        _isTruthyValue(reservation['ready_for_payment']) ||
+        _isTruthyValue(reservationState['ready_for_payment']) ||
+        _isTruthyValue(contract['ready_for_payment']) ||
+        _isTruthyValue(nestedState['ready_for_payment']) ||
+        _isTruthyValue(data['ready_for_payment']) ||
+        _isTruthyValue(dataState['ready_for_payment']) ||
+        _isTruthyValue(dataReservation['ready_for_payment']) ||
+        _isTruthyValue(dataReservationState['ready_for_payment']) ||
+        _isTruthyValue(dataContract['ready_for_payment']) ||
+        _isTruthyValue(dataContractState['ready_for_payment']) ||
+        _isTruthyValue(statusSummary['payment_enabled']) ||
+        _isTruthyValue(statusSummary['is_signed']) ||
+        _isTruthyValue(dataStatusSummary['payment_enabled']) ||
+        _isTruthyValue(dataStatusSummary['is_signed']) ||
+        nextAction == 'go_to_payment' ||
+        nextAction == 'go_to_history';
   }
 
   bool _isContractSigned(Map<String, dynamic> request) {
     final contract = _asStringKeyMap(request['contract']);
     final reservation = _asStringKeyMap(request['reservation']);
+    final data = _asStringKeyMap(request['data']);
+    final dataContract = _asStringKeyMap(data['contract']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
     final frontendState = _asStringKeyMap(request['frontend_state']);
+    final dataFrontendState = _asStringKeyMap(data['frontend_state']);
     final reservationFrontendState = _asStringKeyMap(
       reservation['frontend_state'],
     );
+    final dataReservationFrontendState = _asStringKeyMap(
+      dataReservation['frontend_state'],
+    );
     final contractFrontendState = _asStringKeyMap(contract['frontend_state']);
+    final dataContractFrontendState = _asStringKeyMap(
+      dataContract['frontend_state'],
+    );
+    final statusSummary = _asStringKeyMap(request['status_summary']);
+    final dataStatusSummary = _asStringKeyMap(data['status_summary']);
 
     final status =
         _firstTextFromMaps(
@@ -2132,14 +2341,23 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'ui_status',
             'status',
             'workflow_status',
+            'envelope_status',
           ],
           [
             request,
+            data,
             reservation,
+            dataReservation,
             contract,
+            dataContract,
             frontendState,
+            dataFrontendState,
             reservationFrontendState,
+            dataReservationFrontendState,
             contractFrontendState,
+            dataContractFrontendState,
+            statusSummary,
+            dataStatusSummary,
           ],
         ).toLowerCase();
 
@@ -2155,6 +2373,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       'payment_pending',
       'payment_confirmed',
       'paid',
+      'signing_complete',
+      'signing_completed',
     }.contains(status)) {
       return true;
     }
@@ -2169,33 +2389,61 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       ],
       [
         request,
+        data,
         reservation,
+        dataReservation,
         contract,
+        dataContract,
         frontendState,
+        dataFrontendState,
         reservationFrontendState,
+        dataReservationFrontendState,
         contractFrontendState,
+        dataContractFrontendState,
       ],
     );
     if (signedPdf.isNotEmpty) return true;
 
-    return request['contract_signed'] == true ||
-        request['contract_completed'] == true ||
-        request['contract_ready'] == true ||
-        reservation['contract_signed'] == true ||
-        reservation['contract_completed'] == true ||
-        reservation['contract_ready'] == true ||
-        contract['contract_signed'] == true ||
-        contract['contract_completed'] == true ||
-        contract['contract_ready'] == true ||
-        frontendState['contract_signed'] == true ||
-        frontendState['contract_completed'] == true ||
-        frontendState['contract_ready'] == true ||
-        reservationFrontendState['contract_signed'] == true ||
-        reservationFrontendState['contract_completed'] == true ||
-        reservationFrontendState['contract_ready'] == true ||
-        contractFrontendState['contract_signed'] == true ||
-        contractFrontendState['contract_completed'] == true ||
-        contractFrontendState['contract_ready'] == true;
+    return _isTruthyValue(request['contract_signed']) ||
+        _isTruthyValue(request['contract_completed']) ||
+        _isTruthyValue(request['contract_ready']) ||
+        _isTruthyValue(data['contract_signed']) ||
+        _isTruthyValue(data['contract_completed']) ||
+        _isTruthyValue(data['contract_ready']) ||
+        _isTruthyValue(reservation['contract_signed']) ||
+        _isTruthyValue(reservation['contract_completed']) ||
+        _isTruthyValue(reservation['contract_ready']) ||
+        _isTruthyValue(dataReservation['contract_signed']) ||
+        _isTruthyValue(dataReservation['contract_completed']) ||
+        _isTruthyValue(dataReservation['contract_ready']) ||
+        _isTruthyValue(contract['contract_signed']) ||
+        _isTruthyValue(contract['contract_completed']) ||
+        _isTruthyValue(contract['contract_ready']) ||
+        _isTruthyValue(dataContract['contract_signed']) ||
+        _isTruthyValue(dataContract['contract_completed']) ||
+        _isTruthyValue(dataContract['contract_ready']) ||
+        _isTruthyValue(frontendState['contract_signed']) ||
+        _isTruthyValue(frontendState['contract_completed']) ||
+        _isTruthyValue(frontendState['contract_ready']) ||
+        _isTruthyValue(dataFrontendState['contract_signed']) ||
+        _isTruthyValue(dataFrontendState['contract_completed']) ||
+        _isTruthyValue(dataFrontendState['contract_ready']) ||
+        _isTruthyValue(reservationFrontendState['contract_signed']) ||
+        _isTruthyValue(reservationFrontendState['contract_completed']) ||
+        _isTruthyValue(reservationFrontendState['contract_ready']) ||
+        _isTruthyValue(dataReservationFrontendState['contract_signed']) ||
+        _isTruthyValue(dataReservationFrontendState['contract_completed']) ||
+        _isTruthyValue(dataReservationFrontendState['contract_ready']) ||
+        _isTruthyValue(contractFrontendState['contract_signed']) ||
+        _isTruthyValue(contractFrontendState['contract_completed']) ||
+        _isTruthyValue(contractFrontendState['contract_ready']) ||
+        _isTruthyValue(dataContractFrontendState['contract_signed']) ||
+        _isTruthyValue(dataContractFrontendState['contract_completed']) ||
+        _isTruthyValue(dataContractFrontendState['contract_ready']) ||
+        _isTruthyValue(statusSummary['payment_enabled']) ||
+        _isTruthyValue(statusSummary['is_signed']) ||
+        _isTruthyValue(dataStatusSummary['payment_enabled']) ||
+        _isTruthyValue(dataStatusSummary['is_signed']);
   }
 
   Map<String, dynamic> _reservationCheckoutPayload({
@@ -2371,6 +2619,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             payload['booking_id'] ??
             (reservation is Map ? reservation['id'] : null) ??
             (data is Map ? data['reservation_id'] : null) ??
+            (data is Map ? data['reservationId'] : null) ??
+            (data is Map ? data['booking_id'] : null) ??
+            (data is Map ? data['bookingId'] : null) ??
             '')
         .toString()
         .trim();
@@ -2474,15 +2725,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           ? 'Tarjeta corporativa'
           : 'Stripe Checkout';
     }
-    switch (_paymentMethod) {
-      case 'wire':
-        return 'Transferencia bancaria';
-      case 'link':
-        return 'Link de pago';
-      case 'card':
-      default:
-        return 'Tarjeta corporativa';
-    }
+    return 'Stripe Checkout externo';
   }
 
   Color _messageColor() {
@@ -2511,9 +2754,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   bool _requestIndicatesPaymentConfirmed(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
     final contract = _asStringKeyMap(request['contract']);
     final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final dataContract = _asStringKeyMap(data['contract']);
     final paymentOrder = _asStringKeyMap(request['payment_order']);
+    final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
     final payments = _paymentsFromRow(request);
 
     final status =
@@ -2524,7 +2771,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'payment_status',
             'checkout_status',
           ],
-          [request, reservation, contract, paymentOrder],
+          [
+            request,
+            data,
+            reservation,
+            dataReservation,
+            contract,
+            dataContract,
+            paymentOrder,
+            dataPaymentOrder,
+          ],
         ).toLowerCase();
 
     if (const {
@@ -2539,10 +2795,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       return true;
     }
 
-    if (request['payment_completed'] == true ||
-        request['is_paid'] == true ||
-        reservation['payment_completed'] == true ||
-        reservation['is_paid'] == true) {
+    if (_isTruthyValue(request['payment_completed']) ||
+        _isTruthyValue(request['is_paid']) ||
+        _isTruthyValue(data['payment_completed']) ||
+        _isTruthyValue(data['is_paid']) ||
+        _isTruthyValue(reservation['payment_completed']) ||
+        _isTruthyValue(reservation['is_paid']) ||
+        _isTruthyValue(dataReservation['payment_completed']) ||
+        _isTruthyValue(dataReservation['is_paid'])) {
       return true;
     }
 
@@ -2563,9 +2823,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   bool _requestIndicatesPaymentPending(Map<String, dynamic> request) {
     if (_requestIndicatesPaymentConfirmed(request)) return false;
 
+    final data = _asStringKeyMap(request['data']);
     final contract = _asStringKeyMap(request['contract']);
     final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final dataContract = _asStringKeyMap(data['contract']);
     final paymentOrder = _asStringKeyMap(request['payment_order']);
+    final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
     final payments = _paymentsFromRow(request);
 
     final status =
@@ -2576,7 +2840,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'payment_status',
             'checkout_status',
           ],
-          [request, reservation, contract, paymentOrder],
+          [
+            request,
+            data,
+            reservation,
+            dataReservation,
+            contract,
+            dataContract,
+            paymentOrder,
+            dataPaymentOrder,
+          ],
         ).toLowerCase();
 
     if (const {
@@ -2615,6 +2888,15 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           .toList();
     }
 
+    final data = _asStringKeyMap(row['data']);
+    final dataPayments = data['payments'];
+    if (dataPayments is List) {
+      return dataPayments
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
     final reservation = _asStringKeyMap(row['reservation']);
     final nested = reservation['payments'];
     if (nested is List) {
@@ -2624,7 +2906,22 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           .toList();
     }
 
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final nestedDataPayments = dataReservation['payments'];
+    if (nestedDataPayments is List) {
+      return nestedDataPayments
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
     return const [];
+  }
+
+  bool _isTruthyValue(Object? value) {
+    if (value == true) return true;
+    final normalized = value?.toString().trim().toLowerCase() ?? '';
+    return const {'1', 'true', 'yes', 'si'}.contains(normalized);
   }
 
   bool _accessIsActive(Map<String, dynamic>? payload) {
@@ -3245,6 +3542,116 @@ class _CompactPaymentOption extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ExternalCheckoutCard extends StatelessWidget {
+  const _ExternalCheckoutCard({
+    required this.title,
+    required this.description,
+    required this.status,
+  });
+
+  final String title;
+  final String description;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassInfoCard(
+      backgroundColor: ClientThemeColors.brandNavy,
+      borderColor: const Color(0xFF29445A),
+      shadowColor: const Color(0x1A102438),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.open_in_new_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      status,
+                      style: const TextStyle(
+                        color: Color(0xFFF5B0A8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            description,
+            style: const TextStyle(
+              color: Color(0xFFD5E2EE),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.42,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'No capturamos ni guardamos tu tarjeta dentro de la app.',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

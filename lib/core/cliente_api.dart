@@ -720,7 +720,11 @@ class ApiClient {
     };
 
     return postFirstAvailable(
-      const ['/cliente/stripe/checkout/create', '/stripe/checkout/create'],
+      const [
+        '/cliente/stripe/checkout/create',
+        '/client/stripe/checkout/create',
+        '/stripe/checkout/create',
+      ],
       authenticated: true,
       body: body,
     );
@@ -733,7 +737,11 @@ class ApiClient {
     };
 
     return getFirstAvailable(
-      const ['/cliente/stripe/checkout/success', '/stripe/checkout/success'],
+      const [
+        '/cliente/stripe/checkout/success',
+        '/client/stripe/checkout/success',
+        '/stripe/checkout/success',
+      ],
       authenticated: true,
       query: query,
     );
@@ -746,7 +754,11 @@ class ApiClient {
     };
 
     return getFirstAvailable(
-      const ['/cliente/stripe/checkout/cancel', '/stripe/checkout/cancel'],
+      const [
+        '/cliente/stripe/checkout/cancel',
+        '/client/stripe/checkout/cancel',
+        '/stripe/checkout/cancel',
+      ],
       authenticated: true,
       query: query,
     );
@@ -786,6 +798,7 @@ class ApiClient {
     return writeFirstAvailable(
       const [
         '/cliente/stripe/payment-intent/confirm',
+        '/client/stripe/payment-intent/confirm',
         '/stripe/payment-intent/confirm',
       ],
       authenticated: true,

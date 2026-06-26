@@ -101,6 +101,65 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
 
+    final refreshTarget =
+        uri.queryParameters['refresh']?.trim().toLowerCase() ?? '';
+    final reservationId =
+        (uri.queryParameters['reservation_id'] ??
+                uri.queryParameters['reservationId'] ??
+                uri.queryParameters['booking_id'] ??
+                uri.queryParameters['bookingId'] ??
+                '')
+            .trim();
+    final flightRequestId =
+        (uri.queryParameters['flight_request_id'] ??
+                uri.queryParameters['flightRequestId'] ??
+                uri.queryParameters['request_id'] ??
+                uri.queryParameters['requestId'] ??
+                '')
+            .trim();
+    final checkoutSessionId =
+        (uri.queryParameters['session_id'] ??
+                uri.queryParameters['checkout_session_id'] ??
+                uri.queryParameters['checkoutSessionId'] ??
+                uri.queryParameters['sessionId'] ??
+                '')
+            .trim();
+    final isFlightPaymentReturn =
+        refreshTarget == 'flight_payment' ||
+        refreshTarget == 'reservation_payment' ||
+        reservationId.isNotEmpty ||
+        flightRequestId.isNotEmpty;
+
+    if (isFlightPaymentReturn) {
+      if (ClientPaymentScreen.hasActiveReservationPaymentHandler) return;
+      navigator.push(
+        MaterialPageRoute(
+          builder:
+              (_) => ClientPaymentScreen(
+                request: {
+                  if (reservationId.isNotEmpty) 'reservation_id': reservationId,
+                  if (reservationId.isNotEmpty) 'booking_id': reservationId,
+                  if (flightRequestId.isNotEmpty)
+                    'flight_request_id': flightRequestId,
+                  if (checkoutSessionId.isNotEmpty)
+                    'checkout_session_id': checkoutSessionId,
+                },
+                showBackButton: false,
+                initialCheckoutReturnUri: uri,
+                onPaymentComplete: () async {
+                  final context = _navigatorKey.currentContext;
+                  if (context == null) return;
+                  Navigator.of(context).pop();
+                  await context
+                      .read<ReservationProvider>()
+                      .loadClientWorkspaceData(force: true);
+                },
+              ),
+        ),
+      );
+      return;
+    }
+
     navigator.push(
       MaterialPageRoute(
         builder:
