@@ -216,7 +216,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     final images = <File>[if (_ineFront != null) _ineFront!];
     if (images.isEmpty) return;
 
-    setState(() => _scanningDocument = true);
+    debugPrint('[INE RESCAN] clearing controllers');
+    setState(() {
+      _clearIneControllersForRescan();
+      _scanningDocument = true;
+    });
     debugPrint(
       '[INE] Iniciando escaneo local platform=${Platform.operatingSystem} files=${images.map((file) => file.path).join(', ')}',
     );
@@ -268,7 +272,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   void _applyLocalIneResult(RegistrationOcrResult result) {
-    final data = result.fields;
+    final data = _sanitizeIneData(result.fields);
     debugPrint('[INE] Aplicando resultado local method=${result.method}');
     setState(() {
       _ineScanRaw = result.rawText;
@@ -276,15 +280,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           data.values.any((value) => value.trim().isNotEmpty)
               ? 'scanned'
               : 'partial';
-      _setIfPresent(_nameController, data['name']);
-      _setIfPresent(_birthDateController, data['birth_date']);
-      _setIfPresent(_nationalityController, data['nationality']);
-      _setIfPresent(_baseController, data['base']);
-      _setIfPresent(_documentNumberController, data['document_number']);
-      _setIfPresent(_documentExpirationController, data['document_expiration']);
-      _setIfPresent(_ineCurpController, data['curp']);
-      _setIfPresent(_ineCicController, data['cic']);
-      _setIfPresent(_ineOcrController, data['ocr']);
+      _applyAcceptedIneData(data);
       _documentStatusController.text = _documentStatus(
         _documentExpirationController.text,
       );
@@ -299,6 +295,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               ? 'No se detectaron datos claros. Intenta con fotos derechas, completas y sin reflejos.'
               : 'Escaneo ${result.method} completado: ${detected.join(', ')}. Revisa los datos.';
     });
+    debugPrint('[INE APPLY] final accepted values=${jsonEncode(data)}');
     _logControllerValues('post_local_apply');
   }
 
@@ -358,68 +355,61 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     debugPrint(
       '[INE] Backend parse: rawTextLength=${rawText.length} parsedRaw=$parsedRaw',
     );
+    final sanitized = _sanitizeIneData({
+      if (rawText.isNotEmpty) 'raw': rawText,
+      'name':
+          data['name'] ??
+          data['holder_name'] ??
+          data['nombre'] ??
+          data['nombre_completo'] ??
+          parsedRaw['name'],
+      'birth_date':
+          data['birth_date'] ??
+          data['fecha_nacimiento'] ??
+          parsedRaw['birth_date'],
+      'nationality':
+          data['nationality'] ??
+          data['nacionalidad'] ??
+          parsedRaw['nationality'],
+      'base':
+          data['base'] ??
+          data['city'] ??
+          data['ciudad'] ??
+          data['municipio'] ??
+          parsedRaw['base'],
+      'document_number':
+          data['document_number'] ??
+          data['numero_documento'] ??
+          data['numero'] ??
+          data['clave_elector'] ??
+          parsedRaw['document_number'],
+      'document_issue_date':
+          data['document_issue_date'] ??
+          data['issue_date'] ??
+          data['fecha_emision'],
+      'document_expiration':
+          data['document_expiration'] ??
+          data['expiration_date'] ??
+          data['fecha_vencimiento'] ??
+          data['vigencia'] ??
+          parsedRaw['document_expiration'],
+      'curp': data['curp'] ?? parsedRaw['curp'],
+      'cic': data['cic'] ?? parsedRaw['cic'],
+      'ocr':
+          data['ocr'] ??
+          data['ocr_number'] ??
+          data['identificador_ocr'] ??
+          parsedRaw['ocr'],
+      'address': data['address'] ?? data['domicilio'] ?? parsedRaw['address'],
+      'domicilio':
+          data['domicilio'] ?? data['address'] ?? parsedRaw['domicilio'],
+    });
 
     setState(() {
       if (rawText.isNotEmpty) {
         _ineScanRaw = rawText;
       }
-      _setIfPresent(
-        _nameController,
-        data['name'] ??
-            data['holder_name'] ??
-            data['nombre'] ??
-            data['nombre_completo'] ??
-            parsedRaw['name'],
-      );
-      _setIfPresent(
-        _birthDateController,
-        data['birth_date'] ??
-            data['fecha_nacimiento'] ??
-            parsedRaw['birth_date'],
-      );
-      _setIfPresent(
-        _nationalityController,
-        data['nationality'] ?? data['nacionalidad'] ?? parsedRaw['nationality'],
-      );
-      _setIfPresent(
-        _baseController,
-        data['base'] ??
-            data['city'] ??
-            data['ciudad'] ??
-            data['municipio'] ??
-            parsedRaw['base'],
-      );
-      _setIfPresent(
-        _documentNumberController,
-        data['document_number'] ??
-            data['numero_documento'] ??
-            data['numero'] ??
-            data['clave_elector'] ??
-            parsedRaw['document_number'],
-      );
-      _setIfPresent(
-        _documentIssueDateController,
-        data['document_issue_date'] ??
-            data['issue_date'] ??
-            data['fecha_emision'],
-      );
-      _setIfPresent(
-        _documentExpirationController,
-        data['document_expiration'] ??
-            data['expiration_date'] ??
-            data['fecha_vencimiento'] ??
-            data['vigencia'] ??
-            parsedRaw['document_expiration'],
-      );
-      _setIfPresent(_ineCurpController, data['curp'] ?? parsedRaw['curp']);
-      _setIfPresent(_ineCicController, data['cic'] ?? parsedRaw['cic']);
-      _setIfPresent(
-        _ineOcrController,
-        data['ocr'] ??
-            data['ocr_number'] ??
-            data['identificador_ocr'] ??
-            parsedRaw['ocr'],
-      );
+      _applyAcceptedIneData(sanitized);
       _documentStatusController.text = _documentStatus(
         _documentExpirationController.text,
       );
@@ -429,6 +419,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
               ? 'Escaneo de INE completado. Revisa los datos detectados antes de continuar.'
               : 'Se leyo parcialmente la INE. Completa los campos faltantes manualmente.';
     });
+    debugPrint('[INE APPLY] final accepted values=${jsonEncode(sanitized)}');
     _logControllerValues('post_backend_apply');
     debugPrint(
       '[INE] Estado final tras backend: status=$_ineScanStatus document=${_documentNumberController.text} curp=${_ineCurpController.text} cic=${_ineCicController.text} ocr=${_ineOcrController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
@@ -1076,6 +1067,236 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     return double.tryParse(value?.toString() ?? '');
   }
 
+  void _clearIneControllersForRescan() {
+    for (final controller in [
+      _nameController,
+      _birthDateController,
+      _nationalityController,
+      _baseController,
+      _documentNumberController,
+      _documentIssueDateController,
+      _documentExpirationController,
+      _documentStatusController,
+      _ineCurpController,
+      _ineCicController,
+      _ineOcrController,
+    ]) {
+      controller.clear();
+    }
+    _ineScanRaw = '';
+    _ineScanStatus = '';
+  }
+
+  void _applyAcceptedIneData(Map<String, String> data) {
+    _setIfPresent(_nameController, data['name']);
+    _setIfPresent(_birthDateController, data['birth_date']);
+    _setIfPresent(_nationalityController, data['nationality']);
+    _setIfPresent(_baseController, data['base']);
+    _setIfPresent(_documentNumberController, data['document_number']);
+    _setIfPresent(_documentIssueDateController, data['document_issue_date']);
+    _setIfPresent(_documentExpirationController, data['document_expiration']);
+    _setIfPresent(_ineCurpController, data['curp']);
+    _setIfPresent(_ineCicController, data['cic']);
+    _setIfPresent(_ineOcrController, data['ocr']);
+  }
+
+  Map<String, String> _sanitizeIneData(Map<String, dynamic> raw) {
+    final data = <String, String>{
+      for (final entry in raw.entries)
+        entry.key: entry.value?.toString().trim() ?? '',
+    };
+    final sanitized = <String, String>{};
+    final validCurp = _validatedCurp(data['curp'] ?? '');
+    final validBirthDate = _validatedBirthDate(data['birth_date'] ?? '');
+    final validExpiration = _validatedExpiration(
+      data['document_expiration'] ?? '',
+      birthDate: validBirthDate,
+    );
+    final validName = _validatedName(data['name'] ?? '');
+    final validBase = _validatedBase(data['base'] ?? '');
+    final validDocumentNumber = _validatedDocumentNumber(
+      data['document_number'] ?? '',
+      curp: validCurp,
+    );
+    final validCic = _validatedCic(
+      data['cic'] ?? '',
+      birthDate: validBirthDate,
+    );
+    final validOcr = _validatedOcr(
+      data['ocr'] ?? '',
+      birthDate: validBirthDate,
+    );
+
+    if (validName.isNotEmpty) sanitized['name'] = validName;
+    if (validBirthDate.isNotEmpty) sanitized['birth_date'] = validBirthDate;
+    if (validBase.isNotEmpty) sanitized['base'] = validBase;
+    if (validDocumentNumber.isNotEmpty) {
+      sanitized['document_number'] = validDocumentNumber;
+    }
+    if (validExpiration.isNotEmpty) {
+      sanitized['document_expiration'] = validExpiration;
+    }
+    if (validCurp.isNotEmpty) sanitized['curp'] = validCurp;
+    if (validCic.isNotEmpty) sanitized['cic'] = validCic;
+    if (validOcr.isNotEmpty) sanitized['ocr'] = validOcr;
+
+    final nationality = data['nationality'] ?? '';
+    if (nationality.isNotEmpty && nationality.toLowerCase().contains('mex')) {
+      sanitized['nationality'] = 'Mexicana';
+    }
+
+    final issueDate = data['document_issue_date'] ?? '';
+    if (issueDate.isNotEmpty &&
+        DateTime.tryParse(issueDate) != null &&
+        issueDate != validBirthDate) {
+      sanitized['document_issue_date'] = issueDate;
+    }
+
+    return sanitized;
+  }
+
+  String _validatedCurp(String value) {
+    final text = value.trim().toUpperCase();
+    if (text.isEmpty) return '';
+    if (!RegistrationOcrService.isValidCurp(text)) {
+      debugPrint('[INE VALIDATION] rejected curp=$text reason=invalid_curp');
+      return '';
+    }
+    return text;
+  }
+
+  String _validatedDocumentNumber(String value, {required String curp}) {
+    final text = value.trim().toUpperCase();
+    if (text.isEmpty) return '';
+    if (!RegistrationOcrService.isValidElectorKey(text)) {
+      debugPrint(
+        '[INE VALIDATION] rejected document_number=$text reason=invalid_elector_key',
+      );
+      return '';
+    }
+    if (curp.isNotEmpty && text == curp) {
+      debugPrint(
+        '[INE VALIDATION] rejected document_number=$text reason=same_as_curp',
+      );
+      return '';
+    }
+    return text;
+  }
+
+  String _validatedBirthDate(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+    if (DateTime.tryParse(text) == null) {
+      debugPrint(
+        '[INE VALIDATION] rejected birth_date=$text reason=invalid_date',
+      );
+      return '';
+    }
+    return text;
+  }
+
+  String _validatedExpiration(String value, {required String birthDate}) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) {
+      debugPrint(
+        '[INE VALIDATION] rejected expiration=$text reason=invalid_date',
+      );
+      return '';
+    }
+    if (birthDate.isNotEmpty && text == birthDate) {
+      debugPrint(
+        '[INE VALIDATION] rejected expiration=$text reason=matches_birth_date',
+      );
+      return '';
+    }
+    if (parsed.year < DateTime.now().year - 15) {
+      debugPrint('[INE VALIDATION] rejected expiration=$text reason=too_old');
+      return '';
+    }
+    return text;
+  }
+
+  String _validatedName(String value) {
+    final text = value.trim().toUpperCase();
+    if (text.isEmpty) return '';
+    if (RegExp(r'\d').hasMatch(text) ||
+        _containsAddressKeyword(text) ||
+        RegExp(
+          r'\b(MEX|MEX\.|DOMICILIO|SECCI[O0]N|VIGENCIA|FECHA|CURP|CLAVE|LERMA)\b',
+        ).hasMatch(text) ||
+        !RegExp(r'^[A-Z ,.]+$').hasMatch(text)) {
+      debugPrint('[INE VALIDATION] rejected name=$text reason=invalid_name');
+      return '';
+    }
+    return text;
+  }
+
+  String _validatedBase(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+    final upper = text.toUpperCase();
+    if (RegExp(r'[0-9/\\]').hasMatch(upper) ||
+        RegExp(
+          r'\b(CURP|OCR|CIC|CLAVE|VIGENCIA|SECCI[O0]N|DOMICILIO)\b',
+        ).hasMatch(upper) ||
+        !RegExp(r'^[A-Z .,-]{4,40}$').hasMatch(upper)) {
+      debugPrint('[INE VALIDATION] rejected base=$text reason=invalid_base');
+      return '';
+    }
+    if (RegExp(r'\bMEX\.?\b').hasMatch(upper) &&
+        !RegExp(r'^[A-Z]+(?: [A-Z]+)*, [A-Z]{2,4}\.?$').hasMatch(upper)) {
+      debugPrint('[INE VALIDATION] rejected base=$text reason=too_generic');
+      return '';
+    }
+    return text;
+  }
+
+  bool _containsAddressKeyword(String value) {
+    return RegExp(
+      r'\b(AV|AVENIDA|CALLE|COL|COLONIA|CP|C\.P\.|NUM|NO|NRO|MANZANA|LOTE|DOMICILIO|INDEPENDENCIA)\b',
+    ).hasMatch(value);
+  }
+
+  String _validatedCic(String value, {required String birthDate}) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    if (digits.length < 8 || digits.length > 12) {
+      debugPrint('[INE VALIDATION] rejected cic=$digits reason=length');
+      return '';
+    }
+    final birthDigits = _birthDateDigitsDmy(birthDate);
+    if (birthDigits.isNotEmpty && digits == birthDigits) {
+      debugPrint('[INE VALIDATION] rejected cic=$digits reason=matches_birth');
+      return '';
+    }
+    return digits;
+  }
+
+  String _validatedOcr(String value, {required String birthDate}) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    if (digits.length < 10 || digits.length > 14) {
+      debugPrint('[INE VALIDATION] rejected ocr=$digits reason=length');
+      return '';
+    }
+    final birthDigits = _birthDateDigitsDmy(birthDate);
+    if (birthDigits.isNotEmpty && digits.startsWith(birthDigits)) {
+      debugPrint(
+        '[INE VALIDATION] rejected ocr=$digits reason=starts_with_birth',
+      );
+      return '';
+    }
+    return digits;
+  }
+
+  String _birthDateDigitsDmy(String isoDate) {
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(isoDate);
+    if (match == null) return '';
+    return '${match.group(3)}${match.group(2)}${match.group(1)}';
+  }
+
   void _setIfPresent(TextEditingController controller, dynamic value) {
     final text = value?.toString().trim() ?? '';
     if (text.isNotEmpty) {
@@ -1144,9 +1365,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
   }
 
-  Future<bool> _ensureCameraPermission({
-    required String contextLabel,
-  }) async {
+  Future<bool> _ensureCameraPermission({required String contextLabel}) async {
     try {
       final status = await Permission.camera.request();
       if (status.isGranted) return true;

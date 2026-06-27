@@ -30,7 +30,7 @@ class ReservationPdf {
         totals.isInternational ? "International Charter" : "National Charter";
 
     final logo = pw.MemoryImage(
-      (await rootBundle.load("assets/logo.png")).buffer.asUint8List(),
+      (await rootBundle.load("assets/Logo.png")).buffer.asUint8List(),
     );
 
     pdf.addPage(

@@ -13,7 +13,9 @@ import 'providers/proveedor_autenticacion.dart';
 import 'providers/proveedor_reservaciones.dart';
 import 'providers/proveedor_flujo_trabajo.dart';
 import 'screens/auth/pantalla_puerta_autenticacion.dart';
+import 'screens/cliente/views/pantalla_historial_cliente.dart';
 import 'screens/cliente/views/pantalla_pago_cliente.dart';
+import 'services/servicio_notificaciones.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +27,7 @@ Future<void> main() async {
   Intl.defaultLocale = 'es_MX';
   await initializeDateFormatting('es_MX');
   await initializeDateFormatting('es');
+  await PushNotificationsService.initialize();
 
   runApp(const MyApp());
 }
@@ -149,10 +152,18 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
                 onPaymentComplete: () async {
                   final context = _navigatorKey.currentContext;
                   if (context == null) return;
-                  Navigator.of(context).pop();
                   await context
                       .read<ReservationProvider>()
                       .loadClientWorkspaceData(force: true);
+                  final navigator = _navigatorKey.currentState;
+                  if (navigator == null) return;
+                  navigator.pushReplacement(
+                    MaterialPageRoute(
+                      builder:
+                          (_) =>
+                              const ClientHistoryScreen(showBackButton: false),
+                    ),
+                  );
                 },
               ),
         ),

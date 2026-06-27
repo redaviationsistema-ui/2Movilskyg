@@ -195,7 +195,8 @@ class _ClientMobileWorkspaceScreenState
               reservationId: reservationId,
             );
             setState(() {
-              _tripsStage = _TripsStage.confirmation;
+              _selectedIndex = 1;
+              _tripsStage = _TripsStage.list;
             });
           },
         );

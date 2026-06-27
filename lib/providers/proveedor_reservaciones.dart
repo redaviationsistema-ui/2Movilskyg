@@ -500,7 +500,8 @@ class ReservationProvider extends ChangeNotifier {
             'payment_status': 'paid',
             'payment_completed': true,
             'is_paid': true,
-            'status': 'payment_confirmed',
+            'status': 'confirmed',
+            'booking_status': 'confirmed',
             'workflow_status': 'pago confirmado',
             if (paymentIntentId.isNotEmpty)
               'stripe_payment_intent_id': paymentIntentId,
@@ -519,7 +520,8 @@ class ReservationProvider extends ChangeNotifier {
               ...reservation,
               if (normalizedReservationId.isNotEmpty)
                 'id': normalizedReservationId,
-              'status': 'paid',
+              'status': 'confirmed',
+              'booking_status': 'confirmed',
               'payment_status': 'paid',
               'confirmed_at': reservation['confirmed_at'] ?? paidAt,
             },
@@ -579,10 +581,13 @@ class ReservationProvider extends ChangeNotifier {
             'payment_completed': false,
             'is_paid': false,
             'status': 'payment_pending',
+            'booking_status': 'pending_payment',
             'workflow_status': 'pago pendiente',
             'contract_status': 'signed',
             if (checkoutSessionId.isNotEmpty)
               'checkout_session_id': checkoutSessionId,
+            if (checkoutSessionId.isNotEmpty)
+              'stripe_checkout_session_id': checkoutSessionId,
             'updated_at': pendingAt,
             'payment_order': {
               ...paymentOrder,
@@ -610,10 +615,13 @@ class ReservationProvider extends ChangeNotifier {
               if (normalizedReservationId.isNotEmpty)
                 'id': normalizedReservationId,
               'status': 'pending_payment',
+              'booking_status': 'pending_payment',
               'payment_status': 'pending',
               'contract_status': 'signed',
               if (checkoutSessionId.isNotEmpty)
                 'checkout_session_id': checkoutSessionId,
+              if (checkoutSessionId.isNotEmpty)
+                'stripe_checkout_session_id': checkoutSessionId,
             },
           };
         }).toList();

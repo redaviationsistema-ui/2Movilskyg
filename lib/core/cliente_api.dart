@@ -730,10 +730,24 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> getClientCheckoutSuccess({String? sessionId}) {
+  Future<Map<String, dynamic>> getClientCheckoutSuccess({
+    String? sessionId,
+    String? reservationId,
+    String? flightRequestId,
+  }) {
     final query = <String, String>{
       if (sessionId != null && sessionId.trim().isNotEmpty)
         'session_id': sessionId.trim(),
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'checkout_session_id': sessionId.trim(),
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'stripe_checkout_session_id': sessionId.trim(),
+      if (reservationId != null && reservationId.trim().isNotEmpty)
+        'reservation_id': reservationId.trim(),
+      if (reservationId != null && reservationId.trim().isNotEmpty)
+        'booking_id': reservationId.trim(),
+      if (flightRequestId != null && flightRequestId.trim().isNotEmpty)
+        'flight_request_id': flightRequestId.trim(),
     };
 
     return getFirstAvailable(
@@ -795,7 +809,7 @@ class ApiClient {
       ...paymentPayload,
     };
 
-    return writeFirstAvailable(
+    return postFirstAvailable(
       const [
         '/cliente/stripe/payment-intent/confirm',
         '/client/stripe/payment-intent/confirm',
@@ -810,7 +824,7 @@ class ApiClient {
     required String reservationId,
     required Map<String, dynamic> paymentPayload,
   }) {
-    return writeFirstAvailable(
+    return postFirstAvailable(
       [
         '/cliente/reservas/$reservationId/pago/confirmar',
         '/cliente/reservas/$reservationId/payment/confirm',
