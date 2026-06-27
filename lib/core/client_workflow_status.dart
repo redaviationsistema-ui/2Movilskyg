@@ -286,11 +286,17 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
   final visibilityPayload = _asMap(request['visibility_payload']);
   final adminFlow = _asMap(visibilityPayload['admin_flow']);
   final briefing = _asMap(request['briefing']);
-
-  final explicitWorkflowRaw =
+  final explicitRequestWorkflowRaw =
       _firstNonEmptyText([
         request['workflow_status'],
         request['workflow'],
+        request['status'],
+      ]) ??
+      '';
+
+  final explicitWorkflowRaw =
+      _firstNonEmptyText([
+        explicitRequestWorkflowRaw,
         nestedReservation['workflow_status'],
         nestedReservation['workflow'],
       ]) ??
@@ -303,6 +309,9 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
       ]) ??
       '';
   final normalizedWorkflow = normalizeClientWorkflowValue(rawWorkflow);
+  final explicitRequestWorkflowId = resolveClientWorkflowStageIdFromValue(
+    explicitRequestWorkflowRaw,
+  );
   final explicitWorkflowId = resolveClientWorkflowStageIdFromValue(
     explicitWorkflowRaw,
   );
@@ -325,6 +334,16 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
           _latestCollectedPaymentStatus(request),
           _asMap(nestedReservation['payment'])['status'],
           nestedReservation['payment_status'],
+          request['checkout_status'],
+        ]) ??
+        '',
+  );
+  final normalizedRequestPaymentStatus = normalizeClientWorkflowValue(
+    _firstNonEmptyText([
+          _asMap(request['payment'])['status'],
+          request['payment_status'],
+          _asMap(request['payment_order'])['status'],
+          _latestCollectedPaymentStatus(request),
           request['checkout_status'],
         ]) ??
         '',
@@ -504,6 +523,21 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
     'scheduled',
   ])) {
     return 'flight_confirmed';
+  }
+
+  if (const [
+        'contract_pending',
+        'contract_signed',
+        'payment_pending',
+      ].contains(explicitRequestWorkflowId) &&
+      !_isOneOf(normalizedRequestPaymentStatus, const [
+        'paid',
+        'pagado',
+        'pagada',
+        'payment confirmed',
+        'payment_confirmed',
+      ])) {
+    return explicitRequestWorkflowId;
   }
 
   if (_isOneOf(normalizedPaymentStatus, const [

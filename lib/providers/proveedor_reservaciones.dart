@@ -1748,6 +1748,19 @@ class ReservationProvider extends ChangeNotifier {
     Map<String, dynamic> current,
     Map<String, dynamic> incoming,
   ) {
+    final incomingExplicitWorkflowId = resolveClientWorkflowStageIdFromValue(
+      _firstText(incoming, const ['workflow_status', 'workflow', 'status']) ??
+          '',
+    );
+    if (const [
+          'contract_pending',
+          'contract_signed',
+          'payment_pending',
+        ].contains(incomingExplicitWorkflowId) &&
+        !_hasTopLevelPaidSignal(incoming)) {
+      return true;
+    }
+
     final currentRank = _workflowStageRank(current);
     final incomingRank = _workflowStageRank(incoming);
 
@@ -1906,20 +1919,8 @@ class ReservationProvider extends ChangeNotifier {
     final provider = _nestedMap(
       row['provider'] ?? row['assigned_provider'] ?? row['operator'],
     );
-    final contract = _nestedMap(row['contract']);
-    final frontendState = _nestedMap(
-      row['frontend_state'] ?? contract['frontend_state'],
-    );
     final firstLeg = _firstLeg(row);
-    final contractSigned = _contractSignedForWorkflow(
-      row,
-      contract,
-      frontendState,
-    );
     final reservation = _nestedMap(row['reservation']);
-    final payments = _paymentsFromRow(row);
-    final paymentStatus = _effectivePaymentStatus(row, reservation, payments);
-    final hasPaidSignals = _hasPaidSignals(row, reservation, payments);
 
     final id =
         _resolveEntityId(row) ??
@@ -1963,11 +1964,6 @@ class ReservationProvider extends ChangeNotifier {
       if (origin != null) 'origin': origin,
       if (destination != null) 'destination': destination,
       if (departure != null) 'departure_datetime': departure,
-      if (row['status'] == null)
-        'status':
-            row['workflow_status'] ??
-            row['reservation_status'] ??
-            row['flight_status'],
       if (row['assigned_aircraft_model'] == null)
         'assigned_aircraft_model':
             row['aircraft_model'] ??
@@ -1981,21 +1977,6 @@ class ReservationProvider extends ChangeNotifier {
             provider['name'] ??
             provider['company_name'] ??
             row['operator_name'],
-      if (contractSigned && row['contract_status'] == null)
-        'contract_status': 'signed',
-      if (paymentStatus.isNotEmpty) 'payment_status': paymentStatus,
-      if (hasPaidSignals)
-        'workflow_status':
-            row['workflow_status']?.toString().trim().isNotEmpty == true
-                ? row['workflow_status']
-                : 'pago confirmado',
-      if (hasPaidSignals) 'status': 'payment_confirmed',
-      if (contractSigned && paymentStatus.isEmpty && !hasPaidSignals)
-        'payment_status': 'pending',
-      if (contractSigned && row['workflow_status'] == null && !hasPaidSignals)
-        'workflow_status': 'pago pendiente',
-      if (contractSigned && row['status'] == null && !hasPaidSignals)
-        'status': 'payment_pending',
       if (row['image_url'] == null && row['imageUrl'] == null)
         'image_url': _primaryImage(row) ?? _primaryImage(aircraft) ?? '',
     };
@@ -2022,60 +2003,16 @@ class ReservationProvider extends ChangeNotifier {
     return const [];
   }
 
-  String _effectivePaymentStatus(
-    Map<String, dynamic> row,
-    Map<String, dynamic> reservation,
-    List<Map<String, dynamic>> payments,
-  ) {
-    final direct = row['payment_status']?.toString().trim() ?? '';
-    if (direct.isNotEmpty) return direct;
+  bool _hasTopLevelPaidSignal(Map<String, dynamic> row) {
+    final payment = _nestedMap(row['payment']);
+    final paymentOrder = _nestedMap(row['payment_order']);
 
-    final reservationPaymentStatus =
-        reservation['payment_status']?.toString().trim() ?? '';
-    if (reservationPaymentStatus.isNotEmpty) return reservationPaymentStatus;
-
-    final reservationStatus = reservation['status']?.toString().trim() ?? '';
-    if (_isPaidStatus(reservationStatus)) return 'paid';
-
-    for (final payment in payments) {
-      final status = payment['status']?.toString().trim() ?? '';
-      if (_isPaidStatus(status)) return 'paid';
-    }
-
-    return '';
-  }
-
-  bool _hasPaidSignals(
-    Map<String, dynamic> row,
-    Map<String, dynamic> reservation,
-    List<Map<String, dynamic>> payments,
-  ) {
-    final workflow = row['workflow_status']?.toString().trim() ?? '';
-    final status = row['status']?.toString().trim() ?? '';
-    final paymentStatus = row['payment_status']?.toString().trim() ?? '';
-
-    if (_isPaidStatus(workflow) ||
-        _isPaidStatus(status) ||
-        _isPaidStatus(paymentStatus)) {
-      return true;
-    }
-
-    final reservationStatus = reservation['status']?.toString().trim() ?? '';
-    final reservationPaymentStatus =
-        reservation['payment_status']?.toString().trim() ?? '';
-
-    if (_isPaidStatus(reservationStatus) ||
-        _isPaidStatus(reservationPaymentStatus)) {
-      return true;
-    }
-
-    for (final payment in payments) {
-      final status = payment['status']?.toString().trim() ?? '';
-      if (_isPaidStatus(status)) return true;
-      if (payment['paid_at']?.toString().trim().isNotEmpty == true) return true;
-    }
-
-    return false;
+    return _isPaidStatus(row['workflow_status']?.toString().trim() ?? '') ||
+        _isPaidStatus(row['status']?.toString().trim() ?? '') ||
+        _isPaidStatus(row['payment_status']?.toString().trim() ?? '') ||
+        _isPaidStatus(row['checkout_status']?.toString().trim() ?? '') ||
+        _isPaidStatus(payment['status']?.toString().trim() ?? '') ||
+        _isPaidStatus(paymentOrder['status']?.toString().trim() ?? '');
   }
 
   bool _isPaidStatus(String value) {
@@ -2086,60 +2023,6 @@ class ReservationProvider extends ChangeNotifier {
         normalized == 'payment_confirmed' ||
         normalized == 'payment confirmed' ||
         normalized == 'pago confirmado';
-  }
-
-  bool _contractSignedForWorkflow(
-    Map<String, dynamic> row,
-    Map<String, dynamic> contract,
-    Map<String, dynamic> frontendState,
-  ) {
-    final nestedState = _nestedMap(contract['frontend_state']);
-    final status =
-        _firstText(row, const [
-          'docusign_status',
-          'contract_status',
-          'signature_status',
-        ]) ??
-        _firstText(contract, const [
-          'docusign_status',
-          'status',
-          'contract_status',
-        ]) ??
-        _firstText(frontendState, const [
-          'ui_status',
-          'docusign_status',
-          'status',
-          'contract_status',
-        ]) ??
-        _firstText(nestedState, const [
-          'ui_status',
-          'docusign_status',
-          'status',
-          'contract_status',
-        ]) ??
-        '';
-    final signedPdf =
-        _firstText(row, const ['signed_pdf_url', 'signedPdfUrl']) ??
-        _firstText(contract, const ['signed_pdf_url', 'signedPdfUrl']) ??
-        _firstText(frontendState, const ['signed_pdf_url', 'signedPdfUrl']) ??
-        _firstText(nestedState, const ['signed_pdf_url', 'signedPdfUrl']) ??
-        '';
-    final normalizedStatus = _normalizeLookup(status);
-    final explicitContractSigned =
-        row['contract_signed'] == true ||
-        row['contract_completed'] == true ||
-        contract['contract_signed'] == true ||
-        contract['contract_completed'] == true ||
-        frontendState['contract_signed'] == true ||
-        frontendState['contract_completed'] == true ||
-        nestedState['contract_signed'] == true ||
-        nestedState['contract_completed'] == true;
-
-    return explicitContractSigned ||
-        normalizedStatus == 'SIGNED' ||
-        normalizedStatus == 'COMPLETED' ||
-        normalizedStatus == 'APPROVED' ||
-        signedPdf.isNotEmpty;
   }
 
   String? _firstText(Map<String, dynamic> payload, List<String> keys) {

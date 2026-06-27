@@ -1515,10 +1515,7 @@ class _EmptyFlightsCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: palette.accentBorder),
             ),
-            child: Icon(
-              Icons.flight_takeoff_rounded,
-              color: palette.accent,
-            ),
+            child: Icon(Icons.flight_takeoff_rounded, color: palette.accent),
           ),
           const SizedBox(height: 18),
           Text(
@@ -1572,545 +1569,110 @@ class _EmptyFlightsCard extends StatelessWidget {
 }
 
 _WorkflowMeta _statusMeta(Map<String, dynamic> request) {
-  final workflow = _resolvedWorkflowStage(request);
-  final workflowId = _workflowStageId(workflow);
-  final action = _workflowActionCopy(workflowId);
-
-  final contractStatus = _normalizedStatus(
-    request['contract_status'] ??
-        request['contract'] ??
-        request['signature_status'],
-  );
-
-  final paymentStatus = _normalizedStatus(
-    request['payment_status'] ??
-        request['checkout_status'] ??
-        request['payment'],
-  );
-
-  final providerStatus = _normalizedStatus(
-    request['provider_status'] ??
-        request['match_status'] ??
-        request['supplier_status'],
-  );
-
-  final trackingStatus = _normalizedStatus(
-    request['tracking_status'] ??
-        request['tracking'] ??
-        request['monitoring_status'],
-  );
-
-  if (workflowId == 'completed') {
-    return const _WorkflowMeta(
-      label: 'Finalizado',
-      tone: _WorkflowTone.completed,
-      progress: 100,
-      activeStep: 5,
-      nextAction: 'Reserva cerrada correctamente.',
-      isClosed: true,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: true,
-    );
-  }
-
-  if (workflowId == 'cancelled' || workflowId == 'rejected') {
-    return _WorkflowMeta(
-      label: clientWorkflowLabelForStage(
-        workflowId,
-        fallback: 'Reserva cerrada',
-      ),
-      tone: _WorkflowTone.cancelled,
-      progress: 100,
-      activeStep: 5,
-      nextAction:
-          workflowId == 'rejected'
-              ? 'No hubo disponibilidad para esta operacion.'
-              : 'Reserva sin seguimiento activo.',
-      isClosed: true,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'tracking_live') {
-    return const _WorkflowMeta(
-      label: 'En operacion',
-      tone: _WorkflowTone.confirmed,
-      progress: 97,
-      activeStep: 5,
-      nextAction:
-          'Monitorea terminal, tripulación y seguimiento en tiempo real.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: true,
-    );
-  }
-
-  if (workflowId == 'flight_confirmed') {
-    return const _WorkflowMeta(
-      label: 'Vuelo confirmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 93,
-      activeStep: 4,
-      nextAction: 'Todo listo para la operación del vuelo.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'payment_confirmed') {
-    return const _WorkflowMeta(
-      label: 'Pago confirmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 86,
-      activeStep: 3,
-      nextAction: 'Pago validado. Estamos preparando la salida.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'payment_pending') {
-    return const _WorkflowMeta(
-      label: 'Pago pendiente',
-      tone: _WorkflowTone.pending,
-      progress: 78,
-      activeStep: 3,
-      nextAction: 'Completa el pago para confirmar la operación.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'contract_signed') {
-    return const _WorkflowMeta(
-      label: 'Contrato firmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 66,
-      activeStep: 2,
-      nextAction: 'Contrato listo. El siguiente paso es el pago.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'contract_pending') {
-    return const _WorkflowMeta(
-      label: 'Contrato pendiente',
-      tone: _WorkflowTone.pending,
-      progress: 58,
-      activeStep: 2,
-      nextAction: 'Siguiente paso: firma de contrato.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'provider_accepted') {
-    return _WorkflowMeta(
-      label: 'Respuesta proveedor',
-      tone: _WorkflowTone.confirmed,
-      progress: 44,
-      activeStep: 1,
-      nextAction: _providerNextAction(request),
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'provider_pending') {
-    return const _WorkflowMeta(
-      label: 'Esperando proveedor',
-      tone: _WorkflowTone.searching,
-      progress: 36,
-      activeStep: 1,
-      nextAction: 'Estamos validando proveedor y disponibilidad.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'reserved') {
-    return const _WorkflowMeta(
-      label: 'Reserva solicitada',
-      tone: _WorkflowTone.info,
-      progress: 28,
-      activeStep: 0,
-      nextAction: 'La reserva ya quedó creada y sigue el flujo comercial.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  final providerConfirmed =
-      workflowId == 'provider_accepted' ||
-      workflowId == 'contract_pending' ||
-      workflowId == 'contract_signed' ||
-      workflowId == 'payment_pending' ||
-      workflowId == 'payment_confirmed' ||
-      workflowId == 'flight_confirmed' ||
-      workflowId == 'tracking_live' ||
-      workflowId == 'completed' ||
-      (_containsAny(providerStatus, const [
-            'accepted',
-            'approved',
-            'confirmed',
-          ]) &&
-          workflowId != 'provider_pending' &&
-          workflowId != 'reserved');
-
-  final contractReady =
-      _containsAny(contractStatus, const ['signed', 'completed', 'approved']) ||
-      _asBool(
-        request['contract_signed'] ??
-            request['contract_completed'] ??
-            _nestedMap(request['contract'])['contract_signed'] ??
-            _nestedMap(request['contract'])['contract_completed'],
-      ) ||
-      _hasValue(request['signed_pdf_url']) ||
-      _hasValue(request['signedPdfUrl']) ||
-      _hasValue(_nestedMap(request['contract'])['signed_pdf_url']) ||
-      _hasValue(_nestedMap(request['contract'])['signedPdfUrl']);
-
-  final paymentReady =
-      _containsAny(paymentStatus, const ['paid', 'completed', 'confirmed']) ||
-      _asBool(request['payment_completed'] ?? request['is_paid']) ||
-      _hasValue(request['payment_reference']);
-
-  final flightReady =
-      workflowId == 'flight_confirmed' ||
-      workflowId == 'tracking_live' ||
-      workflowId == 'completed' ||
-      _containsAny(workflow, const [
-        'flight confirmed',
-        'scheduled',
-        'boarding',
-        'departed',
-        'airborne',
-      ]) ||
-      _containsAny(_normalizedStatus(request['flight_status']), const [
-        'confirmed',
-        'scheduled',
-        'boarding',
-        'departed',
-        'airborne',
-      ]);
-
-  final trackingReady =
-      workflowId == 'tracking_live' ||
-      workflowId == 'completed' ||
-      _containsAny(trackingStatus, const ['active', 'live', 'enabled']) ||
-      _containsAny(workflow, const ['tracking']) ||
-      _hasValue(request['tracking_url']) ||
-      _hasValue(request['live_tracking_url']);
-
-  if (workflowId == 'draft') {
-    return _WorkflowMeta(
-      label: 'Cotizacion',
-      tone: _WorkflowTone.info,
-      progress: 8,
-      activeStep: 0,
-      nextAction: action.detail,
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'quoted') {
-    return _WorkflowMeta(
-      label: 'Cotizacion',
-      tone: _WorkflowTone.info,
-      progress: 14,
-      activeStep: 0,
-      nextAction: action.detail,
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'package_selected') {
-    return _WorkflowMeta(
-      label: 'Pendiente',
-      tone: _WorkflowTone.info,
-      progress: 22,
-      activeStep: 0,
-      nextAction: action.detail,
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (trackingReady) {
-    return const _WorkflowMeta(
-      label: 'En operacion',
-      tone: _WorkflowTone.confirmed,
-      progress: 97,
-      activeStep: 5,
-      nextAction:
-          'Monitorea terminal, tripulación y seguimiento en tiempo real.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: true,
-    );
-  }
-
-  if (flightReady) {
-    return const _WorkflowMeta(
-      label: 'Vuelo confirmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 93,
-      activeStep: 4,
-      nextAction: 'Todo listo para la operación del vuelo.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: true,
-      trackingReady: false,
-    );
-  }
-
-  if (paymentReady) {
-    return const _WorkflowMeta(
-      label: 'Pago confirmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 86,
-      activeStep: 3,
-      nextAction: 'Pago validado. Estamos preparando la salida.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (_containsAny(paymentStatus, const [
-    'pending',
-    'processing',
-    'awaiting',
-  ])) {
-    return const _WorkflowMeta(
-      label: 'Pago pendiente',
-      tone: _WorkflowTone.pending,
-      progress: 78,
-      activeStep: 3,
-      nextAction: 'Completa el pago para confirmar la operación.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: true,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (contractReady) {
-    return const _WorkflowMeta(
-      label: 'Contrato firmado',
-      tone: _WorkflowTone.confirmed,
-      progress: 66,
-      activeStep: 2,
-      nextAction: 'Contrato listo. El siguiente paso es el pago.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (_containsAny(contractStatus, const ['pending', 'sent', 'awaiting'])) {
-    return const _WorkflowMeta(
-      label: 'Contrato pendiente',
-      tone: _WorkflowTone.pending,
-      progress: 58,
-      activeStep: 2,
-      nextAction: 'Siguiente paso: firma de contrato.',
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'provider_accepted' || providerConfirmed) {
-    return _WorkflowMeta(
-      label: 'Respuesta proveedor',
-      tone: _WorkflowTone.confirmed,
-      progress: 44,
-      activeStep: 1,
-      nextAction: _providerNextAction(request),
-      isClosed: false,
-      providerConfirmed: true,
-      contractReady: true,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'provider_pending' ||
-      _containsAny(workflow, const [
-        'provider_pending',
-        'buscando operador',
-        'buscando aeronave',
-        'matching',
-        'in_validation',
-        'en validacion',
-        'revision operativa',
-      ])) {
-    return const _WorkflowMeta(
-      label: 'Esperando proveedor',
-      tone: _WorkflowTone.searching,
-      progress: 36,
-      activeStep: 1,
-      nextAction: 'Estamos validando proveedor y disponibilidad.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflowId == 'reserved' ||
-      _containsAny(workflow, const [
-        'reserved',
-        'reserva solicitada',
-        'reservada',
-        'reservado',
-        'solicitada',
-      ])) {
-    return const _WorkflowMeta(
-      label: 'Reserva solicitada',
-      tone: _WorkflowTone.info,
-      progress: 28,
-      activeStep: 0,
-      nextAction: 'La reserva ya quedó creada y sigue el flujo comercial.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (workflow.contains('search') ||
-      workflow.contains('pending') ||
-      workflow.contains('matching') ||
-      workflow.contains('validacion')) {
-    return const _WorkflowMeta(
-      label: 'Esperando proveedor',
-      tone: _WorkflowTone.searching,
-      progress: 36,
-      activeStep: 1,
-      nextAction: 'Estamos validando proveedor y disponibilidad.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  if (_hasProviderPendingSignals(request)) {
-    return const _WorkflowMeta(
-      label: 'Esperando proveedor',
-      tone: _WorkflowTone.searching,
-      progress: 36,
-      activeStep: 1,
-      nextAction: 'Estamos validando proveedor y disponibilidad.',
-      isClosed: false,
-      providerConfirmed: false,
-      contractReady: false,
-      paymentReady: false,
-      flightReady: false,
-      trackingReady: false,
-    );
-  }
-
-  return const _WorkflowMeta(
-    label: 'Cotizacion',
-    tone: _WorkflowTone.info,
-    progress: 8,
-    activeStep: 0,
-    nextAction:
-        'Aun faltan datos para activar la reserva con el equipo comercial.',
-    isClosed: false,
-    providerConfirmed: false,
-    contractReady: false,
-    paymentReady: false,
-    flightReady: false,
-    trackingReady: false,
+  final workflowId = _resolvedWorkflowStage(request);
+  return _metaFromBackendStage(
+    workflowId,
+    label: _backendWorkflowLabel(request, workflowId),
+    nextAction: _backendNextStep(request, workflowId),
+    progress: _backendProgress(request, workflowId),
   );
 }
 
 String _resolvedWorkflowStage(Map<String, dynamic> request) {
-  return resolveClientWorkflowStage(request);
+  final explicitWorkflow = _firstText([
+    request['workflow_status'],
+    request['workflow'],
+    request['status'],
+  ]);
+  final explicitStageId = resolveClientWorkflowStageIdFromValue(
+    explicitWorkflow,
+  );
+  if (explicitStageId.isNotEmpty) return explicitStageId;
+
+  final contractStatus = _normalizeLookup(
+    _firstText([
+      request['contract_status'],
+      _nestedMap(request['contract'])['status'],
+      request['signature_status'],
+    ]),
+  );
+  final paymentStatus = _normalizeLookup(
+    _firstText([
+      request['payment_status'],
+      _nestedMap(request['payment'])['status'],
+      _nestedMap(request['payment_order'])['status'],
+      request['checkout_status'],
+    ]),
+  );
+  final bookingStatus = _normalizeLookup(
+    _firstText([request['booking_status'], request['reservation_status']]),
+  );
+
+  if (_matchesAny(contractStatus, const [
+    'pending',
+    'sent',
+    'awaiting',
+    'generated',
+    'en firma',
+    'firma pendiente',
+  ])) {
+    return 'contract_pending';
+  }
+
+  if (_matchesAny(contractStatus, const ['signed', 'completed', 'approved'])) {
+    if (_matchesAny(paymentStatus, const [
+      'paid',
+      'completed',
+      'confirmed',
+      'payment confirmed',
+      'payment_confirmed',
+    ])) {
+      return 'payment_confirmed';
+    }
+    if (_matchesAny(paymentStatus, const [
+      'pending',
+      'processing',
+      'awaiting',
+      'payment pending',
+      'payment_pending',
+      'requires payment method',
+      'requires_payment_method',
+    ])) {
+      return 'payment_pending';
+    }
+    return 'contract_signed';
+  }
+
+  if (_matchesAny(bookingStatus, const [
+    'pending payment',
+    'pending_payment',
+  ])) {
+    return 'payment_pending';
+  }
+
+  if (_matchesAny(paymentStatus, const [
+    'paid',
+    'completed',
+    'confirmed',
+    'payment confirmed',
+    'payment_confirmed',
+  ])) {
+    return 'payment_confirmed';
+  }
+
+  if (_matchesAny(bookingStatus, const ['cancelled', 'canceled'])) {
+    return 'cancelled';
+  }
+
+  if (_matchesAny(bookingStatus, const ['rejected', 'declined'])) {
+    return 'rejected';
+  }
+
+  if (_matchesAny(bookingStatus, const ['reserved', 'pending', 'created'])) {
+    return 'reserved';
+  }
+
+  return 'draft';
 }
 
 String _workflowStageId(String workflow) {
@@ -2118,19 +1680,203 @@ String _workflowStageId(String workflow) {
   return stageId.isEmpty ? workflow : stageId;
 }
 
-bool _hasProviderPendingSignals(Map<String, dynamic> request) {
-  return _hasValue(request['provider_id']) ||
-      _hasValue(request['aircraft_id']) ||
-      _hasValue(request['assigned_provider_id']) ||
-      _hasValue(request['assigned_aircraft_id']) ||
-      _hasValue(request['assigned_aircraft_model']) ||
-      _hasValue(request['aircraft_model']) ||
-      _hasValue(request['aircraft_name']) ||
-      _hasValue(request['aircraft']) ||
-      _hasValue(request['image_url']) ||
-      _hasValue(request['imageUrl']) ||
-      _hasValue(request['operator_name']) ||
-      _hasValue(request['provider_name']);
+_WorkflowMeta _metaFromBackendStage(
+  String workflowId, {
+  required String label,
+  required String nextAction,
+  required int progress,
+}) {
+  final tone = _toneForStage(workflowId);
+  final activeStep = _activeStepForStage(workflowId);
+  final isClosed = const [
+    'completed',
+    'cancelled',
+    'rejected',
+  ].contains(workflowId);
+  final providerConfirmed =
+      activeStep >= 1 &&
+      !const [
+        'provider_pending',
+        'reserved',
+        'draft',
+        'quoted',
+        'package_selected',
+      ].contains(workflowId);
+  final contractReady = const [
+    'contract_signed',
+    'payment_pending',
+    'payment_confirmed',
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+  final paymentReady = const [
+    'payment_confirmed',
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+  final flightReady = const [
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+  final trackingReady = const [
+    'tracking_live',
+    'completed',
+  ].contains(workflowId);
+
+  return _WorkflowMeta(
+    label: label,
+    tone: tone,
+    progress: progress.clamp(0, 100),
+    activeStep: activeStep,
+    nextAction: nextAction,
+    isClosed: isClosed,
+    providerConfirmed: providerConfirmed,
+    contractReady: contractReady,
+    paymentReady: paymentReady,
+    flightReady: flightReady,
+    trackingReady: trackingReady,
+  );
+}
+
+String _backendWorkflowLabel(Map<String, dynamic> request, String workflowId) {
+  final explicitLabel = _firstText([
+    request['workflow_label'],
+    request['workflow_status_label'],
+    request['status_label'],
+  ]);
+  if (explicitLabel.isNotEmpty) return explicitLabel;
+
+  final rawWorkflow = _firstText([
+    request['workflow_status'],
+    request['workflow'],
+    request['status'],
+  ]);
+  final rawStageId = resolveClientWorkflowStageIdFromValue(rawWorkflow);
+  if (rawWorkflow.isNotEmpty && rawStageId.isEmpty) {
+    return _sentenceCase(rawWorkflow);
+  }
+
+  return clientWorkflowLabelForStage(workflowId, fallback: 'Reserva');
+}
+
+String _backendNextStep(Map<String, dynamic> request, String workflowId) {
+  final direct = _firstText([
+    request['next_step'],
+    request['next_action'],
+    request['nextStep'],
+    request['action_required'],
+  ]);
+  if (direct.isNotEmpty) return direct;
+  return _workflowActionCopy(workflowId).detail;
+}
+
+int _backendProgress(Map<String, dynamic> request, String workflowId) {
+  final raw =
+      request['progress'] ??
+      request['workflow_progress'] ??
+      request['progress_percent'];
+  final parsed = _asProgressInt(raw);
+  if (parsed != null) {
+    return parsed.clamp(0, 100);
+  }
+  return _defaultProgressForStage(workflowId);
+}
+
+_WorkflowTone _toneForStage(String workflowId) {
+  switch (workflowId) {
+    case 'provider_pending':
+      return _WorkflowTone.searching;
+    case 'draft':
+    case 'quoted':
+    case 'package_selected':
+    case 'reserved':
+      return _WorkflowTone.info;
+    case 'contract_pending':
+    case 'payment_pending':
+      return _WorkflowTone.pending;
+    case 'completed':
+      return _WorkflowTone.completed;
+    case 'cancelled':
+    case 'rejected':
+      return _WorkflowTone.cancelled;
+    default:
+      return _WorkflowTone.confirmed;
+  }
+}
+
+int _defaultProgressForStage(String workflowId) {
+  switch (workflowId) {
+    case 'draft':
+      return 8;
+    case 'quoted':
+      return 14;
+    case 'package_selected':
+      return 22;
+    case 'reserved':
+      return 28;
+    case 'provider_pending':
+      return 36;
+    case 'provider_accepted':
+      return 44;
+    case 'contract_pending':
+      return 58;
+    case 'contract_signed':
+      return 66;
+    case 'payment_pending':
+      return 78;
+    case 'payment_confirmed':
+      return 86;
+    case 'flight_confirmed':
+      return 93;
+    case 'tracking_live':
+      return 97;
+    case 'completed':
+    case 'cancelled':
+    case 'rejected':
+      return 100;
+    default:
+      return 8;
+  }
+}
+
+int _activeStepForStage(String workflowId) {
+  switch (workflowId) {
+    case 'provider_pending':
+    case 'provider_accepted':
+      return 1;
+    case 'contract_pending':
+    case 'contract_signed':
+      return 2;
+    case 'payment_pending':
+    case 'payment_confirmed':
+      return 3;
+    case 'flight_confirmed':
+      return 4;
+    case 'tracking_live':
+    case 'completed':
+    case 'cancelled':
+    case 'rejected':
+      return 5;
+    default:
+      return 0;
+  }
+}
+
+bool _matchesAny(String value, List<String> patterns) {
+  for (final pattern in patterns) {
+    if (value.contains(pattern)) return true;
+  }
+  return false;
+}
+
+String _sentenceCase(String value) {
+  final normalized = value.replaceAll('_', ' ').trim();
+  if (normalized.isEmpty) return normalized;
+  final lower = normalized.toLowerCase();
+  return lower[0].toUpperCase() + lower.substring(1);
 }
 
 (Color, Color) _toneColors(_WorkflowTone tone) {
@@ -2250,8 +1996,11 @@ List<String> _workflowSupportLines(
   _WorkflowMeta meta,
 ) {
   final stage = _workflowStageId(_resolvedWorkflowStage(request));
-  final action = _workflowActionCopy(stage);
-  return [action.title, action.detail, ''];
+  final title = _workflowActionCopy(stage).title;
+  return [
+    title,
+    meta.nextAction,
+  ].where((line) => line.trim().isNotEmpty).toList();
 }
 
 String _requestCode(Map<String, dynamic> request) {
@@ -2280,20 +2029,6 @@ String _requestCode(Map<String, dynamic> request) {
           ? numericId.toString().padLeft(4, '0')
           : (normalizedRawId.isNotEmpty ? normalizedRawId : '0000');
   return 'RESERVA SKY-$suffix';
-}
-
-String _providerNextAction(Map<String, dynamic> request) {
-  final providerName =
-      request['provider_name']?.toString().trim() ??
-      _nestedText(request['provider'], 'name') ??
-      _nestedText(request['provider'], 'company_name') ??
-      request['operator_name']?.toString().trim();
-
-  if (providerName != null && providerName.isNotEmpty) {
-    return 'Proveedor confirmado: $providerName. Siguiente paso: contrato.';
-  }
-
-  return _workflowActionCopy('provider_accepted').detail;
 }
 
 class _WorkflowActionCopy {
@@ -2417,18 +2152,6 @@ _WorkflowActionCopy _workflowActionCopy(String stageId) {
             'Su solicitud ha sido registrada y se encuentra avanzando dentro del proceso operativo.',
       );
   }
-}
-
-String _normalizedStatus(dynamic value) {
-  return value?.toString().trim().toLowerCase() ?? '';
-}
-
-bool _containsAny(String value, List<String> patterns) {
-  for (final pattern in patterns) {
-    if (value.contains(pattern)) return true;
-  }
-
-  return false;
 }
 
 bool _hasValue(dynamic value) {
@@ -2907,6 +2630,27 @@ String _firstText(List<dynamic> values) {
     if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
   }
   return '';
+}
+
+int? _asProgressInt(dynamic value) {
+  if (value is int) return value;
+  if (value is double) {
+    if (value >= 0 && value <= 1) return (value * 100).round();
+    return value.round();
+  }
+
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return null;
+
+  final parsedInt = int.tryParse(text);
+  if (parsedInt != null) return parsedInt;
+
+  final parsedDouble = double.tryParse(text);
+  if (parsedDouble == null) return null;
+  if (parsedDouble >= 0 && parsedDouble <= 1) {
+    return (parsedDouble * 100).round();
+  }
+  return parsedDouble.round();
 }
 
 String _normalizeLookup(dynamic value) {

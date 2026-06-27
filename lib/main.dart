@@ -149,6 +149,17 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
                 },
                 showBackButton: false,
                 initialCheckoutReturnUri: uri,
+                onOpenTrips: () {
+                  final navigator = _navigatorKey.currentState;
+                  if (navigator == null) return;
+                  navigator.pushReplacement(
+                    MaterialPageRoute(
+                      builder:
+                          (_) =>
+                              const ClientHistoryScreen(showBackButton: false),
+                    ),
+                  );
+                },
                 onPaymentComplete: () async {
                   final context = _navigatorKey.currentContext;
                   if (context == null) return;

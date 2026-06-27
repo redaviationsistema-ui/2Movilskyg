@@ -111,6 +111,9 @@ class _ClientMobileWorkspaceScreenState
         onSelect: (index) {
           setState(() {
             _selectedIndex = index;
+            if (index == 1) {
+              _tripsStage = _TripsStage.list;
+            }
           });
         },
       ),
@@ -162,7 +165,8 @@ class _ClientMobileWorkspaceScreenState
             );
             setState(() {
               _selectedRequestId = _preferredRequestId(refreshedRequest);
-              _tripsStage = _TripsStage.payment;
+              _selectedIndex = 1;
+              _tripsStage = _TripsStage.list;
             });
           },
         );
@@ -176,25 +180,22 @@ class _ClientMobileWorkspaceScreenState
               _tripsStage = _TripsStage.contract;
             });
           },
+          onOpenTrips: () {
+            setState(() {
+              _selectedIndex = 1;
+              _tripsStage = _TripsStage.list;
+            });
+          },
           onPaymentComplete: () async {
-            final flightRequestId =
-                activeRequest?['flight_request_id']?.toString() ??
-                activeRequest?['request_id']?.toString() ??
-                activeRequest?['id']?.toString() ??
-                '';
-            final reservationId =
-                activeRequest?['reservation_id']?.toString() ??
-                activeRequest?['booking_id']?.toString() ??
-                '';
-            await context.read<ReservationProvider>().loadClientWorkspaceData(
-              force: true,
-            );
+            final reservationProvider = context.read<ReservationProvider>();
+            await reservationProvider.loadClientWorkspaceData(force: true);
             if (!mounted) return;
-            context.read<ReservationProvider>().markPaymentConfirmed(
-              flightRequestId: flightRequestId,
-              reservationId: reservationId,
+            final refreshedRequest = _resolveLatestRequest(
+              reservationProvider,
+              activeRequest,
             );
             setState(() {
+              _selectedRequestId = _preferredRequestId(refreshedRequest);
               _selectedIndex = 1;
               _tripsStage = _TripsStage.list;
             });

@@ -11,6 +11,7 @@ import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import 'pantalla_historial_cliente.dart';
 import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
@@ -24,6 +25,7 @@ class ClientPaymentScreen extends StatefulWidget {
     required this.request,
     required this.onPaymentComplete,
     this.onBack,
+    this.onOpenTrips,
     this.commercialAccessMode = false,
     this.showBackButton = true,
     this.initialCheckoutReturnUri,
@@ -32,6 +34,7 @@ class ClientPaymentScreen extends StatefulWidget {
   final Map<String, dynamic> request;
   final VoidCallback onPaymentComplete;
   final VoidCallback? onBack;
+  final VoidCallback? onOpenTrips;
   final bool commercialAccessMode;
   final bool showBackButton;
   final Uri? initialCheckoutReturnUri;
@@ -59,10 +62,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   CardFieldInputDetails? _cardDetails;
   final AppLinks _appLinks = AppLinks();
   bool _submitting = false;
+  bool _isValidatingPayment = false;
+  bool _checkoutCompleted = false;
+  bool _openingReservationCheckout = false;
   bool _waitingForCommercialAccessReturn = false;
   bool _waitingForReservationCheckoutReturn = false;
+  bool _showTripsShortcut = false;
   bool _confirmedReservationRedirectScheduled = false;
-  int _reservationCheckoutAutoRetryCount = 0;
   bool _stripeCardReady = false;
   bool _stripeCardLoading = false;
   String _inlineMessage = '';
@@ -72,6 +78,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   String _lastHandledCheckoutReturnUri = '';
   Map<String, dynamic>? _cardPaymentIntentSeed;
   StreamSubscription<Uri>? _appLinkSubscription;
+  Timer? _reservationCheckoutOpeningTimer;
 
   @override
   void initState() {
@@ -122,6 +129,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     _wireReferenceController.dispose();
     _stripeCardController.dispose();
     _appLinkSubscription?.cancel();
+    _reservationCheckoutOpeningTimer?.cancel();
     if (widget.commercialAccessMode) {
       if (ClientPaymentScreen._activeCommercialAccessHandlers > 0) {
         ClientPaymentScreen._activeCommercialAccessHandlers--;
@@ -139,8 +147,18 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (state != AppLifecycleState.resumed) return;
     if (!widget.commercialAccessMode) {
       unawaited(_refreshSignedContractState());
-      if (_waitingForReservationCheckoutReturn) {
+      if (_shouldValidateReservationPaymentOnReturn) {
         unawaited(_validateReservationCheckoutReturn());
+      } else if (_waitingForReservationCheckoutReturn &&
+          !_shouldValidateReservationPaymentOnReturn &&
+          mounted) {
+        setState(() {
+          _waitingForReservationCheckoutReturn = false;
+          if (_reservationCheckoutAwaitingCompletion) {
+            _inlineMessage =
+                'Tu reserva esta pendiente de pago. Abre Stripe Checkout para capturar tu tarjeta y continuar.';
+          }
+        });
       }
     }
     if (!_waitingForCommercialAccessReturn || !widget.commercialAccessMode) {
@@ -169,7 +187,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       });
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 900));
+    await Future<void>.delayed(const Duration(milliseconds: 1000));
     if (!mounted) return;
     widget.onPaymentComplete();
   }
@@ -291,6 +309,19 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     Navigator.pop(context);
   }
 
+  void _openTripsView() {
+    if (widget.onOpenTrips != null) {
+      widget.onOpenTrips!();
+      return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => const ClientHistoryScreen(showBackButton: false),
+      ),
+    );
+  }
+
   Future<void> _bindCheckoutReturnLinks() async {
     try {
       final initialUri = await _appLinks.getInitialLink();
@@ -342,6 +373,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             )
             .catchError((_) => <String, dynamic>{});
         setState(() {
+          _isValidatingPayment = false;
+          _checkoutCompleted = false;
+          _showTripsShortcut = false;
           _waitingForReservationCheckoutReturn = false;
           _inlineMessage =
               'Stripe Checkout fue cancelado. Puedes intentarlo de nuevo cuando quieras.';
@@ -350,8 +384,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       setState(() {
+        _checkoutCompleted = true;
+        _isValidatingPayment = true;
+        _showTripsShortcut = false;
         _waitingForReservationCheckoutReturn = true;
-        _reservationCheckoutAutoRetryCount = 0;
         _inlineMessage = 'Stripe regreso a la app. Validando pago del vuelo...';
       });
       await _validateReservationCheckoutReturn();
@@ -496,10 +532,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       bottomNavigationBar: _PaymentStickyFooter(
         totalLabel: amount,
         ctaLabel:
-            _submitting
-                ? 'Procesando...'
+            _openingReservationCheckout
+                ? 'Abriendo Stripe Checkout...'
                 : _reservationPaymentConfirmed
-                ? 'Pago confirmado'
+                ? 'Ir a Tus vuelos'
+                : widget.commercialAccessMode && _submitting
+                ? 'Procesando...'
+                : _reservationCheckoutAwaitingCompletion
+                ? 'Abrir Stripe Checkout'
                 : _reservationRequiresValidation
                 ? 'Validando pago...'
                 : widget.commercialAccessMode
@@ -509,7 +549,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             _resolvePrimaryAction()
                 ? () => unawaited(_handlePrimaryAction())
                 : null,
-        isLoading: _submitting,
+        isLoading:
+            widget.commercialAccessMode
+                ? _submitting
+                : (_openingReservationCheckout || _isValidatingPayment),
       ),
       body: SafeArea(
         top: false,
@@ -783,6 +826,35 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                       hint: 'cliente@empresa.com',
                       keyboardType: TextInputType.emailAddress,
                     ),
+                    if (!widget.commercialAccessMode &&
+                        (_reservationPaymentConfirmed ||
+                            _showTripsShortcut)) ...[
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _openTripsView,
+                          icon: const Icon(
+                            Icons.flight_rounded,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Ir a Tus vuelos',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: 8,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (_inlineMessage.isNotEmpty) ...[
                       const SizedBox(height: 14),
                       Text(
@@ -1118,21 +1190,49 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       !_reservationPaymentConfirmed &&
       _requestIndicatesPaymentPending(widget.request);
 
+  bool get _reservationCheckoutAwaitingCompletion =>
+      !widget.commercialAccessMode &&
+      _reservationPaymentPending &&
+      _effectiveCheckoutSessionId(widget.request).isNotEmpty &&
+      _paymentIntentId(widget.request).trim().isEmpty &&
+      !_waitingForReservationCheckoutReturn;
+
   bool get _reservationRequiresValidation =>
       !widget.commercialAccessMode &&
-      (_waitingForReservationCheckoutReturn || _reservationPaymentPending);
+      (_isValidatingPayment ||
+          (_waitingForReservationCheckoutReturn &&
+              (_checkoutCompleted ||
+                  _requestHasCheckoutReturnSuccess(widget.request) ||
+                  _hasReservationPaymentIntent(widget.request) ||
+                  _requestIndicatesPaymentConfirmed(widget.request))));
+
+  bool get _shouldValidateReservationPaymentOnReturn =>
+      !widget.commercialAccessMode &&
+      _waitingForReservationCheckoutReturn &&
+      (_requestHasCheckoutReturnSuccess(widget.request) ||
+          _requestIndicatesPaymentConfirmed(widget.request) ||
+          _hasReservationPaymentIntent(widget.request));
 
   bool _resolvePrimaryAction() {
     if (_submitting) return false;
     if (widget.commercialAccessMode) return _canSubmit;
-    if (_reservationPaymentConfirmed) return false;
-    if (_reservationPaymentPending) return true;
-    if (_waitingForReservationCheckoutReturn) return false;
+    if (_reservationPaymentConfirmed) return true;
+    if (_reservationCheckoutAwaitingCompletion) return true;
+    if (_reservationRequiresValidation) return false;
     return _canSubmit;
   }
 
   Future<void> _handlePrimaryAction() async {
-    if (!widget.commercialAccessMode && _reservationPaymentPending) {
+    if (!widget.commercialAccessMode && _reservationPaymentConfirmed) {
+      _openTripsView();
+      return;
+    }
+    if (!widget.commercialAccessMode &&
+        _reservationCheckoutAwaitingCompletion) {
+      await _openReservationExistingCheckout();
+      return;
+    }
+    if (!widget.commercialAccessMode && _reservationRequiresValidation) {
       await _validateReservationCheckoutReturn();
       return;
     }
@@ -1531,8 +1631,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       return;
     }
 
-    if (_reservationPaymentPending) {
-      await _validateReservationCheckoutReturn();
+    if (_reservationCheckoutAwaitingCompletion) {
+      await _openReservationExistingCheckout();
       return;
     }
 
@@ -1551,8 +1651,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
     setState(() {
       _submitting = true;
+      _openingReservationCheckout = true;
       _inlineMessage = 'Preparando link de pago...';
     });
+    _scheduleReservationCheckoutOpeningTimeout();
 
     try {
       unawaited(_resolveContractSignedState(refreshWorkspace: true));
@@ -1624,13 +1726,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         );
       }
 
+      _clearReservationCheckoutOpeningState();
       final opened = await launchUrl(
         Uri.parse(redirectUrl),
         mode: LaunchMode.externalApplication,
       );
 
       if (!opened) {
-        throw const ApiException('No fue posible abrir el link de pago.');
+        throw const ApiException(
+          'No se pudo abrir Stripe Checkout. Intenta nuevamente.',
+        );
       }
 
       reservationProvider.markPaymentPending(
@@ -1642,7 +1747,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       if (!mounted) return;
       setState(() {
         _waitingForReservationCheckoutReturn = true;
-        _reservationCheckoutAutoRetryCount = 0;
         _inlineMessage =
             'Link de pago abierto. Completa el checkout seguro y vuelve a la app para continuar.';
       });
@@ -1652,6 +1756,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       );
       if (!mounted) return;
       setState(() {
+        _clearReservationCheckoutOpeningState();
         _inlineMessage =
             _isContractGateError(error)
                 ? 'La firma ya fue enviada. Estamos sincronizando el estado de pago; vuelve a tocar Abrir Stripe Checkout en unos segundos.'
@@ -1660,7 +1765,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _inlineMessage = 'No fue posible abrir el link de pago: $error';
+        _clearReservationCheckoutOpeningState();
+        _inlineMessage =
+            'No se pudo abrir Stripe Checkout. Intenta nuevamente.';
       });
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -1719,6 +1826,21 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   Future<void> _validateReservationCheckoutReturn() async {
     if (_submitting || widget.commercialAccessMode) return;
+    if (!_shouldValidateReservationPaymentOnReturn &&
+        !_requestIndicatesPaymentConfirmed(widget.request)) {
+      if (!mounted) return;
+      setState(() {
+        _isValidatingPayment = false;
+        _checkoutCompleted = false;
+        _showTripsShortcut = false;
+        _waitingForReservationCheckoutReturn = false;
+        if (_reservationCheckoutAwaitingCompletion) {
+          _inlineMessage =
+              'Tu reserva esta pendiente de pago. Abre Stripe Checkout para capturar tu tarjeta y continuar.';
+        }
+      });
+      return;
+    }
 
     final reservationProvider = context.read<ReservationProvider>();
     var flightRequestId = _effectiveFlightRequestId(widget.request);
@@ -1727,13 +1849,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
     setState(() {
       _submitting = true;
+      _isValidatingPayment = true;
+      _showTripsShortcut = false;
       _inlineMessage = 'Validando pago del vuelo...';
     });
 
     try {
       Map<String, dynamic>? successPayload;
       Map<String, dynamic> refreshedMatch = const <String, dynamic>{};
-      for (var attempt = 0; attempt < 5; attempt++) {
+      const maxAttempts = 8;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
         if (attempt > 0) {
           sessionId = _effectiveCheckoutSessionId(widget.request);
           reservationId = _effectiveReservationId(widget.request);
@@ -1766,8 +1891,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         );
 
         if (successPayload.isNotEmpty &&
-            (_requestIndicatesPaymentConfirmed(successPayload) ||
-                _requestIndicatesPaymentPending(successPayload))) {
+            _requestIndicatesPaymentConfirmed(successPayload)) {
           break;
         }
 
@@ -1784,12 +1908,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           '${jsonEncode(refreshedMatch)}',
         );
         if (refreshedMatch.isNotEmpty &&
-            (_requestIndicatesPaymentConfirmed(refreshedMatch) ||
-                _requestIndicatesPaymentPending(refreshedMatch))) {
+            _requestIndicatesPaymentConfirmed(refreshedMatch)) {
           break;
         }
 
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        if (attempt < maxAttempts - 1) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
       }
 
       if (successPayload != null && successPayload.isNotEmpty) {
@@ -1842,12 +1967,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         );
         if (!mounted) return;
         setState(() {
+          _isValidatingPayment = false;
+          _showTripsShortcut = false;
           _waitingForReservationCheckoutReturn = false;
-          _reservationCheckoutAutoRetryCount = 0;
-          _inlineMessage =
-              'Pago confirmado. Tu reserva ya quedo pagada y confirmada.';
+          _inlineMessage = 'Pago confirmado. Redirigiendo a Tus Vuelos...';
         });
-        await _redirectToTripsAfterConfirmedReservation();
+        await _redirectToTripsAfterConfirmedReservation(
+          message: 'Pago confirmado. Redirigiendo a Tus Vuelos...',
+        );
         return;
       }
 
@@ -1863,41 +1990,42 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           checkoutSessionId: sessionId,
         );
         if (!mounted) return;
-        final shouldKeepPolling = _reservationCheckoutAutoRetryCount < 8;
         setState(() {
-          _waitingForReservationCheckoutReturn = shouldKeepPolling;
-          _reservationCheckoutAutoRetryCount =
-              shouldKeepPolling
-                  ? _reservationCheckoutAutoRetryCount + 1
-                  : _reservationCheckoutAutoRetryCount;
+          _isValidatingPayment = false;
+          _showTripsShortcut = true;
+          _waitingForReservationCheckoutReturn = false;
           _inlineMessage =
-              shouldKeepPolling
-                  ? 'Checkout completado. Estamos validando tu pago automaticamente...'
-                  : 'Checkout completado. El pago esta en validacion y tu reserva ya quedo en seguimiento.';
+              'Seguimos validando tu pago. Puedes continuar en Tus Vuelos.';
         });
-        if (shouldKeepPolling) {
-          unawaited(_scheduleReservationCheckoutAutoRetry());
-        }
         return;
       }
 
       if (!mounted) return;
       setState(() {
+        _isValidatingPayment = false;
+        _showTripsShortcut = true;
         _waitingForReservationCheckoutReturn = false;
-        _reservationCheckoutAutoRetryCount = 0;
         _inlineMessage =
-            'Stripe regreso a la app, pero el backend aun no confirma el pago. Revisa nuevamente en unos segundos.';
+            'Seguimos validando tu pago. Puedes continuar en Tus Vuelos.';
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _isValidatingPayment = false;
+        _showTripsShortcut = true;
         _waitingForReservationCheckoutReturn = false;
-        _reservationCheckoutAutoRetryCount = 0;
         _inlineMessage =
             'No fue posible validar automaticamente el pago: $error';
       });
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          if (!_waitingForReservationCheckoutReturn) {
+            _isValidatingPayment = false;
+          }
+        });
+      }
     }
   }
 
@@ -2008,14 +2136,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
   }
 
-  Future<void> _scheduleReservationCheckoutAutoRetry() async {
-    await Future<void>.delayed(const Duration(seconds: 3));
-    if (!mounted || !_waitingForReservationCheckoutReturn || _submitting) {
-      return;
-    }
-    await _validateReservationCheckoutReturn();
-  }
-
   Future<void> _bootstrapReservationPaymentState() async {
     if (_reservationPaymentConfirmed) {
       await _redirectToTripsAfterConfirmedReservation(
@@ -2025,11 +2145,30 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       return;
     }
 
-    if (_reservationPaymentPending ||
-        _reservationCheckoutSessionId.trim().isNotEmpty ||
-        _reservationId(widget.request).isNotEmpty ||
-        _flightRequestId(widget.request).isNotEmpty) {
+    if (_waitingForReservationCheckoutReturn &&
+        !_shouldValidateReservationPaymentOnReturn &&
+        mounted) {
+      setState(() {
+        _isValidatingPayment = false;
+        _checkoutCompleted = false;
+        _showTripsShortcut = false;
+        _waitingForReservationCheckoutReturn = false;
+      });
+    }
+
+    if (_waitingForReservationCheckoutReturn) {
       await _validateReservationStateSilently();
+      return;
+    }
+
+    if (_reservationCheckoutAwaitingCompletion && mounted) {
+      setState(() {
+        _isValidatingPayment = false;
+        _checkoutCompleted = false;
+        _showTripsShortcut = false;
+        _inlineMessage =
+            'Tu reserva esta pendiente de pago. Abre Stripe Checkout para capturar tu tarjeta y continuar.';
+      });
     }
   }
 
@@ -2070,6 +2209,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       if (!mounted) return;
       if (_requestIndicatesPaymentConfirmed(widget.request)) {
         setState(() {
+          _isValidatingPayment = false;
+          _showTripsShortcut = false;
           _waitingForReservationCheckoutReturn = false;
         });
         await _redirectToTripsAfterConfirmedReservation(
@@ -2081,15 +2222,161 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
       if (_requestIndicatesPaymentPending(widget.request)) {
         setState(() {
-          _waitingForReservationCheckoutReturn = true;
+          _isValidatingPayment = false;
+          _checkoutCompleted = false;
+          _showTripsShortcut = true;
+          _waitingForReservationCheckoutReturn = false;
           _inlineMessage =
-              'Detectamos un pago en validacion. Seguimos consultando el backend automaticamente.';
+              _reservationCheckoutAwaitingCompletion
+                  ? 'Tu reserva sigue pendiente de pago. Abre Stripe Checkout para continuar.'
+                  : 'Detectamos un pago en validacion. Vuelve a esta pantalla despues de regresar de Stripe.';
         });
-        unawaited(_scheduleReservationCheckoutAutoRetry());
       }
     } catch (error) {
       debugPrint('[Pago][StripeCheckout][bootstrap_error] $error');
     }
+  }
+
+  bool _requestHasCheckoutReturnSuccess(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final frontendState = _asStringKeyMap(request['frontend_state']);
+    final dataFrontendState = _asStringKeyMap(data['frontend_state']);
+
+    return _isTruthyValue(request['checkout_return_success']) ||
+        _isTruthyValue(request['checkoutCompleted']) ||
+        _isTruthyValue(request['checkout_completed']) ||
+        _isTruthyValue(data['checkout_return_success']) ||
+        _isTruthyValue(data['checkoutCompleted']) ||
+        _isTruthyValue(data['checkout_completed']) ||
+        _isTruthyValue(reservation['checkout_return_success']) ||
+        _isTruthyValue(reservation['checkoutCompleted']) ||
+        _isTruthyValue(reservation['checkout_completed']) ||
+        _isTruthyValue(dataReservation['checkout_return_success']) ||
+        _isTruthyValue(dataReservation['checkoutCompleted']) ||
+        _isTruthyValue(dataReservation['checkout_completed']) ||
+        _isTruthyValue(frontendState['checkout_return_success']) ||
+        _isTruthyValue(frontendState['checkoutCompleted']) ||
+        _isTruthyValue(frontendState['checkout_completed']) ||
+        _isTruthyValue(dataFrontendState['checkout_return_success']) ||
+        _isTruthyValue(dataFrontendState['checkoutCompleted']) ||
+        _isTruthyValue(dataFrontendState['checkout_completed']);
+  }
+
+  bool _hasReservationPaymentIntent(Map<String, dynamic> request) {
+    return _paymentIntentId(request).trim().isNotEmpty ||
+        _clientSecret(request).trim().isNotEmpty;
+  }
+
+  Future<void> _openReservationExistingCheckout() async {
+    try {
+      if (mounted) {
+        setState(() {
+          _openingReservationCheckout = true;
+          _inlineMessage = 'Abriendo Stripe Checkout...';
+        });
+      }
+      _scheduleReservationCheckoutOpeningTimeout();
+
+      final checkoutUrl = await _resolveReservationCheckoutUrl();
+      if (checkoutUrl.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _clearReservationCheckoutOpeningState();
+          _inlineMessage =
+              'No encontramos la URL de Stripe Checkout para continuar el pago.';
+        });
+        return;
+      }
+
+      _clearReservationCheckoutOpeningState();
+      final opened = await launchUrl(
+        Uri.parse(checkoutUrl),
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened) {
+        throw const ApiException(
+          'No se pudo abrir Stripe Checkout. Intenta nuevamente.',
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inlineMessage =
+            'Stripe Checkout abierto. Captura tu tarjeta y vuelve a la app cuando termines.';
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _clearReservationCheckoutOpeningState();
+        _inlineMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _clearReservationCheckoutOpeningState();
+        _inlineMessage =
+            'No se pudo abrir Stripe Checkout. Intenta nuevamente.';
+      });
+    }
+  }
+
+  void _scheduleReservationCheckoutOpeningTimeout() {
+    _reservationCheckoutOpeningTimer?.cancel();
+    _reservationCheckoutOpeningTimer = Timer(const Duration(seconds: 9), () {
+      if (!mounted || !_openingReservationCheckout) return;
+      setState(() {
+        _openingReservationCheckout = false;
+      });
+    });
+  }
+
+  void _clearReservationCheckoutOpeningState() {
+    _reservationCheckoutOpeningTimer?.cancel();
+    _openingReservationCheckout = false;
+  }
+
+  Future<String> _resolveReservationCheckoutUrl() async {
+    final directUrl = _checkoutUrl(widget.request);
+    if (directUrl.isNotEmpty) return directUrl;
+
+    final reservationProvider = context.read<ReservationProvider>();
+    final currentSessionId = _effectiveCheckoutSessionId(widget.request);
+    final currentReservationId = _effectiveReservationId(widget.request);
+    final currentFlightRequestId = _effectiveFlightRequestId(widget.request);
+
+    if (currentSessionId.isNotEmpty) {
+      try {
+        final payload = await ApiClient.instance.getClientCheckoutSuccess(
+          sessionId: currentSessionId,
+          reservationId: currentReservationId,
+          flightRequestId: currentFlightRequestId,
+        );
+        if (payload.isNotEmpty) {
+          _mergeRequestSnapshot(payload);
+          final recoveredUrl = _checkoutUrl(payload);
+          if (recoveredUrl.isNotEmpty) return recoveredUrl;
+        }
+      } catch (error) {
+        debugPrint('[Pago][StripeCheckout][recover_session_error] $error');
+      }
+    }
+
+    try {
+      await reservationProvider.loadClientWorkspaceData(force: true);
+      final refreshedMatch = _matchingRequestFromProvider(reservationProvider);
+      if (refreshedMatch.isNotEmpty) {
+        _mergeRequestSnapshot(refreshedMatch);
+        final recoveredUrl = _checkoutUrl(refreshedMatch);
+        if (recoveredUrl.isNotEmpty) return recoveredUrl;
+      }
+    } catch (error) {
+      debugPrint('[Pago][StripeCheckout][recover_workspace_error] $error');
+    }
+
+    return '';
   }
 
   Future<bool> _waitForCommercialAccessActivation() async {
@@ -2669,6 +2956,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   String _checkoutUrl(Map<String, dynamic> payload) {
     final data = _asStringKeyMap(payload['data']);
+    final reservation = _asStringKeyMap(payload['reservation']);
+    final paymentOrder = _asStringKeyMap(payload['payment_order']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
     return _firstTextFromMaps(
       const [
         'checkout_url',
@@ -2677,7 +2968,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         'managementUrl',
         'url',
       ],
-      [payload, data],
+      [
+        payload,
+        data,
+        reservation,
+        paymentOrder,
+        dataReservation,
+        dataPaymentOrder,
+      ],
     );
   }
 
