@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
+import '../../../core/media_utils.dart';
+import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../tema_cliente.dart';
@@ -68,7 +70,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 34),
                 children: [
                   Text(
                     'Aeronaves disponibles',
@@ -91,6 +93,13 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  _ResultsSummaryBand(
+                    routes: reservation.routes,
+                    passengers: reservation.passengers,
+                    tripLabel: reservation.currentTripTypeLabel,
+                    isLoading: reservation.isLoadingQuotePreview,
+                  ),
+                  const SizedBox(height: 16),
                   _ResultsSortCard(
                     activeCriterion: _sortCriterion,
                     onSelect:
@@ -98,17 +107,17 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                           _sortCriterion = criterion;
                         }),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   if (reservation.quoteError != null) ...[
                     _InfoCard(text: reservation.quoteError!),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                   ],
                   if (matches.isEmpty)
                     _EmptyResultsCard(onBackToSearch: widget.onBackToSearch)
                   else
                     ...matches.map(
                       (match) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.only(bottom: 14),
                         child: _QuoteMatchCard(
                           quote: match,
                           isSelected: _sameQuote(match, selected),
@@ -140,8 +149,9 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     if (!accessState.canReserve) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(accessState.reservationBlockedMessage)),
+      _showResultAlert(
+        accessState.reservationBlockedMessage,
+        icon: Icons.workspace_premium_rounded,
       );
       widget.onCommercialAccessRequired?.call();
       return;
@@ -170,13 +180,16 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solicitud creada correctamente.')),
+      _showResultAlert(
+        'Solicitud creada correctamente. Ya puedes seguirla en Reservas.',
+        icon: Icons.check_circle_rounded,
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al crear la solicitud: $error')),
+      _showResultAlert(
+        'No fue posible crear la solicitud: $error',
+        icon: Icons.error_outline_rounded,
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -185,6 +198,53 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
         });
       }
     }
+  }
+
+  void _showResultAlert(
+    String message, {
+    required IconData icon,
+    bool isError = false,
+  }) {
+    final palette = context.clientPalette;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+          backgroundColor:
+              isError ? Theme.of(context).colorScheme.error : palette.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              Icon(
+                icon,
+                color:
+                    isError
+                        ? Theme.of(context).colorScheme.onError
+                        : palette.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color:
+                        isError
+                            ? Theme.of(context).colorScheme.onError
+                            : palette.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   bool _sameQuote(Map<String, dynamic> quote, Map<String, dynamic>? selected) {
@@ -327,6 +387,106 @@ extension on _ResultsSortCriterion {
   }
 }
 
+class _ResultsSummaryBand extends StatelessWidget {
+  const _ResultsSummaryBand({
+    required this.routes,
+    required this.passengers,
+    required this.tripLabel,
+    required this.isLoading,
+  });
+
+  final List<RouteModel> routes;
+  final int passengers;
+  final String tripLabel;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final primaryRoute = routes.isEmpty ? null : routes.first;
+    final origin = _airportCode(primaryRoute?.fromAirport);
+    final destination = _airportCode(primaryRoute?.toAirport);
+    final routeLabel =
+        origin.isNotEmpty && destination.isNotEmpty
+            ? '$origin -> $destination'
+            : 'Ruta por confirmar';
+    final completeSegments =
+        routes
+            .where(
+              (route) =>
+                  route.fromAirport != null &&
+                  route.toAirport != null &&
+                  route.startDate != null,
+            )
+            .length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: palette.accentSoft,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
+              color: ClientThemeColors.textOnAccent,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  routeLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$tripLabel | $completeSegments tramos | $passengers pasajeros',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _airportCode(dynamic airport) {
+    if (airport == null) return '';
+    final icao = airport.icao?.toString().trim().toUpperCase() ?? '';
+    if (icao.isNotEmpty) return icao;
+    final iata = airport.iata?.toString().trim().toUpperCase() ?? '';
+    if (iata.isNotEmpty) return iata;
+    return airport.city?.toString().trim() ?? '';
+  }
+}
+
 class _ResultsSortCard extends StatelessWidget {
   const _ResultsSortCard({
     required this.activeCriterion,
@@ -345,7 +505,7 @@ class _ResultsSortCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isDark ? palette.accentBorder : palette.border,
         ),
@@ -463,7 +623,7 @@ class _QuoteMatchCard extends StatelessWidget {
       'capacity_passengers',
     ]);
     final provider = _providerName(quote);
-    final imageUrl = _aircraftImageUrl(quote);
+    final imageUrl = resolveMediaUrl(_aircraftImageUrl(quote));
     final price = _moneyLabel(
       quote['final_price'] ?? quote['total'] ?? quote['price'],
     );
@@ -474,10 +634,10 @@ class _QuoteMatchCard extends StatelessWidget {
       onTap: onSelect,
       borderRadius: BorderRadius.circular(22),
       child: Ink(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: palette.surface,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: isDark ? palette.accentBorder : palette.border,
             width: isSelected ? 1.6 : 1,
@@ -497,7 +657,7 @@ class _QuoteMatchCard extends StatelessWidget {
               imageUrl: imageUrl,
               label: cabin.isEmpty ? 'Opcion privada' : cabin,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -554,7 +714,7 @@ class _QuoteMatchCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(child: _MetricBox(label: 'Total', value: price)),
@@ -682,10 +842,14 @@ class _AircraftMedia extends StatelessWidget {
               Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                errorBuilder: (_, __, ___) => _AircraftMediaEmpty(label: label),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return _AircraftMediaEmpty(label: label);
+                },
               )
             else
-              const Center(child: _AircraftMediaEmpty()),
+              _AircraftMediaEmpty(label: label),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -746,20 +910,37 @@ class _AircraftMedia extends StatelessWidget {
 }
 
 class _AircraftMediaEmpty extends StatelessWidget {
-  const _AircraftMediaEmpty();
+  const _AircraftMediaEmpty({required this.label});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.flight_rounded, color: Colors.white, size: 28),
-        SizedBox(height: 8),
-        Text(
-          'Imagen en validacion',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
-        ),
-      ],
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.flight_rounded, color: Colors.white, size: 30),
+          const SizedBox(height: 8),
+          Text(
+            label.trim().isEmpty ? 'Aeronave privada' : label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Imagen en validacion',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.76),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

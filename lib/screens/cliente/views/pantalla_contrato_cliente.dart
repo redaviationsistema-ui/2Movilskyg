@@ -677,7 +677,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
       if (!mounted) return;
       setState(() {
-        _submitMessage = 'Contrato firmado. Preparando pago...';
+        _submitMessage = 'Contrato firmado. Actualizando tus vuelos...';
       });
       widget.onConfirm();
     } on ApiException catch (error) {
@@ -900,7 +900,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       setState(() {
         _externalContractId = '';
         _waitingForExternalSignatureReturn = false;
-        _submitMessage = 'Contrato firmado. Preparando pago...';
+        _submitMessage = 'Contrato firmado. Actualizando tus vuelos...';
       });
       widget.onConfirm();
     } catch (error) {

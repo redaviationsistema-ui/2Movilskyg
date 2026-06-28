@@ -139,6 +139,11 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                         ),
                       ),
                     ),
+                    _WorkspaceBottomNav(
+                      items: widget.items,
+                      selectedIndex: _selectedIndex,
+                      onSelect: _selectIndex,
+                    ),
                   ],
                 ),
       ),
@@ -152,6 +157,107 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     }
+  }
+}
+
+class _WorkspaceBottomNav extends StatelessWidget {
+  const _WorkspaceBottomNav({
+    required this.items,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  final List<RoleWorkspaceItem> items;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleEntries =
+        items.length <= 5
+            ? items.asMap().entries.toList()
+            : [
+              ...items.asMap().entries.take(4),
+              MapEntry(
+                selectedIndex >= 4 ? selectedIndex : 4,
+                items[selectedIndex >= 4 ? selectedIndex : 4],
+              ),
+            ];
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E2235),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0x33E0B86E)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 22,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children:
+              visibleEntries.map((entry) {
+                final item = entry.value;
+                final originalIndex = entry.key;
+                final isSelected = originalIndex == selectedIndex;
+                return Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => onSelect(originalIndex),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? const Color(0xFFE0B86E)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            item.icon,
+                            size: 19,
+                            color:
+                                isSelected
+                                    ? const Color(0xFF10253A)
+                                    : Colors.white.withValues(alpha: 0.82),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            item.shortLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color:
+                                  isSelected
+                                      ? const Color(0xFF10253A)
+                                      : Colors.white.withValues(alpha: 0.74),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+        ),
+      ),
+    );
   }
 }
 

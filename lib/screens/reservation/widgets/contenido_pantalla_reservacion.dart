@@ -33,6 +33,7 @@ class ReservationScreenContent extends StatelessWidget {
     required this.onPickDepartureTime,
     required this.onPickReturnDate,
     required this.onPickReturnTime,
+    required this.onPassengerChanged,
     required this.onPickRouteOrigin,
     required this.onPickRouteDestination,
     required this.onPickRouteDate,
@@ -63,6 +64,7 @@ class ReservationScreenContent extends StatelessWidget {
   final VoidCallback onPickDepartureTime;
   final VoidCallback onPickReturnDate;
   final VoidCallback onPickReturnTime;
+  final ValueChanged<int> onPassengerChanged;
   final ValueChanged<int> onPickRouteOrigin;
   final ValueChanged<int> onPickRouteDestination;
   final ValueChanged<int> onPickRouteDate;
@@ -87,27 +89,32 @@ class ReservationScreenContent extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 148),
         children: [
-          const _HeroAccent(),
-          const SizedBox(height: 4),
-          Text(
-            'Cotiza tu vuelo privado',
-            style: TextStyle(
-              fontSize: 24,
-              height: 1.05,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.9,
-              color: palette.textPrimary,
-            ),
+          _FlightSearchHero(
+            isReady: isPrimaryFormReady,
+            remainingFreeQuotes: remainingFreeQuotes,
+            hasActiveMembership: hasActiveMembership,
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Selecciona ruta, fecha y pasajeros para ver aeronaves disponibles.',
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 14),
+          QuickActionRail(
+            onTodayTrip: onTodayTrip,
+            onRoundTrip: onRoundTrip,
+            onMultiCity: onMultiCity,
+          ),
+          if (suggestedAirports.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _SuggestedDestinationRail(
+              airports: suggestedAirports,
+              isMultiCity: tripType == 'Multidestino',
+              onTap: onApplySuggestedDestination,
             ),
+          ],
+          const SizedBox(height: 14),
+          _QuoteReadinessBand(
+            primaryRoute: primaryRoute,
+            routes: reservation.routes,
+            passengers: reservation.passengers,
+            tripType: tripType,
+            isLoading: reservation.isLoadingQuotePreview,
           ),
           if (needsCommercialAccess) ...[
             const SizedBox(height: 12),
@@ -235,6 +242,11 @@ class ReservationScreenContent extends StatelessWidget {
                           : 'Hora de salida: ${departureTime!.format(context)}',
                   icon: Icons.schedule_rounded,
                   onTap: onPickDepartureTime,
+                ),
+                const SizedBox(height: 12),
+                PassengerRow(
+                  value: reservation.passengers,
+                  onChanged: onPassengerChanged,
                 ),
                 if (tripType == 'Ida y vuelta') ...[
                   const SizedBox(height: 10),
@@ -431,41 +443,404 @@ class ReservationScreenContent extends StatelessWidget {
   }
 }
 
-class _HeroAccent extends StatelessWidget {
-  const _HeroAccent();
+class _FlightSearchHero extends StatelessWidget {
+  const _FlightSearchHero({
+    required this.isReady,
+    required this.remainingFreeQuotes,
+    required this.hasActiveMembership,
+  });
+
+  final bool isReady;
+  final int remainingFreeQuotes;
+  final bool hasActiveMembership;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
-    return SizedBox(
-      height: 14,
-      child: Stack(
-        children: [
-          Positioned(
-            top: 2,
-            left: 0,
-            child: Container(
-              width: 72,
-              height: 1.5,
-              decoration: BoxDecoration(
-                color: palette.border,
-                borderRadius: BorderRadius.circular(99),
-              ),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder:
+          (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 18 * (1 - value)),
+              child: child,
             ),
           ),
-          Positioned(
-            top: 7,
-            left: 18,
-            child: Container(
-              width: 46,
-              height: 1.5,
-              decoration: BoxDecoration(
-                color: palette.accent,
-                borderRadius: BorderRadius.circular(99),
+      child: SizedBox(
+        height: 184,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _FlightHeroPainter(
+                color: palette.primary,
+                accent: palette.accent,
               ),
+            ),
+            Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _HeroStatusPill(
+                      label:
+                          hasActiveMembership
+                              ? 'Acceso activo'
+                              : '$remainingFreeQuotes cotizaciones disponibles',
+                      icon:
+                          hasActiveMembership
+                              ? Icons.verified_rounded
+                              : Icons.bolt_rounded,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Cotiza tu vuelo privado',
+                      style: TextStyle(
+                        fontSize: 30,
+                        height: 1.02,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isReady
+                          ? 'Ruta lista. Busquemos aeronaves disponibles.'
+                          : 'Selecciona ruta, fecha y pasajeros para empezar.',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 14,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStatusPill extends StatelessWidget {
+  const _HeroStatusPill({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accentBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: palette.accent),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FlightHeroPainter extends CustomPainter {
+  const _FlightHeroPainter({required this.color, required this.accent});
+
+  final Color color;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final basePaint =
+        Paint()
+          ..color = color.withValues(alpha: 0.08)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3;
+    final accentPaint =
+        Paint()
+          ..color = accent.withValues(alpha: 0.44)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < 4; i++) {
+      final y = size.height * (0.18 + i * 0.18);
+      final path =
+          Path()
+            ..moveTo(size.width * 0.12, y)
+            ..cubicTo(
+              size.width * 0.32,
+              y - 42,
+              size.width * 0.64,
+              y + 38,
+              size.width * 0.96,
+              y - 20,
+            );
+      canvas.drawPath(path, basePaint);
+    }
+
+    final route =
+        Path()
+          ..moveTo(size.width * 0.42, size.height * 0.24)
+          ..cubicTo(
+            size.width * 0.62,
+            size.height * 0.06,
+            size.width * 0.84,
+            size.height * 0.22,
+            size.width * 0.94,
+            size.height * 0.10,
+          );
+    canvas.drawPath(route, accentPaint);
+    canvas.drawCircle(
+      Offset(size.width * 0.94, size.height * 0.10),
+      5,
+      Paint()..color = accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FlightHeroPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.accent != accent;
+  }
+}
+
+class _SuggestedDestinationRail extends StatelessWidget {
+  const _SuggestedDestinationRail({
+    required this.airports,
+    required this.isMultiCity,
+    required this.onTap,
+  });
+
+  final List<Airport> airports;
+  final bool isMultiCity;
+  final ValueChanged<Airport> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Destinos sugeridos',
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 132,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: airports.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder:
+                (_, index) => SuggestedDestinationCard(
+                  airport: airports[index],
+                  isMultiCity: isMultiCity,
+                  onTap: () => onTap(airports[index]),
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuoteReadinessBand extends StatelessWidget {
+  const _QuoteReadinessBand({
+    required this.primaryRoute,
+    required this.routes,
+    required this.passengers,
+    required this.tripType,
+    required this.isLoading,
+  });
+
+  final RouteModel primaryRoute;
+  final List<RouteModel> routes;
+  final int passengers;
+  final String tripType;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final routeReady =
+        primaryRoute.fromAirport != null && primaryRoute.toAirport != null;
+    final dateReady = primaryRoute.startDate != null;
+    final passengerReady = passengers > 0;
+    final completeRoutes =
+        routes
+            .where(
+              (route) =>
+                  route.fromAirport != null &&
+                  route.toAirport != null &&
+                  route.startDate != null,
+            )
+            .length;
+    final totalRoutes = routes.isEmpty ? 1 : routes.length;
+    final progress =
+        [
+          routeReady,
+          dateReady,
+          passengerReady,
+          completeRoutes == totalRoutes,
+        ].where((ready) => ready).length /
+        4;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isLoading ? Icons.sync_rounded : Icons.route_rounded,
+                size: 18,
+                color: palette.accent,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isLoading
+                      ? 'Consultando disponibilidad'
+                      : _readinessTitle(
+                        routeReady: routeReady,
+                        dateReady: dateReady,
+                        passengerReady: passengerReady,
+                        completeRoutes: completeRoutes,
+                        totalRoutes: totalRoutes,
+                      ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Text(
+                '${(progress * 100).round()}%',
+                style: TextStyle(
+                  color: palette.accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: isLoading ? null : progress,
+              minHeight: 7,
+              backgroundColor: palette.surfaceSoft,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ReadinessChip(
+                label: routeReady ? 'Ruta lista' : 'Falta ruta',
+                ready: routeReady,
+              ),
+              _ReadinessChip(
+                label: dateReady ? 'Fecha lista' : 'Falta fecha',
+                ready: dateReady,
+              ),
+              _ReadinessChip(
+                label: passengers == 1 ? '1 pasajero' : '$passengers pasajeros',
+                ready: passengerReady,
+              ),
+              _ReadinessChip(
+                label: '$completeRoutes/$totalRoutes tramos',
+                ready: completeRoutes == totalRoutes,
+              ),
+              _ReadinessChip(label: tripType, ready: true),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _readinessTitle({
+    required bool routeReady,
+    required bool dateReady,
+    required bool passengerReady,
+    required int completeRoutes,
+    required int totalRoutes,
+  }) {
+    if (!routeReady) return 'Selecciona origen y destino';
+    if (!dateReady) return 'Selecciona fecha de salida';
+    if (!passengerReady) return 'Indica pasajeros';
+    if (completeRoutes != totalRoutes) return 'Completa todos los tramos';
+    return 'Lista para cotizar';
+  }
+}
+
+class _ReadinessChip extends StatelessWidget {
+  const _ReadinessChip({required this.label, required this.ready});
+
+  final String label;
+  final bool ready;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: ready ? palette.accentSoft : palette.surfaceSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: ready ? palette.accentBorder : palette.border,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: ready ? ClientThemeColors.textOnAccent : palette.textSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }

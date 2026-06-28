@@ -437,11 +437,7 @@ class _QuickAccessCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: ClientThemeColors.accentBorder),
               ),
-              child: Icon(
-                icon,
-                color: ClientThemeColors.accent,
-                size: 20,
-              ),
+              child: Icon(icon, color: ClientThemeColors.accent, size: 20),
             ),
             const Spacer(),
             Text(

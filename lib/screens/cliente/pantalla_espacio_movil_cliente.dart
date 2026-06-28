@@ -164,8 +164,8 @@ class _ClientMobileWorkspaceScreenState
               activeRequest,
             );
             setState(() {
-              _selectedRequestId = _preferredRequestId(refreshedRequest);
               _selectedIndex = 1;
+              _selectedRequestId = _preferredRequestId(refreshedRequest);
               _tripsStage = _TripsStage.list;
             });
           },

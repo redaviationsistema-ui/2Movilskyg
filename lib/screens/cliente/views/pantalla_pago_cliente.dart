@@ -74,6 +74,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   String _inlineMessage = '';
   String _accessCheckoutSessionId = '';
   String _reservationCheckoutSessionId = '';
+  String _reservationCheckoutFlightRequestId = '';
+  String _reservationCheckoutReservationId = '';
   String _stripeCardError = '';
   String _lastHandledCheckoutReturnUri = '';
   Map<String, dynamic>? _cardPaymentIntentSeed;
@@ -92,7 +94,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     _emailController.addListener(_refresh);
     _wireReferenceController.addListener(_refresh);
     final auth = context.read<AuthProvider>();
-    final initialEmail = auth.user?.email.trim() ?? '';
+    final initialEmail =
+        auth.user?.email.trim().isNotEmpty == true
+            ? auth.user!.email.trim()
+            : _requestContactEmail(widget.request);
     if (initialEmail.isNotEmpty) {
       _emailController.text = initialEmail;
     }
@@ -355,7 +360,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                 '')
             .trim();
 
-    if (sessionId.isNotEmpty) {
+    if (_isStripeCheckoutSessionId(sessionId)) {
       if (widget.commercialAccessMode) {
         _accessCheckoutSessionId = sessionId;
       } else {
@@ -366,6 +371,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (!mounted) return;
 
     if (!widget.commercialAccessMode) {
+      if (!_isStripeCheckoutSessionId(sessionId)) {
+        setState(() {
+          _waitingForReservationCheckoutReturn = false;
+          _reservationCheckoutSessionId = '';
+          _inlineMessage =
+              'No encontramos una sesion activa de Stripe para validar. Abre Stripe Checkout nuevamente.';
+        });
+        return;
+      }
+
       if (checkoutResult == 'cancel' || checkoutResult == 'cancelled') {
         await ApiClient.instance
             .cancelClientCheckout(
@@ -512,12 +527,20 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   @override
   Widget build(BuildContext context) {
     final accessData = context.watch<AuthProvider>().accessData;
+    final commercialState = resolveCommercialAccessState(accessData);
+    final commercialAccessActive =
+        widget.commercialAccessMode &&
+        (commercialState.hasPaidAccess || commercialState.canReserve);
     final paymentBreakdown =
-        widget.commercialAccessMode
+        commercialAccessActive
+            ? const <_PaymentBreakdownItem>[]
+            : widget.commercialAccessMode
             ? _commercialAccessBreakdown(accessData, widget.request)
             : _reservationPaymentBreakdown(widget.request);
     final amount =
-        widget.commercialAccessMode
+        commercialAccessActive
+            ? 'Acceso activo'
+            : widget.commercialAccessMode
             ? (_breakdownTotalLabel(paymentBreakdown) ?? 'USD \$115 / mes')
             : (_breakdownTotalLabel(paymentBreakdown) ??
                 _amountLabel(widget.request));
@@ -526,6 +549,32 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Activa el acceso comercial para reservar, firmar contrato y pagar vuelos.'
             : _routeLabel(widget.request);
     final passengerCount = (widget.request['passengers'] ?? '1').toString();
+    final reservationPaymentConfirmed =
+        !widget.commercialAccessMode &&
+        _requestIndicatesPaymentConfirmed(widget.request);
+    final reservationPaymentPending =
+        !widget.commercialAccessMode &&
+        !reservationPaymentConfirmed &&
+        _requestHasStripeCheckoutSession(widget.request, includeLocal: false) &&
+        _requestIndicatesPaymentPending(widget.request);
+    final checkoutStatus =
+        commercialAccessActive
+            ? 'Acceso confirmado'
+            : _waitingForReservationCheckoutReturn || _submitting
+            ? 'Validando pago con Stripe'
+            : reservationPaymentConfirmed
+            ? 'Pago confirmado'
+            : reservationPaymentPending
+            ? 'Pago pendiente de confirmacion'
+            : 'Listo para abrir enlace seguro';
+    final checkoutDescription =
+        commercialAccessActive
+            ? 'Tu membresia comercial ya esta activa. Puedes continuar sin volver a pagar.'
+            : reservationPaymentConfirmed
+            ? 'El backend ya reflejo el pago. Tu reserva puede avanzar al siguiente paso operativo.'
+            : reservationPaymentPending
+            ? 'Stripe recibio el checkout, pero el backend aun esta validando el pago. Actualizaremos la reserva al confirmarse.'
+            : 'El cobro se completa fuera de la app en Stripe. Al terminar, volveras automaticamente para validar tu reserva.';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
@@ -711,7 +760,123 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               ),
             ),
             const SizedBox(height: 12),
-            if (widget.commercialAccessMode)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: ClientThemeColors.brandNavy,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pago seguro',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Tu reserva esta protegida mediante Stripe y validacion bancaria.',
+                            style: TextStyle(
+                              color: Color(0xFFD5E2EE),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassInfoCard(
+                backgroundColor: ClientThemeColors.brandNavy,
+                borderColor: const Color(0xFF29445A),
+                shadowColor: const Color(0x1A102438),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'RESERVA',
+                      style: TextStyle(
+                        color: Color(0xFFD6E1EA),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.commercialAccessMode
+                          ? 'Acceso comercial premium'
+                          : route,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _PaymentRow(
+                      label: 'Pasajeros',
+                      value:
+                          widget.commercialAccessMode
+                              ? 'Membresia mensual'
+                              : '$passengerCount ${passengerCount == '1' ? 'pasajero' : 'pasajeros'}',
+                      onDark: true,
+                    ),
+                    _PaymentRow(
+                      label: 'Metodo',
+                      value:
+                          widget.commercialAccessMode
+                              ? _paymentMethodSummaryLabel()
+                              : 'Stripe Checkout externo',
+                      onDark: true,
+                    ),
+                    _PaymentRow(
+                      label: 'Total',
+                      value: amount,
+                      emphasize: true,
+                      onDark: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (!widget.commercialAccessMode)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _ExternalCheckoutCard(
+                  title: 'Checkout externo',
+                  description: checkoutDescription,
+                  status: checkoutStatus,
+                  isBusy: _waitingForReservationCheckoutReturn || _submitting,
+                  isConfirmed: reservationPaymentConfirmed,
+                ),
+              ),
+            if (!widget.commercialAccessMode) const SizedBox(height: 12),
+            if (widget.commercialAccessMode && !commercialAccessActive)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: GlassInfoCard(
@@ -736,7 +901,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                             if (_showCommercialCardPaymentOption)
                               _CompactPaymentOption(
                                 label: 'Tarjeta Corporativa',
-                                subtitle: 'Visa • Mastercard • Amex',
+                                subtitle: 'Visa / Mastercard / Amex',
                                 selected: _paymentMethod == 'card',
                                 expanded: _paymentMethod == 'card',
                                 onTap: () {
@@ -769,7 +934,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                       else ...[
                         _CompactPaymentOption(
                           label: 'Tarjeta Corporativa',
-                          subtitle: 'Visa • Mastercard • Amex',
+                          subtitle: 'Visa / Mastercard / Amex',
                           selected: _paymentMethod == 'card',
                           expanded: _paymentMethod == 'card',
                           onTap: () {
@@ -799,6 +964,17 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                       ],
                     ],
                   ),
+                ),
+              ),
+            if (widget.commercialAccessMode && commercialAccessActive)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _ExternalCheckoutCard(
+                  title: 'Acceso comercial activo',
+                  description: checkoutDescription,
+                  status: checkoutStatus,
+                  isBusy: false,
+                  isConfirmed: true,
                 ),
               ),
             const SizedBox(height: 12),
@@ -994,7 +1170,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Visa • Mastercard • Amex',
+                              'Visa / Mastercard / Amex',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -1169,12 +1345,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   bool get _canSubmit {
-    if (!_hasValidContactEmail) return false;
     if (widget.commercialAccessMode) {
+      if (_commercialAccessAlreadyActive) return true;
+      if (_commercialAccessNeedsValidation) return true;
+      if (!_hasValidContactEmail) return false;
       if (_paymentMethod == 'card') return _cardDetails?.complete ?? false;
       return true;
     }
+    if (!_hasPaymentIdentity) return false;
     if (_paymentMethod == 'link') return true;
+    if (_contactEmail.isNotEmpty && !_hasValidContactEmail) return false;
     if (_paymentMethod == 'card') {
       return _cardDetails?.complete ?? false;
     }
@@ -1247,19 +1427,61 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   String get _contactEmail => _emailController.text.trim().toLowerCase();
 
+  bool get _hasPaymentIdentity =>
+      _flightRequestId(widget.request).isNotEmpty ||
+      _reservationId(widget.request).isNotEmpty ||
+      (widget.request['id']?.toString().trim().isNotEmpty ?? false);
+
   bool get _showCommercialCardPaymentOption => false;
+
+  bool get _commercialAccessAlreadyActive {
+    final state = resolveCommercialAccessState(
+      context.read<AuthProvider>().accessData,
+    );
+    return state.hasPaidAccess || state.canReserve;
+  }
+
+  bool get _commercialAccessNeedsValidation {
+    if (!widget.commercialAccessMode) return false;
+    if (_waitingForCommercialAccessReturn) return true;
+    if (_accessCheckoutSessionId.trim().isNotEmpty) return true;
+    final message = _inlineMessage.toLowerCase();
+    return message.contains('stripe regreso') ||
+        message.contains('validando acceso') ||
+        message.contains('aun no confirma el acceso') ||
+        message.contains('pago esta en validacion') ||
+        message.contains('pago en validacion');
+  }
 
   Future<void> _submitPayment() async {
     if (widget.commercialAccessMode) {
+      if (_commercialAccessAlreadyActive) {
+        widget.onPaymentComplete();
+        return;
+      }
       if (_paymentMethod == 'card') {
         await _submitCommercialAccessCardPayment();
       } else {
-        await _submitCommercialAccessPayment();
+        if (_commercialAccessNeedsValidation) {
+          await _validateCommercialAccessAfterCheckout();
+        } else {
+          await _submitCommercialAccessPayment();
+        }
       }
       return;
     }
     if (_paymentMethod == 'link') {
-      await _submitReservationCheckoutLink();
+      if (_waitingForReservationCheckoutReturn ||
+          (_requestHasStripeCheckoutSession(
+                widget.request,
+                includeLocal: false,
+              ) &&
+              _requestIndicatesPaymentPending(widget.request)) ||
+          _isStripeCheckoutSessionId(_reservationCheckoutSessionId)) {
+        await _validateReservationCheckoutReturn();
+      } else {
+        await _submitReservationCheckoutLink();
+      }
       return;
     }
 
@@ -1424,6 +1646,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     });
 
     try {
+      final auth = context.read<AuthProvider>();
       final backendSuccessUrl = _buildCommercialAccessBackendReturnUrl(
         'success',
       );
@@ -1431,6 +1654,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       final payload = await ApiClient.instance.createClientAccessCheckout(
         paymentPayload: {
           'contact_email': _contactEmail,
+          'customer_email': _contactEmail,
+          'email': _contactEmail,
+          'payment_method': 'stripe_checkout',
           'successUrl': backendSuccessUrl,
           'cancelUrl': backendCancelUrl,
         },
@@ -1438,6 +1664,19 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         cancelUrl: backendCancelUrl,
         returnUrl: backendSuccessUrl,
       );
+
+      if (_accessIsActive(payload) ||
+          _isTruthyValue(payload['already_active'])) {
+        auth.syncAccessState(_commercialAccessActivationPayload(payload));
+        if (!mounted) return;
+        setState(() {
+          _waitingForCommercialAccessReturn = false;
+          _inlineMessage = 'Acceso comercial activado.';
+        });
+        widget.onPaymentComplete();
+        return;
+      }
+
       _accessCheckoutSessionId = _firstText(payload, const [
         'session_id',
         'checkout_session_id',
@@ -1666,6 +1905,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                 reservationId: reservationId,
                 logPrefix: '[Pago]',
               );
+      _reservationCheckoutFlightRequestId = effectiveFlightRequestId;
+      _reservationCheckoutReservationId = effectiveReservationId;
       final paymentPayload = _reservationCheckoutPayload(
         reservationId: effectiveReservationId,
       );
@@ -1748,7 +1989,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       setState(() {
         _waitingForReservationCheckoutReturn = true;
         _inlineMessage =
-            'Link de pago abierto. Completa el checkout seguro y vuelve a la app para continuar.';
+            'Stripe Checkout abierto. Completa el pago y vuelve a la app; aqui validaremos el cobro antes de avanzar.';
       });
     } on ApiException catch (error) {
       debugPrint(
@@ -1793,7 +2034,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       'frontend_state': {
         'ready_for_payment': true,
         'next_action': 'go_to_payment',
-        'ui_status': 'completed',
+        'ui_status': 'ready_for_payment',
       },
       'signed_at': DateTime.now().toIso8601String(),
     };
@@ -1843,8 +2084,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     final reservationProvider = context.read<ReservationProvider>();
-    var flightRequestId = _effectiveFlightRequestId(widget.request);
-    var reservationId = _effectiveReservationId(widget.request);
+    var flightRequestId =
+        _reservationCheckoutFlightRequestId.isNotEmpty
+            ? _reservationCheckoutFlightRequestId
+            : _effectiveFlightRequestId(widget.request);
+    var reservationId =
+        _reservationCheckoutReservationId.isNotEmpty
+            ? _reservationCheckoutReservationId
+            : _effectiveReservationId(widget.request);
     var sessionId = _effectiveCheckoutSessionId(widget.request);
 
     setState(() {
@@ -2005,6 +2252,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         _isValidatingPayment = false;
         _showTripsShortcut = true;
         _waitingForReservationCheckoutReturn = false;
+        _reservationCheckoutSessionId = '';
         _inlineMessage =
             'Seguimos validando tu pago. Puedes continuar en Tus Vuelos.';
       });
@@ -2014,6 +2262,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         _isValidatingPayment = false;
         _showTripsShortcut = true;
         _waitingForReservationCheckoutReturn = false;
+        _reservationCheckoutSessionId = '';
         _inlineMessage =
             'No fue posible validar automaticamente el pago: $error';
       });
@@ -2087,30 +2336,53 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
     try {
       Map<String, dynamic>? successPayload;
-      for (var attempt = 0; attempt < 4; attempt++) {
+      var successIndicatesActive = false;
+      for (var attempt = 0; attempt < 8; attempt++) {
         successPayload = await ApiClient.instance
             .getClientAccessPaymentSuccess(
               sessionId:
                   _accessCheckoutSessionId.isEmpty
                       ? null
                       : _accessCheckoutSessionId,
+              contactEmail: _contactEmail.isEmpty ? null : _contactEmail,
             )
             .catchError((_) => <String, dynamic>{});
 
-        if (_accessIsActive(successPayload)) break;
-        await Future<void>.delayed(const Duration(milliseconds: 900));
+        if (_accessIsActive(successPayload)) {
+          successIndicatesActive = true;
+          auth.syncAccessState(
+            _commercialAccessActivationPayload(successPayload),
+          );
+          break;
+        }
+
+        await auth.refreshCommercialAccessStatus().catchError((_) {});
+        if (_accessIsActive(auth.accessData)) break;
+
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
       }
 
       if (!mounted) return;
       if (successPayload != null && successPayload.isNotEmpty) {
-        auth.syncAccessState(successPayload);
+        auth.syncAccessState(
+          successIndicatesActive
+              ? _commercialAccessActivationPayload(successPayload)
+              : successPayload,
+        );
       }
       await auth.refreshCommercialAccessStatus();
       final accessState = resolveCommercialAccessState(auth.accessData);
 
       if (!mounted) return;
 
-      if (accessState.canReserve || accessState.hasPaidAccess) {
+      if (successIndicatesActive ||
+          accessState.canReserve ||
+          accessState.hasPaidAccess) {
+        if (successIndicatesActive) {
+          auth.syncAccessState(
+            _commercialAccessActivationPayload(successPayload),
+          );
+        }
         setState(() {
           _waitingForCommercialAccessReturn = false;
           _inlineMessage = 'Acceso comercial activado.';
@@ -2389,18 +2661,30 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
               _accessCheckoutSessionId.isEmpty
                   ? null
                   : _accessCheckoutSessionId,
+          contactEmail: _contactEmail.isEmpty ? null : _contactEmail,
         );
       } catch (_) {
         successPayload = null;
       }
 
       if (successPayload != null && successPayload.isNotEmpty) {
-        auth.syncAccessState(successPayload);
+        auth.syncAccessState(
+          _accessIsActive(successPayload)
+              ? _commercialAccessActivationPayload(successPayload)
+              : successPayload,
+        );
       }
 
       await auth.refreshCommercialAccessStatus();
       final accessState = resolveCommercialAccessState(auth.accessData);
-      if (accessState.canReserve || accessState.hasPaidAccess) {
+      if (_accessIsActive(successPayload) ||
+          accessState.canReserve ||
+          accessState.hasPaidAccess) {
+        if (_accessIsActive(successPayload)) {
+          auth.syncAccessState(
+            _commercialAccessActivationPayload(successPayload),
+          );
+        }
         return true;
       }
 
@@ -2411,20 +2695,117 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   String _routeLabel(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final flightRequest = _asStringKeyMap(request['flight_request']);
+    final dataFlightRequest = _asStringKeyMap(data['flight_request']);
+    final firstLeg = _firstLegMap([
+      request,
+      data,
+      reservation,
+      dataReservation,
+      flightRequest,
+      dataFlightRequest,
+    ]);
     final origin =
-        request['origin']?.toString() ??
-        request['base_airport']?.toString() ??
-        'Origen';
-    final destination = request['destination']?.toString() ?? 'Destino';
-    return '$origin -> $destination';
+        _firstTextFromMaps(
+          const [
+            'origin',
+            'source_origin',
+            'base_airport',
+            'departure_airport',
+            'from',
+            'from_airport',
+          ],
+          [
+            request,
+            data,
+            reservation,
+            dataReservation,
+            flightRequest,
+            dataFlightRequest,
+            firstLeg,
+          ],
+        ).trim();
+    final destination =
+        _firstTextFromMaps(
+          const ['destination', 'arrival_airport', 'to', 'to_airport'],
+          [
+            request,
+            data,
+            reservation,
+            dataReservation,
+            flightRequest,
+            dataFlightRequest,
+            firstLeg,
+          ],
+        ).trim();
+
+    if (origin.isNotEmpty && destination.isNotEmpty) {
+      return '$origin -> $destination';
+    }
+    if (origin.isNotEmpty) return '$origin -> Destino por confirmar';
+    if (destination.isNotEmpty) return 'Origen por confirmar -> $destination';
+    return 'Ruta por confirmar';
   }
 
   String _amountLabel(Map<String, dynamic> request) {
-    return request['formatted_final_price']?.toString() ??
-        request['final_price_display']?.toString() ??
-        request['estimated_total']?.toString() ??
-        request['final_price']?.toString() ??
-        'Monto por confirmar';
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final pricingContext = _asStringKeyMap(request['pricing_context']);
+    final dataPricingContext = _asStringKeyMap(data['pricing_context']);
+    final reservationPricingContext = _asStringKeyMap(
+      reservation['pricing_context'],
+    );
+    final aircraftSnapshot = _asStringKeyMap(request['aircraft_snapshot']);
+    final dataAircraftSnapshot = _asStringKeyMap(data['aircraft_snapshot']);
+    final paymentPreview = _reservationPaymentPreview(request);
+    final sources = [
+      request,
+      data,
+      reservation,
+      dataReservation,
+      pricingContext,
+      dataPricingContext,
+      reservationPricingContext,
+      aircraftSnapshot,
+      dataAircraftSnapshot,
+      paymentPreview,
+    ];
+    final formatted = _firstTextFromMaps(const [
+      'formatted_final_price',
+      'final_price_display',
+      'estimated_total_display',
+      'total_display',
+      'amount_display',
+      'amount_due_display',
+      'price_display',
+    ], sources);
+    if (formatted.isNotEmpty) return formatted;
+
+    final currency = _reservationCurrency(
+      request,
+      pricingContext.isNotEmpty ? pricingContext : dataPricingContext,
+      aircraftSnapshot.isNotEmpty ? aircraftSnapshot : dataAircraftSnapshot,
+    );
+    for (final source in sources) {
+      final amount =
+          _toAmount(
+            source['total_amount'] ??
+                source['amount_due'] ??
+                source['final_price'] ??
+                source['estimated_total'] ??
+                source['total'] ??
+                source['price'] ??
+                source['selected_card_price'],
+          ) ??
+          0;
+      if (amount > 0) return _formatCurrency(amount, currency);
+    }
+
+    return 'Monto por confirmar';
   }
 
   String _flightRequestId(Map<String, dynamic> request) {
@@ -2545,6 +2926,62 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     return _reservationCheckoutSessionId.trim();
+  }
+
+  Map<String, dynamic> _firstLegMap(List<Map<String, dynamic>> sources) {
+    for (final source in sources) {
+      for (final key in const [
+        'legs',
+        'routes',
+        'route',
+        'flight_legs',
+        'itinerary',
+        'segments',
+      ]) {
+        final value = source[key];
+        if (value is List) {
+          for (final item in value) {
+            if (item is Map) return Map<String, dynamic>.from(item);
+          }
+        }
+        if (value is Map) return Map<String, dynamic>.from(value);
+      }
+    }
+    return const <String, dynamic>{};
+  }
+
+  Map<String, dynamic> _reservationPaymentPreview(
+    Map<String, dynamic> request,
+  ) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    for (final candidate in [
+      request['payment_preview'],
+      request['paymentPreview'],
+      data['payment_preview'],
+      data['paymentPreview'],
+      reservation['payment_preview'],
+      reservation['paymentPreview'],
+      dataReservation['payment_preview'],
+      dataReservation['paymentPreview'],
+    ]) {
+      final map = _asStringKeyMap(candidate);
+      if (map.isNotEmpty) return map;
+    }
+    return const <String, dynamic>{};
+  }
+
+  String _requestContactEmail(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final client = _asStringKeyMap(request['client']);
+    final dataClient = _asStringKeyMap(data['client']);
+    return _firstTextFromMaps(
+      const ['contact_email', 'email', 'client_email', 'customer_email'],
+      [request, data, reservation, dataReservation, client, dataClient],
+    );
   }
 
   Future<String> _ensureReservationId({
@@ -2947,7 +3384,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     required String reservationId,
   }) {
     return {
-      'contact_email': _emailController.text.trim(),
+      if (_contactEmail.isNotEmpty) 'contact_email': _contactEmail,
       'reservation_id': reservationId,
       'booking_id': reservationId,
       'payment_method': 'stripe_checkout',
@@ -3260,6 +3697,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final dataContract = _asStringKeyMap(data['contract']);
     final paymentOrder = _asStringKeyMap(request['payment_order']);
     final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
+    final payment = _asStringKeyMap(request['payment']);
+    final dataPayment = _asStringKeyMap(data['payment']);
+    final checkoutSession = {
+      ..._asStringKeyMap(request['checkout_session']),
+      ..._asStringKeyMap(request['session']),
+    };
+    final dataCheckoutSession = {
+      ..._asStringKeyMap(data['checkout_session']),
+      ..._asStringKeyMap(data['session']),
+    };
     final payments = _paymentsFromRow(request);
     final paymentIntent = _asStringKeyMap(
       request['payment_intent'] ?? data['payment_intent'],
@@ -3274,6 +3721,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'checkout_status',
             'booking_status',
             'reservation_status',
+            'stripe_payment_status',
           ],
           [
             request,
@@ -3284,6 +3732,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             dataContract,
             paymentOrder,
             dataPaymentOrder,
+            payment,
+            dataPayment,
+            checkoutSession,
+            dataCheckoutSession,
           ],
         ).toLowerCase();
 
@@ -3311,7 +3763,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         _isTruthyValue(reservation['payment_completed']) ||
         _isTruthyValue(reservation['is_paid']) ||
         _isTruthyValue(dataReservation['payment_completed']) ||
-        _isTruthyValue(dataReservation['is_paid'])) {
+        _isTruthyValue(dataReservation['is_paid']) ||
+        _isTruthyValue(payment['paid']) ||
+        _isTruthyValue(dataPayment['paid']) ||
+        _isTruthyValue(checkoutSession['paid']) ||
+        _isTruthyValue(dataCheckoutSession['paid'])) {
       return true;
     }
 
@@ -3353,6 +3809,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   bool _requestIndicatesPaymentPending(Map<String, dynamic> request) {
     if (_requestIndicatesPaymentConfirmed(request)) return false;
+    if (!_requestHasStripeCheckoutSession(request, includeLocal: false)) {
+      return false;
+    }
 
     final data = _asStringKeyMap(request['data']);
     final contract = _asStringKeyMap(request['contract']);
@@ -3361,6 +3820,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final dataContract = _asStringKeyMap(data['contract']);
     final paymentOrder = _asStringKeyMap(request['payment_order']);
     final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
+    final payment = _asStringKeyMap(request['payment']);
+    final dataPayment = _asStringKeyMap(data['payment']);
+    final checkoutSession = {
+      ..._asStringKeyMap(request['checkout_session']),
+      ..._asStringKeyMap(request['session']),
+    };
+    final dataCheckoutSession = {
+      ..._asStringKeyMap(data['checkout_session']),
+      ..._asStringKeyMap(data['session']),
+    };
     final payments = _paymentsFromRow(request);
     final paymentIntent = _asStringKeyMap(
       request['payment_intent'] ?? data['payment_intent'],
@@ -3375,6 +3844,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'checkout_status',
             'booking_status',
             'reservation_status',
+            'stripe_payment_status',
           ],
           [
             request,
@@ -3385,6 +3855,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             dataContract,
             paymentOrder,
             dataPaymentOrder,
+            payment,
+            dataPayment,
+            checkoutSession,
+            dataCheckoutSession,
           ],
         ).toLowerCase();
 
@@ -3426,6 +3900,79 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     return false;
+  }
+
+  bool _requestHasStripeCheckoutSession(
+    Map<String, dynamic> request, {
+    bool includeLocal = false,
+  }) {
+    if (includeLocal &&
+        _isStripeCheckoutSessionId(_reservationCheckoutSessionId)) {
+      return true;
+    }
+
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
+    final paymentOrder = _asStringKeyMap(request['payment_order']);
+    final dataPaymentOrder = _asStringKeyMap(data['payment_order']);
+    final payment = _asStringKeyMap(request['payment']);
+    final dataPayment = _asStringKeyMap(data['payment']);
+    final checkoutSession = {
+      ..._asStringKeyMap(request['checkout_session']),
+      ..._asStringKeyMap(request['session']),
+    };
+    final dataCheckoutSession = {
+      ..._asStringKeyMap(data['checkout_session']),
+      ..._asStringKeyMap(data['session']),
+    };
+
+    final sessionId =
+        _firstTextFromMaps(
+          const [
+            'stripe_checkout_session_id',
+            'checkout_session_id',
+            'checkoutSessionId',
+            'session_id',
+            'sessionId',
+            'id',
+          ],
+          [
+            request,
+            data,
+            reservation,
+            dataReservation,
+            paymentOrder,
+            dataPaymentOrder,
+            payment,
+            dataPayment,
+            checkoutSession,
+            dataCheckoutSession,
+          ],
+        ).trim();
+
+    if (_isStripeCheckoutSessionId(sessionId)) return true;
+
+    for (final item in _paymentsFromRow(request)) {
+      final paymentSessionId =
+          _firstTextFromMaps(
+            const [
+              'stripe_checkout_session_id',
+              'checkout_session_id',
+              'checkoutSessionId',
+              'session_id',
+              'sessionId',
+            ],
+            [item],
+          ).trim();
+      if (_isStripeCheckoutSessionId(paymentSessionId)) return true;
+    }
+
+    return false;
+  }
+
+  bool _isStripeCheckoutSessionId(String? value) {
+    return (value ?? '').trim().startsWith('cs_');
   }
 
   List<Map<String, dynamic>> _paymentsFromRow(Map<String, dynamic> row) {
@@ -3478,18 +4025,106 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final state = resolveCommercialAccessState(payload);
     if (state.hasPaidAccess || state.canReserve) return true;
 
-    final access = payload['access'];
-    if (access is Map) {
-      final nestedState = resolveCommercialAccessState(
-        Map<String, dynamic>.from(access),
-      );
-      return nestedState.hasPaidAccess || nestedState.canReserve;
+    final data = _asStringKeyMap(payload['data']);
+    final access = _asStringKeyMap(
+      payload['access'] ?? payload['commercial_access'],
+    );
+    final dataAccess = _asStringKeyMap(
+      data['access'] ?? data['commercial_access'],
+    );
+    for (final candidate in [data, access, dataAccess]) {
+      if (candidate.isEmpty) continue;
+      final nestedState = resolveCommercialAccessState(candidate);
+      if (nestedState.hasPaidAccess || nestedState.canReserve) return true;
     }
 
-    final payment = payload['payment'];
-    if (payment is Map) {
-      final status = payment['status']?.toString().trim().toLowerCase() ?? '';
-      return const {
+    final commercial = _asStringKeyMap(
+      payload['commercial_access'] ?? payload['commercialAccess'],
+    );
+    final dataCommercial = _asStringKeyMap(
+      data['commercial_access'] ?? data['commercialAccess'],
+    );
+    final subscription = _asStringKeyMap(
+      payload['subscription'] ?? payload['membership'],
+    );
+    final dataSubscription = _asStringKeyMap(
+      data['subscription'] ?? data['membership'],
+    );
+    final payment = _asStringKeyMap(payload['payment']);
+    final dataPayment = _asStringKeyMap(data['payment']);
+    final checkoutSession = {
+      ..._asStringKeyMap(payload['checkout_session']),
+      ..._asStringKeyMap(payload['session']),
+    };
+    final dataCheckoutSession = {
+      ..._asStringKeyMap(data['checkout_session']),
+      ..._asStringKeyMap(data['session']),
+    };
+    final latestPayment = _asStringKeyMap(
+      payload['latest_payment'] ?? commercial['latest_payment'],
+    );
+    final dataLatestPayment = _asStringKeyMap(
+      data['latest_payment'] ?? dataCommercial['latest_payment'],
+    );
+    final sources = [
+      payload,
+      data,
+      access,
+      dataAccess,
+      commercial,
+      dataCommercial,
+      subscription,
+      dataSubscription,
+      payment,
+      dataPayment,
+      checkoutSession,
+      dataCheckoutSession,
+      latestPayment,
+      dataLatestPayment,
+    ];
+
+    final status =
+        _firstTextFromMaps(const [
+          'status',
+          'access_status',
+          'subscription_status',
+          'payment_status',
+          'checkout_status',
+          'stripe_payment_status',
+        ], sources).toLowerCase();
+    if (const {
+      'active',
+      'activa',
+      'vigente',
+      'approved',
+      'paid',
+      'pagado',
+      'pagada',
+      'succeeded',
+      'success',
+      'complete',
+      'completed',
+      'payment_confirmed',
+      'subscription_active',
+      'access_active',
+    }.contains(status)) {
+      return true;
+    }
+
+    for (final source in sources) {
+      if (_isTruthyValue(source['has_paid_access']) ||
+          _isTruthyValue(source['paid']) ||
+          _isTruthyValue(source['is_paid']) ||
+          _isTruthyValue(source['active']) ||
+          _isTruthyValue(source['payment_completed']) ||
+          _isTruthyValue(source['can_reserve']) ||
+          _isTruthyValue(source['canReserve'])) {
+        return true;
+      }
+
+      final nestedStatus =
+          source['status']?.toString().trim().toLowerCase() ?? '';
+      if (const {
         'paid',
         'succeeded',
         'success',
@@ -3497,10 +4132,52 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         'completed',
         'pagado',
         'payment_confirmed',
-      }.contains(status);
+      }.contains(nestedStatus)) {
+        return true;
+      }
     }
 
     return false;
+  }
+
+  Map<String, dynamic> _commercialAccessActivationPayload(
+    Map<String, dynamic>? payload,
+  ) {
+    final source = Map<String, dynamic>.from(payload ?? const {});
+    final data = _asStringKeyMap(source['data']);
+    final commercial = _asStringKeyMap(
+      source['commercial_access'] ??
+          source['commercialAccess'] ??
+          source['access'] ??
+          data['commercial_access'] ??
+          data['commercialAccess'] ??
+          data['access'],
+    );
+
+    return {
+      ...source,
+      'status': 'active',
+      'access_status': 'active',
+      'subscription_status': 'active',
+      'has_paid_access': true,
+      'commercial_access': {
+        ...commercial,
+        'status': 'active',
+        'has_paid_access': true,
+        'remaining_free_quotes': commercial['remaining_free_quotes'] ?? 999,
+      },
+      if (data.isNotEmpty)
+        'data': {
+          ...data,
+          'status': 'active',
+          'has_paid_access': true,
+          'commercial_access': {
+            ...commercial,
+            'status': 'active',
+            'has_paid_access': true,
+          },
+        },
+    };
   }
 
   List<_PaymentBreakdownItem> _commercialAccessBreakdown(
@@ -3564,42 +4241,87 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   List<_PaymentBreakdownItem> _reservationPaymentBreakdown(
     Map<String, dynamic> request,
   ) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final dataReservation = _asStringKeyMap(data['reservation']);
     final pricingContext = _asStringKeyMap(request['pricing_context']);
+    final dataPricingContext = _asStringKeyMap(data['pricing_context']);
+    final reservationPricingContext = _asStringKeyMap(
+      reservation['pricing_context'],
+    );
     final snapshotRecord = _asStringKeyMap(request['aircraft_snapshot']);
+    final dataSnapshotRecord = _asStringKeyMap(data['aircraft_snapshot']);
+    final paymentPreview = _reservationPaymentPreview(request);
     final currency = _reservationCurrency(
       request,
-      pricingContext,
-      snapshotRecord,
+      pricingContext.isNotEmpty ? pricingContext : dataPricingContext,
+      snapshotRecord.isNotEmpty ? snapshotRecord : dataSnapshotRecord,
     );
     final flightCost =
         _toAmount(
           request['flight_cost'] ??
+              data['flight_cost'] ??
+              reservation['flight_cost'] ??
+              dataReservation['flight_cost'] ??
               pricingContext['flight_cost'] ??
+              dataPricingContext['flight_cost'] ??
+              reservationPricingContext['flight_cost'] ??
               snapshotRecord['flight_cost'] ??
+              dataSnapshotRecord['flight_cost'] ??
+              paymentPreview['flight_cost'] ??
               request['base_amount'] ??
+              data['base_amount'] ??
               pricingContext['base_amount'] ??
-              snapshotRecord['base_amount'],
+              dataPricingContext['base_amount'] ??
+              snapshotRecord['base_amount'] ??
+              paymentPreview['base_amount'],
         ) ??
         0;
     final stripeFee =
         _toAmount(
           request['stripe_fee'] ??
+              data['stripe_fee'] ??
+              reservation['stripe_fee'] ??
               pricingContext['stripe_fee'] ??
-              snapshotRecord['stripe_fee'],
+              dataPricingContext['stripe_fee'] ??
+              snapshotRecord['stripe_fee'] ??
+              paymentPreview['stripe_fee'],
         ) ??
         0;
     final administrativeFee =
         _toAmount(
           request['administrative_fee'] ??
+              data['administrative_fee'] ??
+              reservation['administrative_fee'] ??
               pricingContext['administrative_fee'] ??
-              snapshotRecord['administrative_fee'],
+              dataPricingContext['administrative_fee'] ??
+              snapshotRecord['administrative_fee'] ??
+              paymentPreview['administrative_fee'],
         ) ??
         0;
     final totalAmount =
         _toAmount(
           request['total_amount'] ??
+              data['total_amount'] ??
+              reservation['total_amount'] ??
+              dataReservation['total_amount'] ??
               pricingContext['total_amount'] ??
-              snapshotRecord['total_amount'],
+              dataPricingContext['total_amount'] ??
+              pricingContext['total_amount'] ??
+              reservationPricingContext['total_amount'] ??
+              snapshotRecord['total_amount'] ??
+              dataSnapshotRecord['total_amount'] ??
+              paymentPreview['total_amount'] ??
+              paymentPreview['amount_due'] ??
+              request['amount_due'] ??
+              request['final_price'] ??
+              request['estimated_total'] ??
+              data['final_price'] ??
+              data['estimated_total'] ??
+              reservation['final_price'] ??
+              dataReservation['final_price'] ??
+              snapshotRecord['final_price'] ??
+              snapshotRecord['estimated_total'],
         ) ??
         0;
 
@@ -4092,6 +4814,138 @@ class _CompactPaymentOption extends StatelessWidget {
   }
 }
 
+class _ExternalCheckoutCard extends StatelessWidget {
+  const _ExternalCheckoutCard({
+    required this.title,
+    required this.description,
+    required this.status,
+    this.isBusy = false,
+    this.isConfirmed = false,
+  });
+
+  final String title;
+  final String description;
+  final String status;
+  final bool isBusy;
+  final bool isConfirmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor =
+        isConfirmed
+            ? const Color(0xFF9BE7B0)
+            : isBusy
+            ? const Color(0xFFE0B86E)
+            : const Color(0xFFF5B0A8);
+    final statusIcon =
+        isConfirmed
+            ? Icons.check_circle_rounded
+            : isBusy
+            ? Icons.sync_rounded
+            : Icons.open_in_new_rounded;
+
+    return GlassInfoCard(
+      backgroundColor: ClientThemeColors.brandNavy,
+      borderColor: const Color(0xFF29445A),
+      shadowColor: const Color(0x1A102438),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child:
+                    isBusy
+                        ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                        : Icon(statusIcon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            description,
+            style: const TextStyle(
+              color: Color(0xFFD5E2EE),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.42,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'No capturamos ni guardamos tu tarjeta dentro de la app.',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PaymentStickyFooter extends StatelessWidget {
   const _PaymentStickyFooter({
     required this.totalLabel,
@@ -4136,12 +4990,20 @@ class _PaymentStickyFooter extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              totalLabel,
-              style: const TextStyle(
-                color: Color(0xFF111111),
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  totalLabel,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Color(0xFF111111),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 12),

@@ -181,6 +181,7 @@ class ClientMobileBottomNav extends StatelessWidget {
       (label: 'Buscar', icon: Icons.search_rounded),
       (label: 'Reservas', icon: Icons.flight_rounded),
       (label: 'Perfil', icon: Icons.person_rounded),
+      (label: 'Club', icon: Icons.workspace_premium_rounded),
     ];
 
     return SafeArea(
@@ -253,10 +254,7 @@ class ClientMobileBottomNav extends StatelessWidget {
                                 item.label,
                                 maxLines: 1,
                                 style: TextStyle(
-                                  color:
-                                      isActive
-                                          ? onPrimary
-                                          : inactiveColor,
+                                  color: isActive ? onPrimary : inactiveColor,
                                   fontWeight:
                                       isActive
                                           ? FontWeight.w900

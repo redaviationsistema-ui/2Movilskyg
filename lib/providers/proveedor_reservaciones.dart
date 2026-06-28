@@ -11,6 +11,7 @@ import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
 
 class ReservationProvider extends ChangeNotifier {
+  static const bool _enableClientQuoteLogs = false;
   static const Set<String> _activeQuoteStatuses = {
     '',
     'active',
@@ -231,6 +232,7 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   Future<void> loadInitialData() async {
+    final syncStopwatch = Stopwatch()..start();
     isLoadingData = true;
     syncMessage = 'Sincronizando informacion con el servidor...';
     notifyListeners();
@@ -242,19 +244,25 @@ class ReservationProvider extends ChangeNotifier {
         return;
       }
 
-      final normalizedAirports = (await _api.getAirports()).map(
+      final results = await Future.wait<dynamic>([
+        _api.getAirports(),
+        _api.getAircraftPreview(),
+        _fetchReservationsRemote(),
+      ]);
+
+      final normalizedAirports = (results[0] as List<Map<String, dynamic>>).map(
         _normalizeAirport,
       );
 
       airports = normalizedAirports.map(Airport.fromJson).toList();
 
-      final aircraftResponse = await _api.getAircraftPreview();
+      final aircraftResponse = results[1] as List<Map<String, dynamic>>;
       aircraftFleet =
           aircraftResponse
               .map((json) => Aircraft.fromJson(Map<String, dynamic>.from(json)))
               .toList();
 
-      final remoteReservations = await _fetchReservationsRemote();
+      final remoteReservations = results[2] as List<Map<String, dynamic>>;
       reservations = _mapReservationRows(remoteReservations);
 
       await _cacheService.cacheAirports(
@@ -270,8 +278,10 @@ class ReservationProvider extends ChangeNotifier {
 
       lastSyncAt = now;
       isOnline = true;
+      final elapsedSeconds = (syncStopwatch.elapsedMilliseconds / 1000)
+          .toStringAsFixed(1);
       syncMessage =
-          'Sincronizacion completada: ${airports.length} aeropuertos, ${aircraftFleet.length} aeronaves y ${reservations.length} reservas guardadas en el telefono.';
+          'Sincronizacion completada en ${elapsedSeconds}s: ${airports.length} aeropuertos, ${aircraftFleet.length} aeronaves y ${reservations.length} reservas guardadas en el telefono.';
     } catch (e) {
       debugPrint('ERROR LOADING DATA: $e');
       await loadCachedData(fallbackReason: e.toString());
@@ -285,8 +295,9 @@ class ReservationProvider extends ChangeNotifier {
     if (isLoadingWorkspace) return;
     if (!force && hasWorkspaceData && lastWorkspaceSyncAt != null) return;
 
+    final workspaceStopwatch = Stopwatch()..start();
     isLoadingWorkspace = true;
-    workspaceMessage = null;
+    workspaceMessage = 'Actualizando cabina...';
     notifyListeners();
 
     try {
@@ -297,21 +308,24 @@ class ReservationProvider extends ChangeNotifier {
         return;
       }
 
-      final dashboardResponse = await _api.getClientDashboard();
-      dashboardData = Map<String, dynamic>.from(dashboardResponse);
+      final originHint = _backendAirportCode(routes.first.fromAirport);
+      final results = await Future.wait<dynamic>([
+        _api.getClientDashboard(),
+        _api.getClientFlightRequests(),
+        _api.getReservations(),
+        _api.getClientAircraft(origin: originHint, passengers: passengers),
+      ]);
 
-      final requests = await _api.getClientFlightRequests();
-      final historyReservations = await _api.getReservations();
+      final dashboardResponse = results[0] as Map<String, dynamic>;
+      final requests = results[1] as List<Map<String, dynamic>>;
+      final historyReservations = results[2] as List<Map<String, dynamic>>;
+      final liveAircraft = results[3] as List<Map<String, dynamic>>;
+
+      dashboardData = Map<String, dynamic>.from(dashboardResponse);
       flightRequests = _mergeFlightHistoryRows([
         ...historyReservations,
         ...requests,
       ]);
-
-      final originHint = _backendAirportCode(routes.first.fromAirport);
-      final liveAircraft = await _api.getClientAircraft(
-        origin: originHint,
-        passengers: passengers,
-      );
 
       if (liveAircraft.isNotEmpty) {
         aircraftFleet =
@@ -323,8 +337,10 @@ class ReservationProvider extends ChangeNotifier {
       }
 
       lastWorkspaceSyncAt = DateTime.now();
+      final elapsedSeconds = (workspaceStopwatch.elapsedMilliseconds / 1000)
+          .toStringAsFixed(1);
       workspaceMessage =
-          'Cabina sincronizada con ${flightRequests.length} solicitudes y ${aircraftFleet.length} aeronaves.';
+          'Cabina sincronizada en ${elapsedSeconds}s con ${flightRequests.length} solicitudes y ${aircraftFleet.length} aeronaves.';
     } catch (error) {
       workspaceMessage = 'No fue posible sincronizar la cabina: $error';
     } finally {
@@ -339,32 +355,31 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final primaryRoute = routes.first;
-      final origin = _backendAirportCode(primaryRoute.fromAirport);
-      final destination = _backendAirportCode(primaryRoute.toAirport);
-      final departure = startDate ?? primaryRoute.startDate;
-
-      if (origin.isEmpty || destination.isEmpty || departure == null) {
-        quoteError = 'Completa origen, destino y fecha para cotizar.';
+      final validationError = _quoteValidationMessage();
+      if (validationError != null) {
+        quoteError = validationError;
         return false;
       }
 
-      final segmentCount = routes.length;
+      final segmentCount = _completeQuoteRoutes().length;
       final previewPayload = _buildBackendFlightRequestPayload();
 
       final response = await _api.previewClientQuotesPayload(previewPayload);
 
       quoteMatches = _normalizeMatches(response, segmentCount: segmentCount);
+      final primaryRoute = _completeQuoteRoutes().first;
       quoteMatches = _filterMatchesForItinerary(
         quoteMatches,
         primaryRoute.fromAirport,
       );
       quoteMatches = _sortMatchesByTotalDesc(quoteMatches);
 
-      for (final match in quoteMatches) {
-        debugPrint(
-          '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${match['total'] ?? match['final_price'] ?? match['price']} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
-        );
+      if (_enableClientQuoteLogs) {
+        for (final match in quoteMatches) {
+          debugPrint(
+            '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${match['total'] ?? match['final_price'] ?? match['price']} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
+          );
+        }
       }
 
       selectedQuoteMatch = _pickSelectedQuoteMatch(quoteMatches);
@@ -388,13 +403,9 @@ class ReservationProvider extends ChangeNotifier {
   Future<Map<String, dynamic>> createFlightRequestForMatch(
     Map<String, dynamic> quote,
   ) async {
-    final primaryRoute = routes.first;
-    final origin = _backendAirportCode(primaryRoute.fromAirport);
-    final destination = _backendAirportCode(primaryRoute.toAirport);
-    final departure = startDate ?? primaryRoute.startDate;
-
-    if (origin.isEmpty || destination.isEmpty || departure == null) {
-      throw StateError('Faltan datos base para crear la solicitud.');
+    final validationError = _quoteValidationMessage();
+    if (validationError != null) {
+      throw StateError(validationError);
     }
 
     final payload = _buildBackendFlightRequestPayload(quote: quote);
@@ -836,6 +847,57 @@ class ReservationProvider extends ChangeNotifier {
         if (total > 0) 'Total $total',
       ].join(' | '),
     };
+  }
+
+  String? _quoteValidationMessage() {
+    if (routes.isEmpty) {
+      return 'Agrega al menos un tramo para cotizar.';
+    }
+    if (passengers <= 0) {
+      return 'Indica al menos un pasajero para cotizar.';
+    }
+
+    final completeRoutes = _completeQuoteRoutes();
+    if (completeRoutes.isEmpty) {
+      return 'Completa origen, destino y fecha para cotizar.';
+    }
+
+    if (completeRoutes.length != routes.length) {
+      return 'Completa todos los tramos antes de cotizar.';
+    }
+
+    DateTime? previousDate;
+    for (var index = 0; index < completeRoutes.length; index++) {
+      final route = completeRoutes[index];
+      final origin = _backendAirportCode(route.fromAirport);
+      final destination = _backendAirportCode(route.toAirport);
+      final date = route.startDate ?? startDate;
+
+      if (origin.isEmpty || destination.isEmpty || date == null) {
+        return 'Completa origen, destino y fecha para cotizar.';
+      }
+      if (origin == destination) {
+        return 'El origen y destino del tramo ${index + 1} deben ser diferentes.';
+      }
+      if (route.passengers <= 0) {
+        return 'Indica pasajeros validos en el tramo ${index + 1}.';
+      }
+      if (previousDate != null && date.isBefore(previousDate)) {
+        return 'Ordena las fechas de los tramos antes de cotizar.';
+      }
+      previousDate = date;
+    }
+
+    return null;
+  }
+
+  List<RouteModel> _completeQuoteRoutes() {
+    return routes.where((route) {
+      final origin = _backendAirportCode(route.fromAirport);
+      final destination = _backendAirportCode(route.toAirport);
+      final date = route.startDate ?? startDate;
+      return origin.isNotEmpty && destination.isNotEmpty && date != null;
+    }).toList();
   }
 
   List<Map<String, dynamic>> _normalizedBackendLegs() {
@@ -2287,7 +2349,10 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   void setGlobalPassengers(int value) {
-    passengers = value;
+    passengers = value < 1 ? 1 : value;
+    for (final route in routes) {
+      route.passengers = passengers;
+    }
     notifyListeners();
   }
 
@@ -2422,7 +2487,7 @@ class ReservationProvider extends ChangeNotifier {
   void setPassengers(int index, int value) {
     if (index >= routes.length) return;
 
-    routes[index].passengers = value;
+    routes[index].passengers = value < 1 ? 1 : value;
     notifyListeners();
   }
 

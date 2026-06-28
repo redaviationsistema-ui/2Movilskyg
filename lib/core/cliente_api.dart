@@ -748,6 +748,8 @@ class ApiClient {
         'booking_id': reservationId.trim(),
       if (flightRequestId != null && flightRequestId.trim().isNotEmpty)
         'flight_request_id': flightRequestId.trim(),
+      if (flightRequestId != null && flightRequestId.trim().isNotEmpty)
+        'request_id': flightRequestId.trim(),
     };
 
     return getFirstAvailable(
@@ -860,16 +862,29 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getClientAccessPaymentSuccess({
     String? sessionId,
+    String? contactEmail,
   }) {
     final query = <String, String>{
-      if (sessionId != null && sessionId.trim().isNotEmpty)
+      if (sessionId != null && sessionId.trim().isNotEmpty) ...{
         'session_id': sessionId.trim(),
+        'checkout_session_id': sessionId.trim(),
+        'checkoutSessionId': sessionId.trim(),
+        'sessionId': sessionId.trim(),
+        'stripe_session_id': sessionId.trim(),
+      },
+      if (contactEmail != null && contactEmail.trim().isNotEmpty) ...{
+        'contact_email': contactEmail.trim(),
+        'email': contactEmail.trim(),
+        'customer_email': contactEmail.trim(),
+      },
     };
 
     return getFirstAvailable(
       const [
         '/client/access-payment/success',
         '/cliente/access-payment/success',
+        '/access-payment/success',
+        '/stripe/access-payment/success',
       ],
       authenticated: true,
       query: query,

@@ -106,7 +106,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     with WidgetsBindingObserver {
   static const Duration _statusBannerDuration = Duration(seconds: 3);
   static const Duration _autoRefreshInterval = Duration(seconds: 35);
-  static const bool _enableCrewDebugLogs = true;
+  static const bool _enableCrewDebugLogs = false;
 
   final ApiClient _api = ApiClient.instance;
   final ImagePicker _picker = ImagePicker();
@@ -176,6 +176,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _loadPortal({bool silent = false}) async {
+    final syncStopwatch = Stopwatch()..start();
     if (!silent) {
       setState(() {
         _isLoading = true;
@@ -184,6 +185,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     }
 
     var loadedAnyResource = false;
+    final missedResources = <String>[];
     try {
       final dashboardFuture = _api.getCrewDashboard();
       final assignmentsFuture = _api.getCrewAssignments();
@@ -193,21 +195,28 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         operationId: _currentIncidentOperationId,
       );
 
-      final results = await Future.wait<Map<String, dynamic>?>(
-        [
-          dashboardFuture,
-          assignmentsFuture,
-          profileFuture,
-          documentsFuture,
-          incidentsFuture,
-        ].map((future) async {
-          try {
-            return await future;
-          } catch (_) {
-            return null;
+      Future<Map<String, dynamic>?> captureResource(
+        String label,
+        Future<Map<String, dynamic>> future,
+      ) async {
+        try {
+          return await future;
+        } catch (error) {
+          missedResources.add(label);
+          if (_enableCrewDebugLogs) {
+            debugPrint('[crew-mobile] $label sync failed: $error');
           }
-        }),
-      );
+          return null;
+        }
+      }
+
+      final results = await Future.wait<Map<String, dynamic>?>([
+        captureResource('panel', dashboardFuture),
+        captureResource('asignaciones', assignmentsFuture),
+        captureResource('perfil', profileFuture),
+        captureResource('documentos', documentsFuture),
+        captureResource('incidencias', incidentsFuture),
+      ]);
 
       final dashboardData = results[0];
       final assignmentsData = results[1];
@@ -397,7 +406,17 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
       if (loadedAnyResource && !silent) {
         _logCrewSnapshot();
-        _showSyncMessage('Sincronizado con admin.');
+        final elapsed = (syncStopwatch.elapsedMilliseconds / 1000)
+            .toStringAsFixed(1);
+        if (missedResources.isEmpty) {
+          _showSyncMessage('Sincronizado con admin en ${elapsed}s.');
+        } else {
+          _showSyncMessage(
+            'Sincronizado parcial en ${elapsed}s. Revisa: ${missedResources.join(', ')}.',
+          );
+        }
+      } else if (!silent) {
+        _showSyncMessage('No se pudo sincronizar el portal operativo.');
       }
     } catch (_) {
       if (!silent) {
@@ -955,7 +974,14 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     final state = _agendaBlockForm['state']?.toString().trim() ?? '';
     final blockType = _agendaBlockForm['blockType']?.toString().trim() ?? '';
     final reason = _agendaBlockForm['reason']?.toString().trim() ?? '';
-    if (reason.isEmpty || blockType.isEmpty) return;
+    if (blockType.isEmpty) {
+      _showSyncMessage('Selecciona el tipo de bloqueo antes de guardar.');
+      return;
+    }
+    if (reason.isEmpty) {
+      _showSyncMessage('Agrega el motivo del bloqueo de agenda.');
+      return;
+    }
 
     final startsAt = DateTime(
       _selectedDate.year,
@@ -1050,6 +1076,17 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _saveProfile() async {
+    final name = _profileForm['name']?.toString().trim() ?? '';
+    final base = _profileForm['base']?.toString().trim() ?? '';
+    if (name.isEmpty) {
+      _showSyncMessage('Completa tu nombre operativo antes de guardar.');
+      return;
+    }
+    if (base.isEmpty) {
+      _showSyncMessage('Completa tu base operativa antes de guardar.');
+      return;
+    }
+
     _showSyncMessage('Guardando perfil de vuelo...', persist: true);
     try {
       await _api.post(

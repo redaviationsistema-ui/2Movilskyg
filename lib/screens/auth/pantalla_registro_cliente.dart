@@ -25,7 +25,8 @@ class ClientRegisterScreen extends StatefulWidget {
   State<ClientRegisterScreen> createState() => _ClientRegisterScreenState();
 }
 
-class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
+class _ClientRegisterScreenState extends State<ClientRegisterScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
   final _api = ApiClient.instance;
@@ -45,6 +46,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   final _ineOcrController = TextEditingController();
   final _passwordController = TextEditingController();
   final _passwordConfirmationController = TextEditingController();
+  late final AnimationController _entryController;
 
   File? _ineFront;
   File? _selfie;
@@ -76,11 +78,16 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   @override
   void initState() {
     super.initState();
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 6200),
+    )..repeat();
     _recoverLostPickerData();
   }
 
   @override
   void dispose() {
+    _entryController.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -704,84 +711,238 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     final auth = context.watch<AuthProvider>();
     final colors = context.appColors;
     final theme = Theme.of(context);
+    final palette = context.clientPalette;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final checklist = _registrationChecklist();
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('Crear cuenta cliente')),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const _ClientRegisterHero(),
-              const SizedBox(height: 18),
-              _RegistrationProgress(currentStep: _currentStep),
-              const SizedBox(height: 22),
-              if (_currentStep == 0) ..._profileStep(),
-              if (_currentStep == 1) ..._accessStep(),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  if (_currentStep > 0) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed:
-                            auth.isLoading
-                                ? null
-                                : () => setState(() => _currentStep = 0),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(56),
-                        ),
-                        child: const Text('Regresar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: FilledButton(
-                      onPressed:
-                          auth.isLoading
-                              ? null
-                              : (_currentStep == 0
-                                  ? _continueToAccess
-                                  : () {
-                                    if (_formKey.currentState!.validate()) {
-                                      _submit();
-                                    }
-                                  }),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
-                        backgroundColor: colors.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      child:
-                          auth.isLoading
-                              ? SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.onPrimary,
-                                ),
-                              )
-                              : Text(
-                                _currentStep == 0
-                                    ? 'Continuar'
-                                    : 'Crear cuenta',
-                              ),
-                    ),
-                  ),
-                ],
-              ),
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colors.background,
+              Color.lerp(colors.background, colors.primary, 0.18) ??
+                  colors.background,
+              Color.lerp(colors.surfaceCard, Colors.white, 0.10) ??
+                  colors.surfaceCard,
             ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _entryController,
+                builder:
+                    (context, _) => CustomPaint(
+                      painter: _RegisterRoutePainter(
+                        progress: _entryController.value,
+                        primary: colors.primary,
+                        accent: colors.secondary,
+                        isDark: context.isDarkMode,
+                      ),
+                    ),
+              ),
+            ),
+            SafeArea(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(20, 14, 20, 24 + bottomInset),
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Volver',
+                          onPressed: () => Navigator.maybePop(context),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          style: IconButton.styleFrom(
+                            backgroundColor: palette.surface,
+                            foregroundColor: palette.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Crear cuenta cliente',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _ClientRegisterHeroV2(
+                      currentStep: _currentStep,
+                      checklist: checklist,
+                    ),
+                    const SizedBox(height: 14),
+                    _RegistrationProgressV2(
+                      currentStep: _currentStep,
+                      checklist: checklist,
+                    ),
+                    const SizedBox(height: 14),
+                    _RegisterTrustStrip(
+                      ineReady: _ineFront != null,
+                      selfieReady: _selfieHasFace,
+                      accessReady:
+                          _emailController.text.trim().isNotEmpty &&
+                          _passwordController.text.length >= 8,
+                    ),
+                    const SizedBox(height: 16),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder:
+                          (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.04, 0),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          ),
+                      child: _RegisterStepSurface(
+                        key: ValueKey(_currentStep),
+                        title:
+                            _currentStep == 0
+                                ? 'Identidad sin vueltas'
+                                : 'Acceso seguro',
+                        subtitle:
+                            _currentStep == 0
+                                ? 'INE, datos personales y selfie en un flujo guiado.'
+                                : 'Crea tus credenciales para entrar a tu cabina privada.',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_currentStep == 0) ..._profileStep(),
+                            if (_currentStep == 1) ..._accessStep(),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        if (_currentStep > 0) ...[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  auth.isLoading
+                                      ? null
+                                      : () => setState(() => _currentStep = 0),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(56),
+                                foregroundColor: palette.textPrimary,
+                                side: BorderSide(color: palette.border),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                              label: const Text('Regresar'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                auth.isLoading
+                                    ? null
+                                    : (_currentStep == 0
+                                        ? _continueToAccess
+                                        : () {
+                                          if (_formKey.currentState!
+                                              .validate()) {
+                                            _submit();
+                                          }
+                                        }),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(56),
+                              backgroundColor: colors.primary,
+                              foregroundColor: theme.colorScheme.onPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            icon:
+                                auth.isLoading
+                                    ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: theme.colorScheme.onPrimary,
+                                      ),
+                                    )
+                                    : Icon(
+                                      _currentStep == 0
+                                          ? Icons.arrow_forward_rounded
+                                          : Icons.rocket_launch_rounded,
+                                    ),
+                            label: Text(
+                              _currentStep == 0
+                                  ? 'Continuar'
+                                  : 'Entrar a la app',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  List<_RegisterChecklistItem> _registrationChecklist() {
+    return [
+      _RegisterChecklistItem(
+        icon: Icons.badge_rounded,
+        label: 'INE',
+        ready: _ineFront != null,
+      ),
+      _RegisterChecklistItem(
+        icon: Icons.face_retouching_natural_rounded,
+        label: 'Selfie',
+        ready: _selfieHasFace,
+      ),
+      _RegisterChecklistItem(
+        icon: Icons.person_rounded,
+        label: 'Datos',
+        ready:
+            _nameController.text.trim().isNotEmpty &&
+            _phoneController.text.trim().isNotEmpty &&
+            _birthDateController.text.trim().isNotEmpty,
+      ),
+      _RegisterChecklistItem(
+        icon: Icons.lock_rounded,
+        label: 'Acceso',
+        ready:
+            _emailController.text.trim().isNotEmpty &&
+            _passwordController.text.length >= 8 &&
+            _passwordController.text == _passwordConfirmationController.text,
+      ),
+    ];
   }
 
   List<Widget> _profileStep() {
@@ -1026,9 +1187,56 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final colors = context.appColors;
+    final lower = message.toLowerCase();
+    final isError =
+        lower.contains('no ') ||
+        lower.contains('revisa') ||
+        lower.contains('sube') ||
+        lower.contains('valida') ||
+        lower.contains('debe');
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+          backgroundColor:
+              isError
+                  ? Theme.of(context).colorScheme.error
+                  : colors.surfaceCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              Icon(
+                isError
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_rounded,
+                color:
+                    isError
+                        ? Theme.of(context).colorScheme.onError
+                        : colors.secondary,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color:
+                        isError
+                            ? Theme.of(context).colorScheme.onError
+                            : colors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   String _documentStatus(String expirationDate) {
@@ -1436,8 +1644,542 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
 enum _DocumentImageSource { camera, files }
 
-class _RegistrationProgress extends StatelessWidget {
-  const _RegistrationProgress({required this.currentStep});
+class _RegisterChecklistItem {
+  const _RegisterChecklistItem({
+    required this.icon,
+    required this.label,
+    required this.ready,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool ready;
+}
+
+class _RegistrationProgressV2 extends StatelessWidget {
+  const _RegistrationProgressV2({
+    required this.currentStep,
+    required this.checklist,
+  });
+
+  final int currentStep;
+  final List<_RegisterChecklistItem> checklist;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final readyCount = checklist.where((item) => item.ready).length;
+    final progress = checklist.isEmpty ? 0.0 : readyCount / checklist.length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  currentStep == 0
+                      ? 'Paso 1 de 2: identidad'
+                      : 'Paso 2 de 2: acceso',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$readyCount/${checklist.length}',
+                style: TextStyle(
+                  color: palette.accent,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: palette.surfaceSoft,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                checklist
+                    .map(
+                      (item) => _ChecklistPillV2(
+                        icon: item.icon,
+                        label: item.label,
+                        ready: item.ready,
+                      ),
+                    )
+                    .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChecklistPillV2 extends StatelessWidget {
+  const _ChecklistPillV2({
+    required this.icon,
+    required this.label,
+    required this.ready,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool ready;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: ready ? palette.accentSoft : palette.surfaceSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: ready ? palette.accentBorder : palette.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            ready ? Icons.check_circle_rounded : icon,
+            size: 15,
+            color:
+                ready ? ClientThemeColors.textOnAccent : palette.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color:
+                  ready ? ClientThemeColors.textOnAccent : palette.textPrimary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegisterStepSurface extends StatelessWidget {
+  const _RegisterStepSurface({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: palette.accentSoft,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: ClientThemeColors.textOnAccent,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _RegisterTrustStrip extends StatelessWidget {
+  const _RegisterTrustStrip({
+    required this.ineReady,
+    required this.selfieReady,
+    required this.accessReady,
+  });
+
+  final bool ineReady;
+  final bool selfieReady;
+  final bool accessReady;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _TrustItem(
+        icon: Icons.document_scanner_rounded,
+        title: 'INE guiada',
+        subtitle: ineReady ? 'Cargada' : 'Camara o archivo',
+      ),
+      _TrustItem(
+        icon: Icons.face_rounded,
+        title: 'Biometria',
+        subtitle: selfieReady ? 'Validada' : 'Selfie segura',
+      ),
+      _TrustItem(
+        icon: Icons.lock_outline_rounded,
+        title: 'Acceso',
+        subtitle: accessReady ? 'Listo' : 'Contrasena fuerte',
+      ),
+    ];
+
+    return SizedBox(
+      height: 104,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder:
+            (context, index) =>
+                SizedBox(width: 168, child: _TrustTile(item: items[index])),
+      ),
+    );
+  }
+}
+
+class _TrustItem {
+  const _TrustItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+}
+
+class _TrustTile extends StatelessWidget {
+  const _TrustTile({required this.item});
+
+  final _TrustItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(item.icon, color: palette.accent, size: 22),
+          const SizedBox(height: 10),
+          Text(
+            item.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            item.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientRegisterHeroV2 extends StatelessWidget {
+  const _ClientRegisterHeroV2({
+    required this.currentStep,
+    required this.checklist,
+  });
+
+  final int currentStep;
+  final List<_RegisterChecklistItem> checklist;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final readyCount = checklist.where((item) => item.ready).length;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            colors: palette.headerGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: palette.accentBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.16),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: palette.surfaceStrong,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: palette.accentBorder),
+                  ),
+                  child: Icon(
+                    Icons.flight_takeoff_rounded,
+                    color: palette.accent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    currentStep == 0 ? 'Tu pase a Red Sky' : 'Ultimo paso',
+                    style: TextStyle(
+                      color: palette.heroTextSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                _HeroCounter(value: '$readyCount/${checklist.length}'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Crea tu cabina privada',
+              style: TextStyle(
+                color: palette.heroTextPrimary,
+                fontSize: 31,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registro guiado, validacion de identidad y acceso listo para cotizar vuelos privados.',
+              style: TextStyle(
+                color: palette.heroTextSecondary,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroCounter extends StatelessWidget {
+  const _HeroCounter({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: palette.accentSoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: ClientThemeColors.textOnAccent,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _RegisterRoutePainter extends CustomPainter {
+  const _RegisterRoutePainter({
+    required this.progress,
+    required this.primary,
+    required this.accent,
+    required this.isDark,
+  });
+
+  final double progress;
+  final Color primary;
+  final Color accent;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final basePaint =
+        Paint()
+          ..color = primary.withValues(alpha: isDark ? 0.14 : 0.08)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2;
+    final accentPaint =
+        Paint()
+          ..color = accent.withValues(alpha: isDark ? 0.34 : 0.24)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2
+          ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < 5; i++) {
+      final y = size.height * (0.12 + i * 0.18);
+      final path =
+          Path()
+            ..moveTo(-20, y)
+            ..cubicTo(
+              size.width * 0.22,
+              y - 36,
+              size.width * 0.58,
+              y + 42,
+              size.width + 30,
+              y - 18,
+            );
+      canvas.drawPath(path, basePaint);
+    }
+
+    final route =
+        Path()
+          ..moveTo(size.width * 0.08, size.height * 0.18)
+          ..cubicTo(
+            size.width * 0.26,
+            size.height * 0.05,
+            size.width * 0.68,
+            size.height * 0.26,
+            size.width * 0.92,
+            size.height * 0.12,
+          );
+    canvas.drawPath(route, accentPaint);
+
+    final metric = route.computeMetrics().first;
+    final tangent = metric.getTangentForOffset(metric.length * progress);
+    if (tangent == null) return;
+
+    canvas.save();
+    canvas.translate(tangent.position.dx, tangent.position.dy);
+    canvas.rotate(tangent.angle);
+    final planePaint = Paint()..color = accent.withValues(alpha: 0.88);
+    final plane =
+        Path()
+          ..moveTo(10, 0)
+          ..lineTo(-7, -5)
+          ..lineTo(-3, 0)
+          ..lineTo(-7, 5)
+          ..close();
+    canvas.drawPath(plane, planePaint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _RegisterRoutePainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.primary != primary ||
+        oldDelegate.accent != accent ||
+        oldDelegate.isDark != isDark;
+  }
+}
+
+class RegistrationProgressLegacy extends StatelessWidget {
+  const RegistrationProgressLegacy({super.key, required this.currentStep});
 
   final int currentStep;
 
@@ -1481,8 +2223,8 @@ class _RegistrationProgress extends StatelessWidget {
   }
 }
 
-class _ClientRegisterHero extends StatelessWidget {
-  const _ClientRegisterHero();
+class ClientRegisterHeroLegacy extends StatelessWidget {
+  const ClientRegisterHeroLegacy({super.key});
 
   @override
   Widget build(BuildContext context) {

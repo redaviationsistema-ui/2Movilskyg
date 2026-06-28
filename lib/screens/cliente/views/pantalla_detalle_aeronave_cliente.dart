@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/app_theme.dart';
+import '../../../core/media_utils.dart';
 import '../../../models/aeronave.dart';
 import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
@@ -155,9 +156,12 @@ class _AircraftHeaderCard extends StatelessWidget {
               ],
             ),
           ],
-          if (aircraft.imageUrl.trim().isNotEmpty) ...[
+          if (resolveMediaUrl(aircraft.imageUrl).isNotEmpty) ...[
             const SizedBox(height: 16),
-            _AircraftHeroImage(imageUrl: aircraft.imageUrl, title: title),
+            _AircraftHeroImage(
+              imageUrl: resolveMediaUrl(aircraft.imageUrl),
+              title: title,
+            ),
           ],
           if (segments.isNotEmpty) ...[
             const SizedBox(height: 12),

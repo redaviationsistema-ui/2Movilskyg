@@ -1,5 +1,300 @@
 part of 'pantalla_espacio_sobrecargo.dart';
 
+class _CrewCommandHero extends StatelessWidget {
+  const _CrewCommandHero({
+    required this.status,
+    required this.readiness,
+    required this.readinessLabel,
+    required this.nextMission,
+    required this.alertCount,
+    required this.pendingAssignments,
+    required this.onOpenMissions,
+    required this.onOpenAvailability,
+    required this.onOpenIncidents,
+  });
+
+  final String status;
+  final int readiness;
+  final String readinessLabel;
+  final CrewAssignment? nextMission;
+  final int alertCount;
+  final int pendingAssignments;
+  final VoidCallback onOpenMissions;
+  final VoidCallback onOpenAvailability;
+  final VoidCallback onOpenIncidents;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.of(context).size.width < 430;
+    final route = nextMission?.route.trim();
+    final missionLabel =
+        route == null || route.isEmpty ? 'Sin mision asignada' : route;
+    final showTime = nextMission?.showTime.trim() ?? '';
+
+    return _AnimatedEntry(
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(compact ? 16 : 20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF071827), Color(0xFF123A56)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0x44E0B86E)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 28,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0x55E0B86E)),
+                  ),
+                  child: const Icon(
+                    Icons.airline_seat_recline_extra_rounded,
+                    color: Color(0xFFE0B86E),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Cabin Command',
+                        style: TextStyle(
+                          color: Color(0xFFE0B86E),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        readinessLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: compact ? 22 : 26,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _CrewHeroScore(value: readiness),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              missionLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 16 : 18,
+                fontWeight: FontWeight.w900,
+                height: 1.15,
+              ),
+            ),
+            if (showTime.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Text(
+                showTime,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFC9D7E2),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _CrewHeroChip(
+                  icon: Icons.verified_user_rounded,
+                  label: status.isEmpty ? 'Estado pendiente' : status,
+                ),
+                _CrewHeroChip(
+                  icon: Icons.notifications_active_outlined,
+                  label: alertCount == 1 ? '1 alerta' : '$alertCount alertas',
+                  highlighted: alertCount > 0,
+                ),
+                _CrewHeroChip(
+                  icon: Icons.assignment_turned_in_rounded,
+                  label:
+                      pendingAssignments == 1
+                          ? '1 respuesta pendiente'
+                          : '$pendingAssignments respuestas pendientes',
+                  highlighted: pendingAssignments > 0,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _CrewHeroButton(
+                    icon: Icons.assignment_rounded,
+                    label: 'Misiones',
+                    onTap: onOpenMissions,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CrewHeroButton(
+                    icon: Icons.event_available_rounded,
+                    label: 'Disponible',
+                    onTap: onOpenAvailability,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CrewHeroButton(
+                    icon: Icons.report_problem_rounded,
+                    label: 'Alertas',
+                    onTap: onOpenIncidents,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewHeroScore extends StatelessWidget {
+  const _CrewHeroScore({required this.value});
+
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 58,
+      height: 58,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFE0B86E),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
+      ),
+      child: Text(
+        '$value',
+        style: const TextStyle(
+          color: Color(0xFF071827),
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewHeroChip extends StatelessWidget {
+  const _CrewHeroChip({
+    required this.icon,
+    required this.label,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color:
+            highlighted
+                ? const Color(0xFFE0B86E)
+                : Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x44E0B86E)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color: highlighted ? const Color(0xFF071827) : Colors.white,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: highlighted ? const Color(0xFF071827) : Colors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrewHeroButton extends StatelessWidget {
+  const _CrewHeroButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(48),
+        side: const BorderSide(color: Color(0x55E0B86E)),
+        backgroundColor: Colors.white.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+      ),
+    );
+  }
+}
+
 class _DashboardView extends StatelessWidget {
   const _DashboardView({
     required this.assignments,
@@ -115,6 +410,18 @@ class _DashboardView extends StatelessWidget {
 
     return Column(
       children: [
+        _CrewCommandHero(
+          status: operationalStatus,
+          readiness: readiness,
+          readinessLabel: readinessLabel,
+          nextMission: nextMission,
+          alertCount: alerts.length,
+          pendingAssignments: pendingAssignments,
+          onOpenMissions: onOpenMissions,
+          onOpenAvailability: onOpenAvailability,
+          onOpenIncidents: onOpenIncidents,
+        ),
+        SizedBox(height: compact ? 12 : 14),
         _OperationalStrip(
           title: 'Centro operativo de cabina',
           subtitle:
@@ -3776,8 +4083,7 @@ class _SettingsView extends StatelessWidget {
               onChanged: (value) => onChanged('personalCoverage', value),
             ),
             DropdownButtonFormField<String>(
-              value:
-                  form['escalationMode']?.toString() ?? 'Admin primero',
+              value: form['escalationMode']?.toString() ?? 'Admin primero',
               decoration: const InputDecoration(labelText: 'Escalamiento'),
               items:
                   const [

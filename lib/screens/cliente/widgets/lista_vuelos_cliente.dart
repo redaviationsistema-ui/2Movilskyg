@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/app_theme.dart';
-import '../../../core/cliente_api.dart';
 import '../../../core/client_workflow_status.dart';
+import '../../../core/media_utils.dart';
 import '../../../models/aeronave.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -47,6 +47,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
 
   late _TripTab _activeTab;
   Timer? _autoRefreshTimer;
+  bool _showOnlyActionRequired = false;
 
   @override
   void initState() {
@@ -93,7 +94,17 @@ class _ClientFlightsListState extends State<ClientFlightsList>
     final palette = context.clientPalette;
     final provider = context.watch<ReservationProvider>();
     final allRequests = provider.flightRequests;
-    final filteredRequests = _filterRequests(allRequests);
+    final tabRequests = _filterRequests(allRequests);
+    final filteredRequests =
+        _showOnlyActionRequired
+            ? tabRequests.where(_needsClientAttention).toList()
+            : tabRequests;
+    final upcomingRequests = _filterRequestsForTab(
+      allRequests,
+      _TripTab.upcoming,
+    );
+    final attentionCount = allRequests.where(_needsClientAttention).length;
+    final nextFlight = upcomingRequests.isEmpty ? null : upcomingRequests.first;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return ClientExperienceShell(
@@ -105,7 +116,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
         backgroundColor: palette.surface,
         onRefresh: () => provider.loadClientWorkspaceData(force: true),
         child: ListView(
-          padding: EdgeInsets.fromLTRB(20, 8, 20, 132 + bottomInset),
+          padding: EdgeInsets.fromLTRB(18, 10, 18, 136 + bottomInset),
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -139,6 +150,32 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                 fontWeight: FontWeight.w500,
               ),
             ),
+            const SizedBox(height: 14),
+            _FlightsOverviewPanel(
+              totalFlights: allRequests.length,
+              visibleFlights: tabRequests.length,
+              attentionCount: attentionCount,
+              nextFlight: nextFlight,
+              loading: provider.isLoadingWorkspace,
+              lastSyncAt: provider.lastWorkspaceSyncAt,
+              onRefresh: () => provider.loadClientWorkspaceData(force: true),
+              onOpenSearch: widget.onOpenSearch,
+            ),
+            const SizedBox(height: 12),
+            _FlightExperienceStrip(
+              attentionCount: attentionCount,
+              upcomingCount: upcomingRequests.length,
+              onOpenSearch: widget.onOpenSearch,
+            ),
+            if (provider.isLoadingWorkspace ||
+                _shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
+              const SizedBox(height: 14),
+              _WorkspaceAlert(
+                message: provider.workspaceMessage,
+                loading: provider.isLoadingWorkspace,
+                onRefresh: () => provider.loadClientWorkspaceData(force: true),
+              ),
+            ],
             const SizedBox(height: 18),
             Wrap(
               spacing: 10,
@@ -154,26 +191,49 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                       )
                       .toList(),
             ),
+            const SizedBox(height: 12),
+            _AttentionFilterBar(
+              active: _showOnlyActionRequired,
+              count: attentionCount,
+              onChanged:
+                  (value) => setState(() {
+                    _showOnlyActionRequired = value;
+                  }),
+            ),
             const SizedBox(height: 16),
             if (provider.isLoadingWorkspace && allRequests.isEmpty)
               const _MinimalLoadingCard()
             else if (filteredRequests.isEmpty)
-              _EmptyFlightsCard(
+              _EmptyFlightsPanel(
                 label: _activeTabLabel,
                 onOpenSearch: widget.onOpenSearch,
               )
             else
-              ...filteredRequests.map(
-                (request) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _MinimalFlightCard(
-                    request: request,
-                    aircraftFleet: provider.aircraftFleet,
-                    onTap: () => _showFlightSheet(provider, request),
-                    onOpenAircraft: () => _openAircraft(provider, request),
-                    onOpenContract: () => _handleOpenContract(request),
-                    onOpenPayment: () => _handleOpenPayment(request),
-                    onOpenConcierge: () => _openConcierge(request),
+              ...filteredRequests.asMap().entries.map(
+                (entry) => TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: Duration(milliseconds: 260 + entry.key * 35),
+                  curve: Curves.easeOutCubic,
+                  builder:
+                      (context, value, child) => Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, 18 * (1 - value)),
+                          child: child,
+                        ),
+                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _MinimalFlightCard(
+                      request: entry.value,
+                      aircraftFleet: provider.aircraftFleet,
+                      onTap: () => _showFlightSheet(provider, entry.value),
+                      onOpenAircraft:
+                          () => _openAircraft(provider, entry.value),
+                      onOpenContract: () => _handleOpenContract(entry.value),
+                      onOpenPayment: () => _handleOpenPayment(entry.value),
+                      onOpenConcierge: () => _openConcierge(entry.value),
+                    ),
                   ),
                 ),
               ),
@@ -191,6 +251,13 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   List<Map<String, dynamic>> _filterRequests(
     List<Map<String, dynamic>> requests,
   ) {
+    return _filterRequestsForTab(requests, _activeTab);
+  }
+
+  List<Map<String, dynamic>> _filterRequestsForTab(
+    List<Map<String, dynamic>> requests,
+    _TripTab tab,
+  ) {
     final filtered =
         requests.where((request) {
           final status = _statusMeta(request);
@@ -198,7 +265,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
           final isFuture =
               departure != null && departure.isAfter(DateTime.now());
 
-          switch (_activeTab) {
+          switch (tab) {
             case _TripTab.upcoming:
               return !status.isClosed || isFuture;
 
@@ -218,7 +285,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
       if (firstDate == null) return 1;
       if (secondDate == null) return -1;
 
-      if (_activeTab == _TripTab.history || _activeTab == _TripTab.cancelled) {
+      if (tab == _TripTab.history || tab == _TripTab.cancelled) {
         return secondDate.compareTo(firstDate);
       }
 
@@ -474,9 +541,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   }
 
   void _showActionMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    _showClientSnackBar(context, message);
   }
 
   void _handleOpenContract(Map<String, dynamic> request) {
@@ -507,12 +572,579 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   }
 }
 
+bool _shouldShowWorkspaceAlert(String? message) {
+  if (message == null || message.trim().isEmpty) return false;
+  final normalized = message.toLowerCase();
+  return normalized.contains('no fue posible') ||
+      normalized.contains('sin conexion') ||
+      normalized.contains('inicia sesion') ||
+      normalized.contains('sincronizada en');
+}
+
+bool _needsClientAttention(Map<String, dynamic> request) {
+  final meta = _statusMeta(request);
+  if (meta.isClosed) return false;
+  final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
+  return _contractActionEnabled(request, workflowId) ||
+      _paymentActionEnabled(request, workflowId) ||
+      meta.tone == _WorkflowTone.pending;
+}
+
+void _showClientSnackBar(BuildContext context, String message) {
+  final palette = context.clientPalette;
+  final isError =
+      message.toLowerCase().contains('no fue posible') ||
+      message.toLowerCase().contains('error');
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 92),
+        backgroundColor:
+            isError ? Theme.of(context).colorScheme.error : palette.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Row(
+          children: [
+            Icon(
+              isError
+                  ? Icons.error_outline_rounded
+                  : Icons.info_outline_rounded,
+              color:
+                  isError
+                      ? Theme.of(context).colorScheme.onError
+                      : palette.accent,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color:
+                      isError
+                          ? Theme.of(context).colorScheme.onError
+                          : palette.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+}
+
+class _WorkspaceAlert extends StatelessWidget {
+  const _WorkspaceAlert({
+    required this.message,
+    required this.loading,
+    required this.onRefresh,
+  });
+
+  final String? message;
+  final bool loading;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final text = loading ? 'Actualizando reservas...' : message?.trim() ?? '';
+    final isError =
+        text.toLowerCase().contains('no fue posible') ||
+        text.toLowerCase().contains('sin conexion');
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        color:
+            isError
+                ? Theme.of(context).colorScheme.errorContainer
+                : palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isError
+                  ? Theme.of(context).colorScheme.error.withValues(alpha: 0.35)
+                  : palette.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child:
+                loading
+                    ? CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.accent,
+                    )
+                    : Icon(
+                      isError
+                          ? Icons.warning_amber_rounded
+                          : Icons.check_circle_rounded,
+                      color:
+                          isError
+                              ? Theme.of(context).colorScheme.error
+                              : palette.accent,
+                      size: 22,
+                    ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color:
+                    isError
+                        ? Theme.of(context).colorScheme.onErrorContainer
+                        : palette.textPrimary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                height: 1.25,
+              ),
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Actualizar',
+            onPressed: loading ? null : onRefresh,
+            icon: Icon(Icons.refresh_rounded, color: palette.textPrimary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightsOverviewPanel extends StatelessWidget {
+  const _FlightsOverviewPanel({
+    required this.totalFlights,
+    required this.visibleFlights,
+    required this.attentionCount,
+    required this.nextFlight,
+    required this.loading,
+    required this.lastSyncAt,
+    required this.onRefresh,
+    required this.onOpenSearch,
+  });
+
+  final int totalFlights;
+  final int visibleFlights;
+  final int attentionCount;
+  final Map<String, dynamic>? nextFlight;
+  final bool loading;
+  final DateTime? lastSyncAt;
+  final VoidCallback onRefresh;
+  final VoidCallback? onOpenSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isDark = context.isDarkMode;
+    final hasNextFlight = nextFlight != null;
+    final nextRoute =
+        hasNextFlight ? _routeLabel(nextFlight!) : 'Sin vuelo activo';
+    final nextDate =
+        hasNextFlight ? _departureCopy(nextFlight!) : 'Cotiza una nueva ruta';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: palette.headerGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.accentBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: palette.surfaceStrong,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: palette.accentBorder),
+                ),
+                child: Icon(
+                  loading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
+                  color: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasNextFlight
+                          ? 'Proximo vuelo'
+                          : 'Planea tu siguiente vuelo',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.heroTextSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      nextRoute,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.heroTextPrimary,
+                        fontSize: 20,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Actualizar vuelos',
+                onPressed: loading ? null : onRefresh,
+                icon: Icon(Icons.refresh_rounded, color: palette.accent),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _OverviewChip(
+                icon: Icons.calendar_month_rounded,
+                label: nextDate,
+              ),
+              _OverviewChip(
+                icon: Icons.notifications_active_outlined,
+                label:
+                    attentionCount == 1
+                        ? '1 accion pendiente'
+                        : '$attentionCount acciones pendientes',
+                highlighted: attentionCount > 0,
+              ),
+              _OverviewChip(
+                icon: Icons.view_list_rounded,
+                label: '$visibleFlights visibles de $totalFlights',
+              ),
+              _OverviewChip(
+                icon: Icons.schedule_rounded,
+                label: _syncCopy(lastSyncAt),
+              ),
+            ],
+          ),
+          if (!hasNextFlight && onOpenSearch != null) ...[
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: onOpenSearch,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.accent,
+                foregroundColor: ClientThemeColors.textOnAccent,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              icon: const Icon(Icons.search_rounded),
+              label: const Text(
+                'Buscar vuelo',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _syncCopy(DateTime? date) {
+    if (date == null) return 'Sin sincronizar';
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return 'Actualizado $day/$month $hour:$minute';
+  }
+}
+
+class _OverviewChip extends StatelessWidget {
+  const _OverviewChip({
+    required this.icon,
+    required this.label,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: highlighted ? palette.accentSoft : palette.surfaceStrong,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accentBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color:
+                highlighted ? ClientThemeColors.textOnAccent : palette.accent,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color:
+                    highlighted
+                        ? ClientThemeColors.textOnAccent
+                        : palette.heroTextPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttentionFilterBar extends StatelessWidget {
+  const _AttentionFilterBar({
+    required this.active,
+    required this.count,
+    required this.onChanged,
+  });
+
+  final bool active;
+  final int count;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            count > 0
+                ? Icons.notification_important_outlined
+                : Icons.check_circle_outline_rounded,
+            color: count > 0 ? palette.accent : const Color(0xFF1B8F4D),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              count > 0
+                  ? 'Mostrar solo vuelos que necesitan accion'
+                  : 'Sin acciones pendientes por ahora',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 13,
+                height: 1.25,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Switch.adaptive(
+            value: active,
+            onChanged: count == 0 ? null : onChanged,
+            activeColor: palette.accent,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightExperienceStrip extends StatelessWidget {
+  const _FlightExperienceStrip({
+    required this.attentionCount,
+    required this.upcomingCount,
+    required this.onOpenSearch,
+  });
+
+  final int attentionCount;
+  final int upcomingCount;
+  final VoidCallback? onOpenSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 430;
+        final tiles = [
+          _ExperienceTileData(
+            icon: Icons.touch_app_rounded,
+            title: 'Acciones guiadas',
+            subtitle:
+                attentionCount > 0
+                    ? '$attentionCount pendientes'
+                    : 'Todo al dia',
+          ),
+          _ExperienceTileData(
+            icon: Icons.timeline_rounded,
+            title: 'Seguimiento claro',
+            subtitle:
+                upcomingCount == 1
+                    ? '1 vuelo activo'
+                    : '$upcomingCount vuelos activos',
+          ),
+          _ExperienceTileData(
+            icon: Icons.add_circle_outline_rounded,
+            title: 'Nueva ruta',
+            subtitle: 'Cotizar vuelo',
+            onTap: onOpenSearch,
+          ),
+        ];
+
+        if (compact) {
+          return SizedBox(
+            height: 116,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: tiles.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder:
+                  (context, index) => SizedBox(
+                    width: 190,
+                    child: _ExperienceTile(data: tiles[index]),
+                  ),
+            ),
+          );
+        }
+
+        return Row(
+          children:
+              tiles
+                  .map(
+                    (tile) => Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _ExperienceTile(data: tile),
+                      ),
+                    ),
+                  )
+                  .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _ExperienceTileData {
+  const _ExperienceTileData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+}
+
+class _ExperienceTile extends StatelessWidget {
+  const _ExperienceTile({required this.data});
+
+  final _ExperienceTileData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return InkWell(
+      onTap: data.onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Ink(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: palette.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(data.icon, color: palette.accent, size: 22),
+            const SizedBox(height: 10),
+            Text(
+              data.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              data.subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 enum _TripTab { upcoming, history, cancelled }
 
 String _tabLabel(_TripTab tab) {
   switch (tab) {
     case _TripTab.upcoming:
-      return 'Próximos';
+      return 'Proximos';
     case _TripTab.history:
       return 'Historial';
     case _TripTab.cancelled:
@@ -1475,8 +2107,110 @@ class _MinimalLoadingCard extends StatelessWidget {
   }
 }
 
-class _EmptyFlightsCard extends StatelessWidget {
-  const _EmptyFlightsCard({required this.label, this.onOpenSearch});
+class _EmptyFlightsPanel extends StatelessWidget {
+  const _EmptyFlightsPanel({required this.label, this.onOpenSearch});
+
+  final String label;
+  final VoidCallback? onOpenSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isUpcoming = label == 'Proximos';
+    final isDark = context.isDarkMode;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: isDark ? palette.accentBorder : palette.border,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: palette.surfaceStrong,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.accentBorder),
+            ),
+            child: Icon(
+              isUpcoming
+                  ? Icons.flight_takeoff_rounded
+                  : Icons.inventory_2_outlined,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            isUpcoming
+                ? 'Aun no tienes reservas activas'
+                : 'Sin vuelos en $label',
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontWeight: FontWeight.w900,
+              fontSize: 24,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            isUpcoming
+                ? 'Cuando cotices un vuelo aparecera aqui con contrato, pago y seguimiento.'
+                : 'Cuando tengas movimientos en esta seccion apareceran aqui.',
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+            ),
+          ),
+          if (isUpcoming) ...[
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onOpenSearch,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              icon: const Icon(Icons.search_rounded),
+              label: const Text(
+                'Buscar vuelo',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class EmptyFlightsCardLegacy extends StatelessWidget {
+  const EmptyFlightsCardLegacy({
+    super.key,
+    required this.label,
+    this.onOpenSearch,
+  });
 
   final String label;
   final VoidCallback? onOpenSearch;
@@ -1952,6 +2686,52 @@ bool _contractActionEnabled(Map<String, dynamic> request, String workflowId) {
 bool _paymentActionEnabled(Map<String, dynamic> request, String workflowId) {
   if (!_isReservationRecord(request)) return false;
   return const ['contract_signed', 'payment_pending'].contains(workflowId);
+}
+
+bool _hasPaymentValidationSignals(Map<String, dynamic> request) {
+  final paymentOrder = request['payment_order'];
+  final reservation = request['reservation'];
+  final data = request['data'];
+
+  if (_hasValue(request['checkout_session_id']) ||
+      _hasValue(request['stripe_checkout_session_id']) ||
+      _hasValue(request['stripe_payment_intent_id']) ||
+      _hasValue(request['payment_intent_id'])) {
+    return true;
+  }
+
+  if (paymentOrder is Map &&
+      (_hasValue(paymentOrder['checkout_session_id']) ||
+          _hasValue(paymentOrder['stripe_session_id']) ||
+          _hasValue(paymentOrder['status']))) {
+    return true;
+  }
+
+  if (reservation is Map &&
+      (_hasValue(reservation['checkout_session_id']) ||
+          _hasValue(reservation['payment_intent_id']))) {
+    return true;
+  }
+
+  if (data is Map &&
+      (_hasValue(data['checkout_session_id']) ||
+          _hasValue(data['payment_intent_id']))) {
+    return true;
+  }
+
+  final payments = request['payments'];
+  if (payments is List) {
+    return payments.any((payment) {
+      if (payment is! Map) return false;
+      final status = payment['status']?.toString().trim().toLowerCase() ?? '';
+      return status == 'pending' ||
+          status == 'processing' ||
+          _hasValue(payment['checkout_session_id']) ||
+          _hasValue(payment['payment_intent_id']);
+    });
+  }
+
+  return false;
 }
 
 bool _flightActionEnabled(Map<String, dynamic> request, String workflowId) {
@@ -2600,23 +3380,7 @@ String _firstImageFromCollection(dynamic value) {
 }
 
 String _resolveMediaUrl(String value) {
-  final raw = value.trim();
-  if (raw.isEmpty) return '';
-  final lower = raw.toLowerCase();
-  if (lower.startsWith('blob:') ||
-      lower.startsWith('data:') ||
-      lower.startsWith('http://') ||
-      lower.startsWith('https://') ||
-      raw.startsWith('//')) {
-    return raw;
-  }
-
-  if (raw.startsWith('/') && !raw.startsWith('/storage')) return raw;
-
-  final origin = ApiClient.instance.backendOrigin;
-  final cleanPath = raw.replaceFirst(RegExp(r'^\.?/'), '');
-  if (origin.isEmpty) return '/$cleanPath';
-  return '$origin/$cleanPath';
+  return resolveMediaUrl(value);
 }
 
 Map<String, dynamic> _nestedMap(dynamic value) {

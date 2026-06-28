@@ -24,10 +24,11 @@ class _AssignmentCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: compact ? 38 : 42,
+                  height: compact ? 38 : 42,
                   decoration: BoxDecoration(
                     color: const Color(0xFFEAF2F8),
                     borderRadius: BorderRadius.circular(12),
@@ -39,17 +40,34 @@ class _AssignmentCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    item.code,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 16 : 18,
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0E2338),
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.code,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 16 : 18,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF0E2338),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        item.showTime,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF5F6975),
+                          fontSize: compact ? 12 : 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 _StatusPill(item.status),
               ],
             ),
@@ -67,7 +85,7 @@ class _AssignmentCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '${item.provider} | ${item.aircraft} | ${item.showTime}',
+              '${item.provider} | ${item.aircraft}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -443,6 +461,41 @@ class _StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.of(context).size.width < 430;
+    final normalized = message.toLowerCase();
+    final isError =
+        normalized.contains('no se pudo') ||
+        normalized.contains('completa') ||
+        normalized.contains('selecciona') ||
+        normalized.contains('agrega');
+    final isSuccess =
+        normalized.contains('sincronizado') ||
+        normalized.contains('actualizada') ||
+        normalized.contains('enviado') ||
+        normalized.contains('guardado');
+    final background =
+        isError
+            ? const [Color(0xFFFFF1F0), Colors.white]
+            : isSuccess
+            ? const [Color(0xFFEAF6F0), Colors.white]
+            : const [Color(0xFFFFF8E7), Colors.white];
+    final border =
+        isError
+            ? const Color(0xFFF0A29D)
+            : isSuccess
+            ? const Color(0xFF82C9A3)
+            : const Color(0xFFEBD39B);
+    final foreground =
+        isError
+            ? const Color(0xFF8D1F1A)
+            : isSuccess
+            ? const Color(0xFF0F5C38)
+            : const Color(0xFF7A5A18);
+    final icon =
+        isError
+            ? Icons.error_outline_rounded
+            : isSuccess
+            ? Icons.check_circle_rounded
+            : Icons.radar_rounded;
 
     return _AnimatedEntry(
       child: Container(
@@ -451,13 +504,13 @@ class _StatusBanner extends StatelessWidget {
           vertical: compact ? 12 : 13,
         ),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFF8E7), Colors.white],
+          gradient: LinearGradient(
+            colors: background,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(compact ? 16 : 18),
-          border: Border.all(color: const Color(0xFFEBD39B)),
+          border: Border.all(color: border),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -473,9 +526,9 @@ class _StatusBanner extends StatelessWidget {
                         child: const CircularProgressIndicator(strokeWidth: 2),
                       )
                       : Icon(
-                        Icons.radar_rounded,
+                        icon,
                         key: const ValueKey('ready'),
-                        color: Color(0xFF7A5A18),
+                        color: foreground,
                         size: compact ? 18 : 20,
                       ),
             ),
@@ -486,9 +539,9 @@ class _StatusBanner extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Color(0xFF7A5A18),
+                  color: foreground,
                   fontSize: compact ? 13 : 14,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w800,
                   height: 1.2,
                 ),
               ),

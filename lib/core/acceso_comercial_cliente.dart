@@ -167,58 +167,165 @@ const Set<String> _suspendedStatuses = {
   'canceled',
 };
 
+const Set<String> _paidPaymentStatuses = {
+  'active',
+  'approved',
+  'paid',
+  'pagado',
+  'pagada',
+  'succeeded',
+  'success',
+  'complete',
+  'completed',
+  'payment_confirmed',
+  'subscription_active',
+  'access_active',
+};
+
+const Set<String> _inactivePaymentStatuses = {
+  'failed',
+  'payment_failed',
+  'cancelled',
+  'canceled',
+  'unpaid',
+  'expired',
+  'void',
+  'refunded',
+  'requires_payment_method',
+};
+
 CommercialAccessState resolveCommercialAccessState(
   Map<String, dynamic>? source,
 ) {
   final access = source ?? const <String, dynamic>{};
+  final data = _map(access['data']);
+  final dataAccess = _map(
+    data['access'] ?? data['commercial_access'] ?? data['commercialAccess'],
+  );
   final commercial = _map(
     access['commercial_access'] ??
         access['commercialAccess'] ??
-        access['access'],
+        access['access'] ??
+        data['commercial_access'] ??
+        data['commercialAccess'] ??
+        data['access'],
   );
-  final subscription = _map(access['subscription'] ?? access['membership']);
+  final subscription = _map(
+    access['subscription'] ??
+        access['membership'] ??
+        data['subscription'] ??
+        data['membership'],
+  );
+  final latestPayment = _firstMap([
+    commercial['latest_payment'],
+    commercial['payment'],
+    access['latest_payment'],
+    access['payment'],
+    data['latest_payment'],
+    data['payment'],
+    dataAccess['latest_payment'],
+    dataAccess['payment'],
+    subscription['latest_payment'],
+    subscription['payment'],
+  ]);
+  final checkoutSession = _firstMap([
+    access['checkout_session'],
+    access['session'],
+    data['checkout_session'],
+    data['session'],
+    commercial['checkout_session'],
+    commercial['session'],
+  ]);
+  final hasPaidPaymentRecord =
+      _paymentRecordIsPaid(latestPayment) ||
+      _paymentRecordIsPaid(checkoutSession);
 
-  final status = _normalized(
+  final statusCandidate = _normalized(
     commercial['status'] ??
+        dataAccess['status'] ??
         access['access_status'] ??
+        data['access_status'] ??
         access['subscription_status'] ??
-        subscription['status'],
+        data['subscription_status'] ??
+        subscription['status'] ??
+        latestPayment['status'] ??
+        latestPayment['payment_status'] ??
+        checkoutSession['payment_status'] ??
+        checkoutSession['status'],
   );
-  final hasPaidAccess = _asBool(
-    commercial['has_paid_access'] ?? access['has_paid_access'],
-  );
+  final status =
+      hasPaidPaymentRecord &&
+              !_inactivePaymentStatuses.contains(statusCandidate)
+          ? 'active'
+          : statusCandidate;
+  final hasPaidAccess =
+      _asBool(
+        commercial['has_paid_access'] ??
+            dataAccess['has_paid_access'] ??
+            access['has_paid_access'] ??
+            data['has_paid_access'] ??
+            commercial['is_paid'] ??
+            dataAccess['is_paid'] ??
+            access['is_paid'] ??
+            data['is_paid'] ??
+            commercial['payment_completed'] ??
+            dataAccess['payment_completed'] ??
+            access['payment_completed'] ??
+            data['payment_completed'],
+      ) ||
+      hasPaidPaymentRecord;
   final freeQuoteLimit = _asInt(
-    commercial['free_quote_limit'] ?? access['free_quote_limit'],
+    commercial['free_quote_limit'] ??
+        dataAccess['free_quote_limit'] ??
+        access['free_quote_limit'] ??
+        data['free_quote_limit'],
     fallback: 1,
   ).clamp(1, 999);
   final freeQuotesUsed = _asInt(
-    commercial['free_quotes_used'] ?? access['free_quotes_used'],
+    commercial['free_quotes_used'] ??
+        dataAccess['free_quotes_used'] ??
+        access['free_quotes_used'] ??
+        data['free_quotes_used'],
   ).clamp(0, 999);
   final remainingFreeQuotes = _asInt(
     commercial['remaining_free_quotes'] ??
+        dataAccess['remaining_free_quotes'] ??
         access['remaining_free_quotes'] ??
+        data['remaining_free_quotes'] ??
         (freeQuoteLimit - freeQuotesUsed),
   ).clamp(0, 999);
 
   final graceEndsAtLabel = _formatDate(
     commercial['grace_period_ends_at'] ??
         commercial['grace_ends_at'] ??
+        dataAccess['grace_period_ends_at'] ??
+        dataAccess['grace_ends_at'] ??
         access['grace_period_ends_at'] ??
-        access['grace_ends_at'],
+        access['grace_ends_at'] ??
+        data['grace_period_ends_at'] ??
+        data['grace_ends_at'],
   );
   final expiresAtLabel = _formatDate(
     commercial['access_expires_at'] ??
         commercial['billing_period_end'] ??
+        dataAccess['access_expires_at'] ??
+        dataAccess['billing_period_end'] ??
         access['access_expires_at'] ??
         access['billing_period_end'] ??
-        _map(commercial['latest_payment'])['billing_period_end'] ??
-        _map(access['latest_payment'])['billing_period_end'],
+        data['access_expires_at'] ??
+        data['billing_period_end'] ??
+        latestPayment['access_expires_at'] ??
+        latestPayment['billing_period_end'] ??
+        latestPayment['period_end'] ??
+        latestPayment['current_period_end'],
   );
 
   final isPastDue = _pastDueStatuses.contains(status);
-  final isSuspended = _suspendedStatuses.contains(status);
+  final isSuspended = !hasPaidAccess && _suspendedStatuses.contains(status);
   final isExpired =
-      !isPastDue && (isSuspended || _isDateExpired(expiresAtLabel));
+      !hasPaidAccess &&
+      !isPastDue &&
+      (isSuspended || _isDateExpired(expiresAtLabel));
 
   return CommercialAccessState(
     status: status,
@@ -240,7 +347,15 @@ Map<String, dynamic> syncCommercialAccessPayload(
 ) {
   final access = Map<String, dynamic>.from(currentAccess ?? const {});
   final commercial = _map(access['commercial_access']);
-  final latestSource = _map(source);
+  final rawSource = _map(source);
+  final sourceData = _map(rawSource['data']);
+  final latestSource = _mergeMaps([
+    rawSource,
+    sourceData,
+    _map(sourceData['access']),
+    _map(sourceData['commercial_access']),
+    _map(sourceData['commercialAccess']),
+  ]);
   final state = resolveCommercialAccessState(latestSource);
   final latestCommercial = _map(
     latestSource['commercial_access'] ??
@@ -264,8 +379,11 @@ Map<String, dynamic> syncCommercialAccessPayload(
       'grace_period_ends_at': latestCommercial['grace_period_ends_at'],
     if (latestCommercial['payment_preview'] != null)
       'payment_preview': latestCommercial['payment_preview'],
-    if (latestCommercial['latest_payment'] != null)
-      'latest_payment': latestCommercial['latest_payment'],
+    if ((latestCommercial['latest_payment'] ??
+            latestSource['latest_payment']) !=
+        null)
+      'latest_payment':
+          latestCommercial['latest_payment'] ?? latestSource['latest_payment'],
   };
 
   return {
@@ -333,6 +451,22 @@ Map<String, dynamic> _map(dynamic value) {
   return const <String, dynamic>{};
 }
 
+Map<String, dynamic> _firstMap(List<dynamic> values) {
+  for (final value in values) {
+    final map = _map(value);
+    if (map.isNotEmpty) return map;
+  }
+  return const <String, dynamic>{};
+}
+
+Map<String, dynamic> _mergeMaps(List<Map<String, dynamic>> values) {
+  final merged = <String, dynamic>{};
+  for (final value in values) {
+    if (value.isNotEmpty) merged.addAll(value);
+  }
+  return merged;
+}
+
 bool _asBool(dynamic value) {
   if (value is bool) return value;
   final normalized = _normalized(value);
@@ -346,6 +480,23 @@ int _asInt(dynamic value, {int fallback = 0}) {
 
 String _normalized(dynamic value) =>
     value?.toString().trim().toLowerCase() ?? '';
+
+bool _paymentRecordIsPaid(Map<String, dynamic> record) {
+  if (record.isEmpty) return false;
+  final status = _normalized(
+    record['status'] ??
+        record['payment_status'] ??
+        record['checkout_status'] ??
+        record['stripe_payment_status'] ??
+        record['subscription_status'],
+  );
+  if (_paidPaymentStatuses.contains(status)) return true;
+  if (_inactivePaymentStatuses.contains(status)) return false;
+  return _asBool(record['paid']) ||
+      _asBool(record['is_paid']) ||
+      _asBool(record['payment_completed']) ||
+      _asBool(record['has_paid_access']);
+}
 
 String _formatDate(dynamic value) {
   final raw = value?.toString().trim() ?? '';

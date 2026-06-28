@@ -347,7 +347,6 @@ class CrewAssignment {
     if (normalized.contains('prepar')) return 'Preparacion';
     return value.trim().isEmpty ? 'Pendiente' : value.trim();
   }
-
 }
 
 class CrewMissionAction {
@@ -434,7 +433,6 @@ class CrewIncident {
               : const [],
     );
   }
-
 }
 
 class CrewDocument {
@@ -481,7 +479,6 @@ class CrewDocument {
           '',
     );
   }
-
 }
 
 class CrewPaymentRecord {

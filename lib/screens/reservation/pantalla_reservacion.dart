@@ -8,6 +8,7 @@ import '../../core/acceso_comercial_cliente.dart';
 import '../../models/aeropuerto.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
+import '../cliente/tema_cliente.dart';
 import '../cliente/views/pantalla_pago_cliente.dart';
 import '../cliente/widgets/widgets_flujo_movil_cliente.dart';
 import 'pantalla_vista_previa_cotizacion.dart';
@@ -116,6 +117,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
         onPickDepartureTime: _pickDepartureTime,
         onPickReturnDate: _pickReturnDate,
         onPickReturnTime: _pickReturnTime,
+        onPassengerChanged: reservation.setGlobalPassengers,
         onPickRouteOrigin:
             (index) => _pickAirport(
               title: 'Origen tramo ${index + 1}',
@@ -361,10 +363,11 @@ class _ReservationScreenState extends State<ReservationScreen> {
     int index,
   ) async {
     final current = reservation.routes[index].startDate ?? DateTime.now();
+    final today = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      firstDate: DateTime(today.year, today.month, today.day),
       lastDate: DateTime.now().add(const Duration(days: 730)),
     );
 
@@ -373,10 +376,18 @@ class _ReservationScreenState extends State<ReservationScreen> {
   }
 
   Future<void> _pickReturnDate() async {
+    final departureDate =
+        context.read<ReservationProvider>().routes.first.startDate ??
+        DateTime.now();
+    final firstReturnDate = DateTime(
+      departureDate.year,
+      departureDate.month,
+      departureDate.day,
+    );
     final picked = await showDatePicker(
       context: context,
-      initialDate: _returnDate ?? DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now(),
+      initialDate: _returnDate ?? firstReturnDate.add(const Duration(days: 1)),
+      firstDate: firstReturnDate,
       lastDate: DateTime.now().add(const Duration(days: 730)),
     );
 
@@ -435,8 +446,52 @@ class _ReservationScreenState extends State<ReservationScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final palette = context.clientPalette;
+    final lower = message.toLowerCase();
+    final isError =
+        lower.contains('completa') ||
+        lower.contains('no fue posible') ||
+        lower.contains('selecciona');
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 92),
+          backgroundColor:
+              isError ? Theme.of(context).colorScheme.error : palette.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              Icon(
+                isError
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_rounded,
+                color:
+                    isError
+                        ? Theme.of(context).colorScheme.onError
+                        : palette.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color:
+                        isError
+                            ? Theme.of(context).colorScheme.onError
+                            : palette.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 }

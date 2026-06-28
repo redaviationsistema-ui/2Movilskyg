@@ -55,6 +55,19 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
         displayName.trim().isNotEmpty
             ? displayName.trim().characters.first.toUpperCase()
             : 'C';
+    final validationItems = _validationItems(
+      auth: auth,
+      access: access,
+      email: email,
+      phone: phone,
+      commercialState: commercialState,
+    );
+    final completedValidations =
+        validationItems.where((item) => item.ready).length;
+    final readinessPercent =
+        validationItems.isEmpty
+            ? 0
+            : ((completedValidations / validationItems.length) * 100).round();
 
     return ClientExperienceShell(
       title: 'Perfil',
@@ -78,7 +91,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Expediente, membresía, seguridad y preferencias de viaje.',
+              'Cuenta, validaciones y preferencias listas para volar.',
               style: TextStyle(
                 color: palette.textSecondary,
                 fontSize: 14,
@@ -91,11 +104,25 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
               initial: initial,
               name: displayName,
               email: email,
+              phone: phone,
+              company: company,
               status: statusLabel,
               membership: planLabel,
               membershipCaption: membershipCaption,
               onRefresh: _refreshProfile,
             ),
+            const SizedBox(height: 12),
+            _ProfileCommandCenter(
+              readinessPercent: readinessPercent,
+              completedValidations: completedValidations,
+              totalValidations: validationItems.length,
+              requestsCount: reservation.flightRequests.length,
+              planLabel: planLabel,
+              canReserve: commercialState.canReserve,
+              onRefresh: _refreshProfile,
+            ),
+            const SizedBox(height: 12),
+            _ProfileReadinessCard(items: validationItems),
             const SizedBox(height: 12),
             _ProfileTabBar(
               activeTab: _activeTab,
@@ -366,6 +393,62 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     if (_hasMembership(access)) return 'Membresía Executive';
     return 'Sin membresía';
   }
+
+  List<_ValidationItem> _validationItems({
+    required AuthProvider auth,
+    required Map<String, dynamic> access,
+    required String email,
+    required String phone,
+    required CommercialAccessState commercialState,
+  }) {
+    final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final identity = _identityStatus(auth.userPayload);
+    final normalizedIdentity = identity.toLowerCase();
+    final identityReady =
+        normalizedIdentity.contains('verificada') ||
+        normalizedIdentity.contains('verified');
+    final membershipReady =
+        commercialState.hasPaidAccess ||
+        commercialState.canReserve ||
+        _hasMembership(access);
+
+    return [
+      _ValidationItem(
+        label: 'Correo',
+        detail:
+            email.contains('@')
+                ? 'Correo listo para avisos de vuelo.'
+                : 'Agrega un correo valido.',
+        ready: email.contains('@'),
+        icon: Icons.mail_rounded,
+      ),
+      _ValidationItem(
+        label: 'Telefono',
+        detail:
+            normalizedPhone.length >= 10
+                ? 'Contacto disponible para operaciones.'
+                : 'Completa un telefono de contacto.',
+        ready: normalizedPhone.length >= 10,
+        icon: Icons.phone_rounded,
+      ),
+      _ValidationItem(
+        label: 'Identidad',
+        detail:
+            identityReady ? 'Validacion completada.' : 'Validacion pendiente.',
+        ready: identityReady,
+        icon: Icons.badge_rounded,
+      ),
+      _ValidationItem(
+        label: 'Acceso',
+        detail:
+            membershipReady
+                ? 'Puedes reservar vuelos.'
+                : 'Activa tu acceso comercial para reservar.',
+        ready: membershipReady,
+        icon: Icons.workspace_premium_rounded,
+      ),
+    ];
+  }
 }
 
 enum _ProfileTab { dashboard, billing, security }
@@ -513,11 +596,210 @@ class _MetricData {
   final String value;
 }
 
+class _ProfileCommandCenter extends StatelessWidget {
+  const _ProfileCommandCenter({
+    required this.readinessPercent,
+    required this.completedValidations,
+    required this.totalValidations,
+    required this.requestsCount,
+    required this.planLabel,
+    required this.canReserve,
+    required this.onRefresh,
+  });
+
+  final int readinessPercent;
+  final int completedValidations;
+  final int totalValidations;
+  final int requestsCount;
+  final String planLabel;
+  final bool canReserve;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final isReady = readinessPercent >= 75 && canReserve;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: palette.headerGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.accentBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: palette.surfaceStrong,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: palette.accentBorder),
+                ),
+                child: Icon(
+                  isReady
+                      ? Icons.verified_user_rounded
+                      : Icons.manage_accounts_rounded,
+                  color: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isReady
+                          ? 'Cuenta lista para reservar'
+                          : 'Completa tu cuenta',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.heroTextPrimary,
+                        fontSize: 18,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$completedValidations de $totalValidations validaciones listas',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.heroTextSecondary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Actualizar cuenta',
+                onPressed: onRefresh,
+                icon: Icon(Icons.refresh_rounded, color: palette.accent),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: readinessPercent / 100,
+              minHeight: 8,
+              backgroundColor: palette.surfaceStrong,
+              color: palette.accent,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CommandChip(
+                icon: Icons.percent_rounded,
+                label: '$readinessPercent% listo',
+                highlighted: true,
+              ),
+              _CommandChip(
+                icon: Icons.workspace_premium_rounded,
+                label: planLabel,
+              ),
+              _CommandChip(
+                icon: Icons.flight_takeoff_rounded,
+                label:
+                    requestsCount == 1
+                        ? '1 solicitud'
+                        : '$requestsCount solicitudes',
+              ),
+              _CommandChip(
+                icon: canReserve ? Icons.lock_open_rounded : Icons.lock_rounded,
+                label: canReserve ? 'Puede reservar' : 'Acceso pendiente',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandChip extends StatelessWidget {
+  const _CommandChip({
+    required this.icon,
+    required this.label,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: highlighted ? palette.accentSoft : palette.surfaceStrong,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accentBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color:
+                highlighted ? ClientThemeColors.textOnAccent : palette.accent,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color:
+                    highlighted
+                        ? ClientThemeColors.textOnAccent
+                        : palette.heroTextPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AccountHeaderCard extends StatelessWidget {
   const _AccountHeaderCard({
     required this.initial,
     required this.name,
     required this.email,
+    required this.phone,
+    required this.company,
     required this.status,
     required this.membership,
     required this.membershipCaption,
@@ -527,6 +809,8 @@ class _AccountHeaderCard extends StatelessWidget {
   final String initial;
   final String name;
   final String email;
+  final String phone;
+  final String company;
   final String status;
   final String membership;
   final String membershipCaption;
@@ -536,32 +820,345 @@ class _AccountHeaderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.surface,
+          border: Border.all(
+            color: isDark ? palette.accentBorder : palette.border,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 26,
-            offset: Offset(0, 14),
+        child: Column(
+          children: [
+            Container(
+              height: 112,
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 14, 14, 0),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors:
+                      isDark
+                          ? const [Color(0xFF123047), Color(0xFF24526F)]
+                          : const [Color(0xFF1F6FEB), Color(0xFF123047)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  tooltip: 'Actualizar perfil',
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  color: Colors.white,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.16),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Transform.translate(
+                    offset: const Offset(0, -34),
+                    child: Container(
+                      width: 78,
+                      height: 78,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: palette.surface,
+                        border: Border.all(color: palette.surface, width: 4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        backgroundColor:
+                            isDark ? palette.surfaceStrong : palette.accentSoft,
+                        child: Text(
+                          initial,
+                          style: TextStyle(
+                            color: isDark ? palette.accent : palette.primary,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: const Offset(0, -22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: palette.textPrimary,
+                            fontSize: 27,
+                            height: 1.02,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          company,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: palette.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _ContactPill(
+                              icon: Icons.mail_rounded,
+                              label: email,
+                            ),
+                            _ContactPill(
+                              icon: Icons.phone_rounded,
+                              label: phone,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: const Offset(0, -6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _HeaderInfoPill(
+                            icon: Icons.verified_rounded,
+                            label: 'Estado',
+                            value: status,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _HeaderInfoPill(
+                            icon: Icons.workspace_premium_rounded,
+                            label: 'Membresia',
+                            value: membership,
+                            subtitle: membershipCaption,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactPill extends StatelessWidget {
+  const _ContactPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: palette.surfaceSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: palette.textSecondary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileReadinessCard extends StatelessWidget {
+  const _ProfileReadinessCard({required this.items});
+
+  final List<_ValidationItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final readyCount = items.where((item) => item.ready).length;
+    final progress = items.isEmpty ? 0.0 : readyCount / items.length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 60,
-                height: 60,
+              Expanded(
+                child: Text(
+                  'Validaciones del perfil',
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$readyCount/${items.length}',
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: palette.surfaceSoft,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                readyCount == items.length
+                    ? const Color(0xFF2E7D4F)
+                    : palette.accent,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...items.map((item) => _ValidationRow(item: item)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ValidationRow extends StatelessWidget {
+  const _ValidationRow({required this.item});
+
+  final _ValidationItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    final color =
+        item.ready ? const Color(0xFF2E7D4F) : const Color(0xFF9A6A00);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              item.ready ? Icons.check_rounded : item.icon,
+              color: color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.detail,
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ValidationItem {
+  const _ValidationItem({
+    required this.label,
+    required this.detail,
+    required this.ready,
+    required this.icon,
+  });
+
+  final String label;
+  final String detail;
+  final bool ready;
+  final IconData icon;
+}
+
+/*
                 decoration: BoxDecoration(
                   color: palette.surfaceStrong,
                   borderRadius: BorderRadius.circular(20),
@@ -657,6 +1254,7 @@ class _AccountHeaderCard extends StatelessWidget {
     );
   }
 }
+*/
 
 class _HeaderInfoPill extends StatelessWidget {
   const _HeaderInfoPill({
