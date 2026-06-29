@@ -460,6 +460,12 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
       'sent_to_provider',
     ]),
   );
+  final hasPendingProviderDecision = _hasPendingProviderDecisionSignal(
+    request,
+    nestedReservation: nestedReservation,
+    visibilityPayload: visibilityPayload,
+    adminFlow: adminFlow,
+  );
 
   if (_isOneOf(normalizedReservationStatus, const [
     'closed',
@@ -523,6 +529,23 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
     'scheduled',
   ])) {
     return 'flight_confirmed';
+  }
+
+  if (hasPendingProviderDecision &&
+      !_isOneOf(normalizedPaymentStatus, const [
+        'paid',
+        'pagado',
+        'pagada',
+        'payment confirmed',
+        'payment_confirmed',
+      ]) &&
+      !_isOneOf(normalizedContractStatus, const [
+        'generated',
+        'en firma',
+        'firma pendiente',
+        'signed',
+      ])) {
+    return 'provider_pending';
   }
 
   if (const [
@@ -736,6 +759,66 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
   }
 
   return rawWorkflow.trim().isEmpty ? 'draft' : 'draft';
+}
+
+bool _hasPendingProviderDecisionSignal(
+  Map<String, dynamic> request, {
+  required Map<String, dynamic> nestedReservation,
+  required Map<String, dynamic> visibilityPayload,
+  required Map<String, dynamic> adminFlow,
+}) {
+  final candidateTexts = <String>[
+    _firstNonEmptyText([
+          request['next_action'],
+          request['nextStep'],
+          request['action_required'],
+          request['workflow_label'],
+          request['workflow_status_label'],
+          request['status_label'],
+          request['visible_stage'],
+          request['visibleStage'],
+          request['stage_label'],
+          request['stageLabel'],
+          nestedReservation['next_action'],
+          nestedReservation['action_required'],
+          visibilityPayload['next_action'],
+          visibilityPayload['action_required'],
+          visibilityPayload['visible_stage'],
+          visibilityPayload['visibleStage'],
+          visibilityPayload['stage_label'],
+          visibilityPayload['stageLabel'],
+          adminFlow['next_action'],
+          adminFlow['action_required'],
+          adminFlow['visible_stage'],
+          adminFlow['visibleStage'],
+          adminFlow['stage_label'],
+          adminFlow['stageLabel'],
+          adminFlow['cta_label'],
+          adminFlow['ctaLabel'],
+        ]) ??
+        '',
+  ];
+
+  final normalized = candidateTexts
+      .map(normalizeClientWorkflowValue)
+      .where((value) => value.isNotEmpty)
+      .join(' ');
+
+  if (normalized.isEmpty) return false;
+
+  return _containsAnyCanonical(normalized, const [
+    'sent to provider',
+    'sent_to_provider',
+    'respond request',
+    'responder solicitud',
+    'pending accept',
+    'pending acceptance',
+    'pending provider response',
+    'accept or reject',
+    'aceptar o rechazar',
+    'contraoferta',
+    'counteroffer',
+  ]);
 }
 
 String _canonicalWorkflowText(String value) {

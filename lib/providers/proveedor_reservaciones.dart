@@ -437,11 +437,23 @@ class ReservationProvider extends ChangeNotifier {
 
     final payload =
         _lastCreatedFlightRequestPayload ?? const <String, dynamic>{};
+    final explicitWorkflow =
+        _firstText(createdRecord ?? const <String, dynamic>{}, const [
+          'workflow_status',
+          'workflow',
+          'status',
+        ]) ??
+        _firstText(response, const ['workflow_status', 'workflow', 'status']) ??
+        '';
     final request = <String, dynamic>{
       ...payload,
       if (createdRecord != null) ...createdRecord,
       if (createdId != null) 'id': createdId,
       if (createdId != null) 'flight_request_id': createdId,
+      if (explicitWorkflow.isEmpty) 'status': 'reserved',
+      if (explicitWorkflow.isEmpty) 'workflow_status': 'reserva solicitada',
+      if (explicitWorkflow.isEmpty) 'booking_status': 'reserved',
+      if (explicitWorkflow.isEmpty) 'next_action': 'sent_to_provider',
       'summary_only': false,
     };
     final requestId = _resolveEntityId(request);
