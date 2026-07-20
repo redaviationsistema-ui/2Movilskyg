@@ -990,7 +990,7 @@ class _AttentionFilterBar extends StatelessWidget {
           Switch.adaptive(
             value: active,
             onChanged: count == 0 ? null : onChanged,
-            activeColor: palette.accent,
+            activeThumbColor: palette.accent,
           ),
         ],
       ),
@@ -2506,13 +2506,6 @@ int _activeStepForStage(String workflowId) {
   }
 }
 
-bool _matchesAny(String value, List<String> patterns) {
-  for (final pattern in patterns) {
-    if (value.contains(pattern)) return true;
-  }
-  return false;
-}
-
 String _sentenceCase(String value) {
   final normalized = value.replaceAll('_', ' ').trim();
   if (normalized.isEmpty) return normalized;
@@ -2593,52 +2586,6 @@ bool _contractActionEnabled(Map<String, dynamic> request, String workflowId) {
 bool _paymentActionEnabled(Map<String, dynamic> request, String workflowId) {
   if (!_isReservationRecord(request)) return false;
   return const ['contract_signed', 'payment_pending'].contains(workflowId);
-}
-
-bool _hasPaymentValidationSignals(Map<String, dynamic> request) {
-  final paymentOrder = request['payment_order'];
-  final reservation = request['reservation'];
-  final data = request['data'];
-
-  if (_hasValue(request['checkout_session_id']) ||
-      _hasValue(request['stripe_checkout_session_id']) ||
-      _hasValue(request['stripe_payment_intent_id']) ||
-      _hasValue(request['payment_intent_id'])) {
-    return true;
-  }
-
-  if (paymentOrder is Map &&
-      (_hasValue(paymentOrder['checkout_session_id']) ||
-          _hasValue(paymentOrder['stripe_session_id']) ||
-          _hasValue(paymentOrder['status']))) {
-    return true;
-  }
-
-  if (reservation is Map &&
-      (_hasValue(reservation['checkout_session_id']) ||
-          _hasValue(reservation['payment_intent_id']))) {
-    return true;
-  }
-
-  if (data is Map &&
-      (_hasValue(data['checkout_session_id']) ||
-          _hasValue(data['payment_intent_id']))) {
-    return true;
-  }
-
-  final payments = request['payments'];
-  if (payments is List) {
-    return payments.any((payment) {
-      if (payment is! Map) return false;
-      final status = payment['status']?.toString().trim().toLowerCase() ?? '';
-      return status == 'pending' ||
-          status == 'processing' ||
-          _hasValue(payment['checkout_session_id']) ||
-          _hasValue(payment['payment_intent_id']);
-    });
-  }
-
-  return false;
 }
 
 bool _flightActionEnabled(Map<String, dynamic> request, String workflowId) {

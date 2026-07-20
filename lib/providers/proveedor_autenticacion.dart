@@ -3,12 +3,30 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../core/acceso_comercial_cliente.dart';
+import '../core/auth/secure_session_storage.dart';
+import '../core/auth/session_cleanup_registry.dart';
 import '../core/cliente_api.dart';
+import '../services/servicio_notificaciones.dart';
 
 enum AppUserRole { client, operator, admin, crew, unknown }
 
+enum SessionBootstrapState {
+  checking,
+  authenticated,
+  signedOut,
+  offline,
+  denied,
+}
+
 class AuthProvider extends ChangeNotifier {
-  final ApiClient _api = ApiClient.instance;
+  AuthProvider({ApiClient? api, SessionStorage? sessionStorage})
+    : _api = api ?? ApiClient.instance,
+      _sessionStorage = sessionStorage ?? SecureSessionStorage() {
+    _api.setUnauthorizedHandler(_expireSession);
+  }
+
+  final ApiClient _api;
+  final SessionStorage _sessionStorage;
 
   BackendUser? _user;
   Map<String, dynamic>? _accessData;
@@ -18,6 +36,8 @@ class AuthProvider extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
   AppUserRole role = AppUserRole.unknown;
+  SessionBootstrapState bootstrapState = SessionBootstrapState.checking;
+  bool _bootstrapStarted = false;
 
   String? get session => _api.hasToken ? 'backend-token' : null;
   BackendUser? get user => _user;
@@ -25,6 +45,10 @@ class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? get loginContext => _loginContext;
   Map<String, dynamic>? get userPayload => _userPayload;
   bool get isAuthenticated => _user != null;
+  bool get hasVerifiedEmail =>
+      _userPayload?['has_verified_email'] == true ||
+      (_userPayload?['email_verified_at']?.toString().isNotEmpty ?? false);
+  bool get isBootstrapping => bootstrapState == SessionBootstrapState.checking;
 
   String get displayName {
     if (_user?.companyName.isNotEmpty == true) {
@@ -48,10 +72,19 @@ class AuthProvider extends ChangeNotifier {
         password: password,
       );
 
-      _api.setToken(response['token']?.toString());
-      _storeSessionPayload(response);
+      final token = _resolveToken(response);
+      if (token == null || token.trim().isEmpty) {
+        throw const ApiException('La respuesta no incluyó una sesión válida.');
+      }
+      _api.setToken(token);
+      _storeSessionPayload(response, requireEffectiveRole: true);
+      await _sessionStorage.writeToken(token);
+      bootstrapState = SessionBootstrapState.authenticated;
+      await PushNotificationsService.syncAuthenticatedDevice();
     } on ApiException catch (e) {
-      errorMessage = e.message;
+      await _clearLocalSession();
+      errorMessage = _apiErrorMessage(e);
+      bootstrapState = SessionBootstrapState.signedOut;
     } catch (_) {
       errorMessage = 'No fue posible iniciar sesion.';
     } finally {
@@ -146,7 +179,10 @@ class AuthProvider extends ChangeNotifier {
 
       final token = _resolveToken(response);
       if (token != null) _api.setToken(token);
-      _storeSessionPayload(response);
+      _storeSessionPayload(response, requireEffectiveRole: true);
+      if (token != null) await _sessionStorage.writeToken(token);
+      bootstrapState = SessionBootstrapState.authenticated;
+      await PushNotificationsService.syncAuthenticatedDevice();
       return true;
     } on ApiException catch (error) {
       errorMessage = _apiErrorMessage(error);
@@ -210,7 +246,9 @@ class AuthProvider extends ChangeNotifier {
 
       final token = _resolveToken(response);
       if (token != null) _api.setToken(token);
-      _storeSessionPayload(response);
+      _storeSessionPayload(response, requireEffectiveRole: true);
+      if (token != null) await _sessionStorage.writeToken(token);
+      bootstrapState = SessionBootstrapState.authenticated;
       return true;
     } on ApiException catch (error) {
       errorMessage = _apiErrorMessage(error);
@@ -227,20 +265,79 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     if (_user != null && _api.hasToken) {
       try {
+        await PushNotificationsService.revokeAuthenticatedDevice();
         await _api.logout();
       } catch (_) {
         // Limpiamos sesion local aunque el backend no responda.
       }
     }
 
+    await _clearLocalSession();
+    bootstrapState = SessionBootstrapState.signedOut;
+    errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<void> bootstrapSession({bool force = false}) async {
+    if (_bootstrapStarted && !force) return;
+    _bootstrapStarted = true;
+    bootstrapState = SessionBootstrapState.checking;
+    errorMessage = null;
+    notifyListeners();
+
+    final token = await _sessionStorage.readToken();
+    if (token == null || token.trim().isEmpty) {
+      await _clearLocalSession();
+      bootstrapState = SessionBootstrapState.signedOut;
+      notifyListeners();
+      return;
+    }
+
+    _api.setToken(token);
+    try {
+      final response = await _api.me();
+      _storeSessionPayload(response, requireEffectiveRole: true);
+      bootstrapState = SessionBootstrapState.authenticated;
+      await PushNotificationsService.syncAuthenticatedDevice();
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        await _clearLocalSession();
+        bootstrapState = SessionBootstrapState.signedOut;
+        errorMessage = 'Tu sesión venció. Inicia sesión nuevamente.';
+      } else if (error.statusCode == 403) {
+        bootstrapState = SessionBootstrapState.denied;
+        errorMessage = 'No tienes permiso para acceder a esta aplicación.';
+      } else if (error.message.contains('rol')) {
+        await _clearLocalSession();
+        bootstrapState = SessionBootstrapState.denied;
+        errorMessage = error.message;
+      } else {
+        bootstrapState = SessionBootstrapState.offline;
+        errorMessage = error.message;
+      }
+    } catch (_) {
+      bootstrapState = SessionBootstrapState.offline;
+      errorMessage = 'No fue posible validar la sesión. Revisa tu conexión.';
+    }
+    notifyListeners();
+  }
+
+  Future<void> _expireSession() async {
+    await _clearLocalSession();
+    bootstrapState = SessionBootstrapState.signedOut;
+    errorMessage = 'Tu sesión venció. Inicia sesión nuevamente.';
+    notifyListeners();
+  }
+
+  Future<void> _clearLocalSession() async {
     _api.setToken(null);
+    await _sessionStorage.deleteToken();
     _user = null;
     _accessData = null;
     _loginContext = null;
     _userPayload = null;
     role = AppUserRole.unknown;
-    errorMessage = null;
-    notifyListeners();
+    await SessionCleanupRegistry.clearAll();
   }
 
   Future<void> loadUserRole() async {
@@ -256,9 +353,10 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final response = await _api.me();
-      _storeSessionPayload(response);
-    } catch (_) {
-      role = AppUserRole.client;
+      _storeSessionPayload(response, requireEffectiveRole: true);
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) await _expireSession();
+      errorMessage = error.message;
     } finally {
       isLoading = false;
       notifyListeners();
@@ -286,51 +384,46 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  static AppUserRole roleFromEmail(String? email) {
-    final normalized = email?.toLowerCase().trim() ?? '';
-    if (normalized.isEmpty) return AppUserRole.unknown;
-
-    if (normalized.contains('admin')) return AppUserRole.admin;
-    if (normalized.contains('crew') ||
-        normalized.contains('sobrecargo') ||
-        normalized.contains('tripulacion') ||
-        normalized.contains('flightattendant')) {
-      return AppUserRole.crew;
-    }
-    if (normalized.contains('ops') ||
-        normalized.contains('operator') ||
-        normalized.contains('operador') ||
-        normalized.contains('provider') ||
-        normalized.contains('proveedor')) {
-      return AppUserRole.operator;
-    }
-
-    return AppUserRole.client;
+  Future<String> resendEmailVerification() async {
+    final response = await _api.resendEmailVerification();
+    return response['message']?.toString() ??
+        'Enviamos un nuevo enlace de verificación.';
   }
 
-  void _storeSessionPayload(Map<String, dynamic> response) {
+  void _storeSessionPayload(
+    Map<String, dynamic> response, {
+    required bool requireEffectiveRole,
+  }) {
     final data = _asMap(response['data']) ?? const {};
     final rawUser = response['user'] ?? data['user'] ?? data['account'];
     if (rawUser is! Map) {
       throw const ApiException('La respuesta no incluyo datos de usuario.');
     }
 
-    final token = _resolveToken(response);
-    if (token != null) _api.setToken(token);
     final userJson = Map<String, dynamic>.from(rawUser);
-    _userPayload = userJson;
-    _accessData = _asMap(response['access'] ?? data['access']);
-    _loginContext = _asMap(
+    final loginContext = _asMap(
       response['login_context'] ??
           data['login_context'] ??
           data['loginContext'],
     );
-    _user = BackendUser.fromJson(userJson);
-
-    role = _roleFromDynamic(_loginContext?['effective_role'] ?? _user!.role);
-    if (role == AppUserRole.unknown) {
-      role = roleFromEmail(_user!.email);
+    final effectiveRole = loginContext?['effective_role'];
+    if (requireEffectiveRole && effectiveRole == null) {
+      throw const ApiException(
+        'La respuesta no incluyó el rol efectivo del usuario.',
+      );
     }
+    final resolvedRole = _roleFromDynamic(effectiveRole);
+    if (resolvedRole == AppUserRole.unknown) {
+      throw const ApiException('El rol de la cuenta no es compatible.');
+    }
+
+    final token = _resolveToken(response);
+    if (token != null) _api.setToken(token);
+    _userPayload = userJson;
+    _accessData = _asMap(response['access'] ?? data['access']);
+    _loginContext = loginContext;
+    _user = BackendUser.fromJson(userJson);
+    role = resolvedRole;
   }
 
   AppUserRole _roleFromDynamic(dynamic raw) {

@@ -1,9 +1,24 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/modelos_flujo_trabajo.dart';
+import '../core/auth/session_cleanup_registry.dart';
 
 class WorkflowProvider extends ChangeNotifier {
+  WorkflowProvider() {
+    SessionCleanupRegistry.register(clearSessionData);
+  }
   final Map<String, WorkflowSnapshot> _states = {};
+
+  Future<void> clearSessionData() async {
+    _states.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    SessionCleanupRegistry.unregister(clearSessionData);
+    super.dispose();
+  }
 
   WorkflowSnapshot watch({
     required String flowId,

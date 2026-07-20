@@ -283,10 +283,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       return picked == null ? null : File(picked.path);
     }
 
-    final result = await FilePicker.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
+    final result = await FilePicker.pickFiles(type: FileType.image);
     final path = result?.files.single.path;
     return path == null ? null : File(path);
   }

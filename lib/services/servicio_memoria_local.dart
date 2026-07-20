@@ -263,4 +263,13 @@ class LocalCacheService {
     if (rows.isEmpty) return null;
     return rows.first['value'] as String?;
   }
+
+  Future<void> clearUserData() async {
+    await _withWriteRecovery((db) async {
+      final batch = db.batch();
+      batch.delete(reservationsTable);
+      batch.delete(metadataTable);
+      await batch.commit(noResult: true);
+    });
+  }
 }

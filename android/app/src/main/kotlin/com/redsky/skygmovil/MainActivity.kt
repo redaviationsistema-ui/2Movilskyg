@@ -1,4 +1,4 @@
-package com.example.skygmovil
+package com.redsky.skygmovil
 
 import android.net.Uri
 import com.google.mlkit.vision.common.InputImage

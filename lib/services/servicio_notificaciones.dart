@@ -6,17 +6,17 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
+
+import '../core/cliente_api.dart';
+import '../core/config/app_environment.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
-    debugPrint(
-      '[PUSH][background] messageId=${message.messageId} data=${jsonEncode(message.data)}',
-    );
-  } catch (error) {
-    debugPrint('[PUSH][background] init_failed error=$error');
-  }
+  } catch (_) {}
 }
 
 class PushNotificationsService {
@@ -34,6 +34,14 @@ class PushNotificationsService {
       );
 
   static bool _initialized = false;
+  static bool _firebaseReady = false;
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const String _deviceUuidKey = 'red_sky_device_uuid';
+  static final StreamController<Map<String, dynamic>> _openedMessages =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  static Stream<Map<String, dynamic>> get openedMessages =>
+      _openedMessages.stream;
 
   static Future<void> initialize() async {
     if (_initialized) return;
@@ -43,20 +51,24 @@ class PushNotificationsService {
 
     try {
       await Firebase.initializeApp();
-      debugPrint('[PUSH] Firebase.initializeApp success');
+      _firebaseReady = true;
     } catch (error) {
-      debugPrint(
-        '[PUSH] Firebase.initializeApp failed. '
-        'Verifica google-services.json / GoogleService-Info.plist. error=$error',
-      );
+      if (AppEnvironment.current.name != AppEnvironmentName.development) {
+        throw StateError(
+          'Firebase no esta configurado para ${AppEnvironment.current.label}. '
+          'Verifica google-services.json / GoogleService-Info.plist.',
+        );
+      }
+      _diagnostic('Firebase no configurado en development.', error);
       return;
     }
 
     await _initializeLocalNotifications();
     await _requestPermissions();
     await _configureForegroundPresentation();
-    await _logFcmToken();
     _bindMessageStreams();
+    final initialMessage = await _messaging.getInitialMessage();
+    if (initialMessage != null) _emitOpenedMessage(initialMessage);
   }
 
   static Future<void> _initializeLocalNotifications() async {
@@ -90,11 +102,9 @@ class PushNotificationsService {
         provisional: false,
         sound: true,
       );
-      debugPrint(
-        '[PUSH] requestPermission status=${settings.authorizationStatus}',
-      );
+      _diagnostic('Permiso push: ${settings.authorizationStatus}');
     } catch (error) {
-      debugPrint('[PUSH] requestPermission failed error=$error');
+      _diagnostic('No se pudo solicitar permiso push.', error);
     }
   }
 
@@ -106,40 +116,70 @@ class PushNotificationsService {
         badge: true,
         sound: true,
       );
-      debugPrint('[PUSH] iOS foreground presentation enabled');
     } catch (error) {
-      debugPrint('[PUSH] foreground presentation failed error=$error');
-    }
-  }
-
-  static Future<void> _logFcmToken() async {
-    try {
-      final token = await _messaging.getToken();
-      debugPrint('[PUSH] FCM token=$token');
-      if (Platform.isIOS) {
-        final apnsToken = await _messaging.getAPNSToken();
-        debugPrint('[PUSH] APNS token=$apnsToken');
-      }
-    } catch (error) {
-      debugPrint('[PUSH] getToken failed error=$error');
+      _diagnostic('No se pudo configurar presentación foreground.', error);
     }
   }
 
   static void _bindMessageStreams() {
     FirebaseMessaging.onMessage.listen((message) async {
-      debugPrint(
-        '[PUSH][foreground] messageId=${message.messageId} '
-        'notification=${message.notification?.title} '
-        'data=${jsonEncode(message.data)}',
-      );
       await _showForegroundNotification(message);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      debugPrint(
-        '[PUSH][opened_app] messageId=${message.messageId} data=${jsonEncode(message.data)}',
+    FirebaseMessaging.onMessageOpenedApp.listen(_emitOpenedMessage);
+    _messaging.onTokenRefresh.listen((_) => syncAuthenticatedDevice());
+  }
+
+  static void _emitOpenedMessage(RemoteMessage message) {
+    _openedMessages.add(Map<String, dynamic>.unmodifiable(message.data));
+  }
+
+  static Future<void> syncAuthenticatedDevice() async {
+    if (!_firebaseReady || !ApiClient.instance.hasToken) return;
+    try {
+      final uuid = await _deviceUuid();
+      final token = await _messaging.getToken();
+      await ApiClient.instance.registerDevice(
+        deviceUuid: uuid,
+        platform: Platform.isIOS ? 'ios' : 'android',
+        pushToken: token,
+        appVersion: const String.fromEnvironment('APP_VERSION'),
       );
-    });
+    } catch (error) {
+      _diagnostic('No se pudo sincronizar el dispositivo.', error);
+    }
+  }
+
+  static Future<void> revokeAuthenticatedDevice() async {
+    if (!ApiClient.instance.hasToken) return;
+    try {
+      await ApiClient.instance.revokeDevice(await _deviceUuid());
+    } catch (error) {
+      _diagnostic('No se pudo revocar remotamente el dispositivo.', error);
+    }
+  }
+
+  static Future<String> _deviceUuid() async {
+    final existing = await _secureStorage.read(key: _deviceUuidKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final generated = const Uuid().v4();
+    await _secureStorage.write(
+      key: _deviceUuidKey,
+      value: generated,
+      iOptions: const IOSOptions(
+        accessibility: KeychainAccessibility.first_unlock_this_device,
+      ),
+    );
+    return generated;
+  }
+
+  static void _diagnostic(String message, [Object? error]) {
+    if (!AppEnvironment.current.allowsDiagnosticLogs) return;
+    debugPrint(
+      error == null
+          ? '[PUSH] $message'
+          : '[PUSH] $message ${error.runtimeType}',
+    );
   }
 
   static Future<void> _showForegroundNotification(RemoteMessage message) async {

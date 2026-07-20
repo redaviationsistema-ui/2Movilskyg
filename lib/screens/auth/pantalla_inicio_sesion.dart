@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import 'pantalla_seleccion_registro.dart';
+import 'pantalla_recuperar_contrasena.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -298,6 +299,27 @@ class _LoginScreenState extends State<LoginScreen>
                                           ),
                                 ),
                                 const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed:
+                                        isBusy
+                                            ? null
+                                            : () => Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder:
+                                                    (_) =>
+                                                        PasswordRecoveryScreen(
+                                                          email:
+                                                              _emailController
+                                                                  .text
+                                                                  .trim(),
+                                                        ),
+                                              ),
+                                            ),
+                                    child: const Text('Olvidé mi contraseña'),
+                                  ),
+                                ),
                                 SizedBox(
                                   width: double.infinity,
                                   child: FilledButton.icon(

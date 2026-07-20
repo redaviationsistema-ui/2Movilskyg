@@ -5,12 +5,16 @@ import 'package:intl/intl.dart';
 
 import '../core/cliente_api.dart';
 import '../core/client_workflow_status.dart';
+import '../core/auth/session_cleanup_registry.dart';
 import '../models/aeronave.dart';
 import '../models/aeropuerto.dart';
 import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
 
 class ReservationProvider extends ChangeNotifier {
+  ReservationProvider() {
+    SessionCleanupRegistry.register(clearSessionData);
+  }
   static const bool _enableClientQuoteLogs = false;
   static const Set<String> _activeQuoteStatuses = {
     '',
@@ -29,6 +33,31 @@ class ReservationProvider extends ChangeNotifier {
     symbol: 'USD ',
     decimalDigits: 0,
   );
+
+  Future<void> clearSessionData() async {
+    flightRequests = [];
+    quoteMatches = [];
+    reservations = [];
+    dashboardData = null;
+    selectedQuoteMatch = null;
+    _lastCreatedFlightRequestPayload = null;
+    name = null;
+    email = null;
+    phone = null;
+    fullName = '';
+    workspaceMessage = null;
+    quoteError = null;
+    lastWorkspaceSyncAt = null;
+    await _cacheService.clearUserData();
+    resetForm();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    SessionCleanupRegistry.unregister(clearSessionData);
+    super.dispose();
+  }
 
   String? flightType;
   String? aircraftType;

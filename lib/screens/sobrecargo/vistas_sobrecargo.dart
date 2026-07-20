@@ -2927,7 +2927,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: stateValue,
+                initialValue: stateValue,
                 decoration: const InputDecoration(
                   labelText: 'Estado de agenda',
                 ),
@@ -2946,7 +2946,7 @@ class _CalendarViewState extends State<_CalendarView> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: blockTypeValue.isEmpty ? null : blockTypeValue,
+                initialValue: blockTypeValue.isEmpty ? null : blockTypeValue,
                 decoration: const InputDecoration(labelText: 'Tipo de bloqueo'),
                 items:
                     const [
@@ -3643,7 +3643,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: _selectedStatus,
+            initialValue: _selectedStatus,
             decoration: const InputDecoration(
               labelText: 'Estado',
               border: OutlineInputBorder(),
@@ -3855,7 +3855,7 @@ class _ProfileView extends StatelessWidget {
               onChanged: (value) => onChanged('coverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: selectedProfileState,
+              initialValue: selectedProfileState,
               decoration: const InputDecoration(labelText: 'Estado perfil'),
               items:
                   profileStates
@@ -4083,7 +4083,8 @@ class _SettingsView extends StatelessWidget {
               onChanged: (value) => onChanged('personalCoverage', value),
             ),
             DropdownButtonFormField<String>(
-              value: form['escalationMode']?.toString() ?? 'Admin primero',
+              initialValue:
+                  form['escalationMode']?.toString() ?? 'Admin primero',
               decoration: const InputDecoration(labelText: 'Escalamiento'),
               items:
                   const [
@@ -4208,7 +4209,7 @@ class _DocumentComposerState extends State<_DocumentComposer> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _category,
+          initialValue: _category,
           decoration: const InputDecoration(labelText: 'Categoria'),
           items:
               const ['Certificacion', 'Identidad', 'Idioma', 'Experiencia']
@@ -4339,7 +4340,7 @@ class _DocumentTile extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: selectedStatus,
+            initialValue: selectedStatus,
             decoration: const InputDecoration(labelText: 'Estado'),
             items:
                 statusOptions

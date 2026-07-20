@@ -210,10 +210,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       return picked == null ? null : File(picked.path);
     }
 
-    final result = await FilePicker.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
+    final result = await FilePicker.pickFiles(type: FileType.image);
     final selectedPath = result?.files.single.path;
     debugPrint('[INE] PATH IMAGEN: $selectedPath');
     return selectedPath == null ? null : File(selectedPath);

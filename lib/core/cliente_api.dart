@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path/path.dart' as path;
 
+import 'config/app_environment.dart';
+
 class BackendUser {
   final String id;
   final String name;
@@ -41,19 +43,28 @@ class BackendUser {
 }
 
 class ApiClient {
-  ApiClient._();
+  ApiClient._({String? baseUrl, http.Client? httpClient})
+    : _baseUrl = _resolveBaseUrl(baseUrl),
+      _httpClient = httpClient ?? http.Client();
+
+  ApiClient.forTesting({
+    required String baseUrl,
+    required http.Client httpClient,
+  }) : _baseUrl = _resolveBaseUrl(baseUrl),
+       _httpClient = httpClient;
 
   static final ApiClient instance = ApiClient._();
-  static const String _defaultBaseUrl =
-      'https://uber-aviones.onrender.com/api/v1/';
   static const Duration _requestTimeout = Duration(seconds: 35);
   static const Duration _multipartTimeout = Duration(seconds: 60);
 
   String? _token;
+  final String _baseUrl;
+  final http.Client _httpClient;
+  Future<void> Function()? _unauthorizedHandler;
 
   bool get hasToken => _token != null && _token!.isNotEmpty;
 
-  String get baseUrl => _defaultBaseUrl;
+  String get baseUrl => _baseUrl;
 
   String get backendOrigin {
     final uri = Uri.tryParse(baseUrl);
@@ -62,7 +73,25 @@ class ApiClient {
   }
 
   void setToken(String? token) {
-    _token = token;
+    final normalized = token?.trim() ?? '';
+    _token = normalized.isEmpty ? null : normalized;
+  }
+
+  void setUnauthorizedHandler(Future<void> Function()? handler) {
+    _unauthorizedHandler = handler;
+  }
+
+  static String _resolveBaseUrl(String? explicit) {
+    final value = (explicit ?? AppEnvironment.current.apiBaseUrl).trim();
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      throw StateError('API_BASE_URL no es una URL valida.');
+    }
+    if (uri.scheme != 'https' &&
+        !const bool.fromEnvironment('ALLOW_HTTP_API')) {
+      throw StateError('API_BASE_URL debe utilizar HTTPS.');
+    }
+    return value.replaceAll(RegExp(r'/+$'), '');
   }
 
   Future<Map<String, dynamic>> login({
@@ -71,6 +100,28 @@ class ApiClient {
   }) {
     return post('/auth/login', body: {'email': email, 'password': password});
   }
+
+  Future<Map<String, dynamic>> forgotPassword(String email) => post(
+    '/auth/forgot-password',
+    body: {'email': email.trim().toLowerCase()},
+  );
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String token,
+    required String password,
+  }) => post(
+    '/auth/reset-password',
+    body: {
+      'email': email.trim().toLowerCase(),
+      'token': token,
+      'password': password,
+      'password_confirmation': password,
+    },
+  );
+
+  Future<Map<String, dynamic>> resendEmailVerification() =>
+      post('/auth/verify-email');
 
   Future<Map<String, dynamic>> registerClient({
     required String name,
@@ -254,6 +305,31 @@ class ApiClient {
 
   Future<void> logout() async {
     await post('/auth/logout', authenticated: true);
+  }
+
+  Future<void> registerDevice({
+    required String deviceUuid,
+    required String platform,
+    String? pushToken,
+    String? appVersion,
+  }) async {
+    await post(
+      '/auth/devices',
+      authenticated: true,
+      body: {
+        'device_uuid': deviceUuid,
+        'platform': platform,
+        'push_token': pushToken,
+        'app_version': appVersion,
+      },
+    );
+  }
+
+  Future<void> revokeDevice(String deviceUuid) async {
+    await delete(
+      '/auth/devices/${Uri.encodeComponent(deviceUuid)}',
+      authenticated: true,
+    );
   }
 
   Future<List<Map<String, dynamic>>> getAirports() async {
@@ -1406,9 +1482,11 @@ class ApiClient {
           'content_type': response.headers['content-type'],
         };
       }
+      if (response.statusCode == 401 && _unauthorizedHandler != null) {
+        unawaited(_unauthorizedHandler!.call());
+      }
       throw ApiException(
-        decoded['message']?.toString() ??
-            'Error HTTP ${response.statusCode} en $baseUrl',
+        ApiErrorMapper.messageFor(response.statusCode, decoded),
         statusCode: response.statusCode,
         payload: decoded,
       );
@@ -1492,9 +1570,11 @@ class ApiClient {
       request.files.add(await _buildMultipartFile(entry.key, entry.value));
     }
 
-    debugPrint(
-      '[API multipart] path=$path fields=${fields.keys.toList()} fileFields=${files.keys.toList()}',
-    );
+    if (AppEnvironment.current.allowsDiagnosticLogs) {
+      debugPrint(
+        '[API multipart] path=$path fields=${fields.keys.toList()} fileFields=${files.keys.toList()}',
+      );
+    }
     http.StreamedResponse streamedResponse;
     try {
       streamedResponse = await request.send().timeout(_multipartTimeout);
@@ -1526,9 +1606,6 @@ class ApiClient {
         cause: error,
       );
     }
-    debugPrint(
-      '[API multipart] response path=$path status=${response.statusCode} body=${response.body}',
-    );
     return _decode(response, baseUrl);
   }
 
@@ -1604,7 +1681,7 @@ class ApiClient {
     switch (method) {
       case 'POST':
         final response = await _guardHttpRequest(
-          () => http.post(
+          () => _httpClient.post(
             uri,
             headers: requestHeaders,
             body: jsonEncode(body ?? {}),
@@ -1614,7 +1691,7 @@ class ApiClient {
         return response;
       case 'PATCH':
         final response = await _guardHttpRequest(
-          () => http.patch(
+          () => _httpClient.patch(
             uri,
             headers: requestHeaders,
             body: jsonEncode(body ?? {}),
@@ -1624,7 +1701,7 @@ class ApiClient {
         return response;
       case 'PUT':
         final response = await _guardHttpRequest(
-          () => http.put(
+          () => _httpClient.put(
             uri,
             headers: requestHeaders,
             body: jsonEncode(body ?? {}),
@@ -1634,13 +1711,13 @@ class ApiClient {
         return response;
       case 'DELETE':
         final response = await _guardHttpRequest(
-          () => http.delete(uri, headers: requestHeaders),
+          () => _httpClient.delete(uri, headers: requestHeaders),
         );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
       default:
         final response = await _guardHttpRequest(
-          () => http.get(uri, headers: requestHeaders),
+          () => _httpClient.get(uri, headers: requestHeaders),
         );
         _logHttpResponse(method: method, uri: uri, response: response);
         return response;
@@ -1760,9 +1837,11 @@ class ApiClient {
             : <String, dynamic>{'data': decodedRaw};
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401 && _unauthorizedHandler != null) {
+        unawaited(_unauthorizedHandler!.call());
+      }
       throw ApiException(
-        decoded['message']?.toString() ??
-            'Error HTTP ${response.statusCode} en $candidateBaseUrl',
+        ApiErrorMapper.messageFor(response.statusCode, decoded),
         statusCode: response.statusCode,
         payload: decoded,
       );
@@ -1853,4 +1932,31 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class ApiErrorMapper {
+  const ApiErrorMapper._();
+
+  static String messageFor(int statusCode, Map<String, dynamic> payload) {
+    switch (statusCode) {
+      case 401:
+        return 'Tu sesión venció. Inicia sesión nuevamente.';
+      case 403:
+        return 'No tienes permiso para realizar esta acción.';
+      case 404:
+        return 'No se encontró la información solicitada.';
+      case 409:
+        return payload['message']?.toString() ??
+            'La información cambió. Actualiza e inténtalo nuevamente.';
+      case 422:
+        return payload['message']?.toString() ?? 'Revisa los datos capturados.';
+      case 429:
+        return 'Has realizado demasiados intentos. Espera unos minutos e inténtalo nuevamente.';
+      default:
+        if (statusCode >= 500) {
+          return 'No fue posible completar la operación. Inténtalo nuevamente.';
+        }
+        return payload['message']?.toString() ?? 'Solicitud fallida.';
+    }
+  }
 }

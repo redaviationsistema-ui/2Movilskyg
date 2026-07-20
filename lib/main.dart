@@ -9,10 +9,12 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'core/app_theme.dart';
+import 'core/config/app_environment.dart';
 import 'providers/proveedor_autenticacion.dart';
 import 'providers/proveedor_reservaciones.dart';
 import 'providers/proveedor_flujo_trabajo.dart';
 import 'screens/auth/pantalla_puerta_autenticacion.dart';
+import 'screens/auth/pantalla_recuperar_contrasena.dart';
 import 'screens/cliente/views/pantalla_historial_cliente.dart';
 import 'screens/cliente/views/pantalla_pago_cliente.dart';
 import 'services/servicio_notificaciones.dart';
@@ -89,6 +91,22 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
   }
 
   Future<void> _handlePaymentReturnLink(Uri uri) async {
+    if (uri.scheme == 'redsky' &&
+        uri.host == 'auth' &&
+        uri.path == '/reset-password') {
+      final token = uri.queryParameters['token']?.trim() ?? '';
+      final email = uri.queryParameters['email']?.trim() ?? '';
+      if (token.isEmpty || email.isEmpty) return;
+      await Future<void>.delayed(Duration.zero);
+      final navigator = _navigatorKey.currentState;
+      if (!mounted || navigator == null) return;
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => PasswordRecoveryScreen(email: email, token: token),
+        ),
+      );
+      return;
+    }
     if (uri.scheme != kMobileCheckoutReturnScheme) return;
     if (uri.host != kMobileCheckoutReturnHost) return;
     if (uri.path != kMobileCheckoutReturnPath) return;
@@ -227,6 +245,14 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) {
+        if (!AppEnvironment.current.showsEnvironmentBadge) return child!;
+        return Banner(
+          message: AppEnvironment.current.label,
+          location: BannerLocation.topEnd,
+          child: child!,
+        );
+      },
       home: const AuthGateScreen(),
     );
   }
