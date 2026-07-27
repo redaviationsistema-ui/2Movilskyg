@@ -35,13 +35,23 @@ class PushNotificationsService {
 
   static bool _initialized = false;
   static bool _firebaseReady = false;
+  static Object? _initializationError;
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   static const String _deviceUuidKey = 'red_sky_device_uuid';
   static final StreamController<Map<String, dynamic>> _openedMessages =
       StreamController<Map<String, dynamic>>.broadcast();
+  static final List<Map<String, dynamic>> _pendingOpenedMessages = [];
 
   static Stream<Map<String, dynamic>> get openedMessages =>
       _openedMessages.stream;
+  static bool get isAvailable => _firebaseReady;
+  static Object? get initializationError => _initializationError;
+
+  static List<Map<String, dynamic>> takePendingOpenedMessages() {
+    final pending = List<Map<String, dynamic>>.from(_pendingOpenedMessages);
+    _pendingOpenedMessages.clear();
+    return pending;
+  }
 
   static Future<void> initialize() async {
     if (_initialized) return;
@@ -53,22 +63,32 @@ class PushNotificationsService {
       await Firebase.initializeApp();
       _firebaseReady = true;
     } catch (error) {
-      if (AppEnvironment.current.name != AppEnvironmentName.development) {
-        throw StateError(
-          'Firebase no esta configurado para ${AppEnvironment.current.label}. '
-          'Verifica google-services.json / GoogleService-Info.plist.',
-        );
-      }
-      _diagnostic('Firebase no configurado en development.', error);
+      _firebaseReady = false;
+      _initializationError = error;
+      _diagnostic(
+        'Firebase/FCM no disponible en ${AppEnvironment.current.label}. '
+        'La app continuara sin notificaciones. Verifica google-services.json, '
+        'GoogleService-Info.plist, APNs y las credenciales FCM.',
+        error,
+      );
       return;
     }
 
-    await _initializeLocalNotifications();
-    await _requestPermissions();
-    await _configureForegroundPresentation();
-    _bindMessageStreams();
-    final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) _emitOpenedMessage(initialMessage);
+    try {
+      await _initializeLocalNotifications();
+      await _requestPermissions();
+      await _configureForegroundPresentation();
+      _bindMessageStreams();
+      final initialMessage = await _messaging.getInitialMessage();
+      if (initialMessage != null) _emitOpenedMessage(initialMessage);
+    } catch (error) {
+      _initializationError = error;
+      _diagnostic(
+        'FCM se inicializo, pero la configuracion de notificaciones fallo. '
+        'La app continuara sin notificaciones.',
+        error,
+      );
+    }
   }
 
   static Future<void> _initializeLocalNotifications() async {
@@ -131,7 +151,9 @@ class PushNotificationsService {
   }
 
   static void _emitOpenedMessage(RemoteMessage message) {
-    _openedMessages.add(Map<String, dynamic>.unmodifiable(message.data));
+    final data = Map<String, dynamic>.unmodifiable(message.data);
+    _pendingOpenedMessages.add(data);
+    _openedMessages.add(data);
   }
 
   static Future<void> syncAuthenticatedDevice() async {

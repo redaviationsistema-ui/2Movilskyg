@@ -8,6 +8,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:path/path.dart' as path;
 
 import 'config/app_environment.dart';
+import 'idempotency_key.dart';
 
 class BackendUser {
   final String id;
@@ -367,6 +368,19 @@ class ApiClient {
     ]);
   }
 
+  Future<Map<String, dynamic>> getAuthorizedClientReservation(
+    String reservationId,
+  ) {
+    final normalizedId = reservationId.trim();
+    if (normalizedId.isEmpty) {
+      throw const ApiException('La notificacion no contiene reservation_id.');
+    }
+    return getFirstAvailable([
+      '/client/reservations/$normalizedId',
+      '/cliente/reservas/$normalizedId',
+    ], authenticated: true);
+  }
+
   Future<List<Map<String, dynamic>>> getClientFlightRequests() async {
     final data = await getFirstAvailable(const [
       '/client/flight-requests',
@@ -531,6 +545,12 @@ class ApiClient {
           const ['/cliente/reservas', '/client/reservations'],
           authenticated: true,
           body: {'flight_request_id': normalizedFlightRequestId},
+          headers: {
+            'Idempotency-Key': IdempotencyKey.forOperation(
+              'create-reservation',
+              normalizedFlightRequestId,
+            ),
+          },
         );
       } on ApiException catch (error) {
         final status = error.statusCode ?? 0;
@@ -656,6 +676,14 @@ class ApiClient {
           paths,
           authenticated: true,
           body: body,
+          headers: {
+            'Idempotency-Key': IdempotencyKey.forOperation(
+              'regenerate-contract',
+              normalizedReservationId.isNotEmpty
+                  ? normalizedReservationId
+                  : normalizedFlightRequestId,
+            ),
+          },
         );
       } on ApiException catch (error) {
         final status = error.statusCode ?? 0;
@@ -803,6 +831,40 @@ class ApiClient {
       ],
       authenticated: true,
       body: body,
+      headers: {
+        'Idempotency-Key': IdempotencyKey.forOperation(
+          'create-checkout',
+          paymentPayload['reservation_id']?.toString().trim().isNotEmpty == true
+              ? paymentPayload['reservation_id'].toString()
+              : flightRequestId,
+        ),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> getClientPaymentAuthorization({
+    required String reservationId,
+    String flightRequestId = '',
+  }) {
+    final normalizedReservationId = reservationId.trim();
+    if (normalizedReservationId.isEmpty) {
+      throw const ApiException(
+        'No existe una reservacion para validar el pago.',
+      );
+    }
+    return getFirstAvailable(
+      [
+        '/client/reservations/$normalizedReservationId/payment-authorization',
+        '/cliente/reservas/$normalizedReservationId/autorizacion-pago',
+        '/client/reservations/$normalizedReservationId/checkout-readiness',
+        '/cliente/reservas/$normalizedReservationId/estado-pago',
+      ],
+      authenticated: true,
+      query: {
+        'reservation_id': normalizedReservationId,
+        if (flightRequestId.trim().isNotEmpty)
+          'flight_request_id': flightRequestId.trim(),
+      },
     );
   }
 
@@ -895,6 +957,14 @@ class ApiClient {
       ],
       authenticated: true,
       body: body,
+      headers: {
+        'Idempotency-Key': IdempotencyKey.forOperation(
+          'confirm-payment',
+          paymentPayload['reservation_id']?.toString().trim().isNotEmpty == true
+              ? paymentPayload['reservation_id'].toString()
+              : flightRequestId,
+        ),
+      },
     );
   }
 
@@ -915,6 +985,12 @@ class ApiClient {
       ],
       authenticated: true,
       body: paymentPayload,
+      headers: {
+        'Idempotency-Key': IdempotencyKey.forOperation(
+          'confirm-payment',
+          reservationId,
+        ),
+      },
     );
   }
 
@@ -1367,12 +1443,18 @@ class ApiClient {
     List<String> paths, {
     Map<String, dynamic>? body,
     bool authenticated = false,
+    Map<String, String>? headers,
   }) async {
     ApiException? lastError;
 
     for (final path in paths) {
       try {
-        return await post(path, body: body, authenticated: authenticated);
+        return await post(
+          path,
+          body: body,
+          authenticated: authenticated,
+          headers: headers,
+        );
       } on ApiException catch (error) {
         if (!_shouldTryAlternative(error)) rethrow;
         lastError = error;
@@ -1387,6 +1469,7 @@ class ApiClient {
     List<String> paths, {
     Map<String, dynamic>? body,
     bool authenticated = false,
+    Map<String, String>? headers,
   }) async {
     ApiException? lastError;
 
@@ -1398,6 +1481,7 @@ class ApiClient {
             method: method,
             authenticated: authenticated,
             body: body,
+            headers: headers,
           );
         } on ApiException catch (error) {
           if (!_shouldTryAlternative(error)) rethrow;
@@ -1512,12 +1596,14 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
     bool authenticated = false,
+    Map<String, String>? headers,
   }) async {
     return _request(
       path,
       method: 'POST',
       authenticated: authenticated,
       body: body,
+      headers: headers,
     );
   }
 
@@ -1655,6 +1741,7 @@ class ApiClient {
     required bool authenticated,
     Map<String, dynamic>? body,
     Map<String, String>? query,
+    Map<String, String>? headers,
   }) async {
     final response = await _send(
       baseUrl,
@@ -1663,6 +1750,7 @@ class ApiClient {
       authenticated: authenticated,
       body: body,
       query: query,
+      headers: headers,
     );
     return _decode(response, baseUrl);
   }
@@ -1674,9 +1762,13 @@ class ApiClient {
     required bool authenticated,
     Map<String, dynamic>? body,
     Map<String, String>? query,
+    Map<String, String>? headers,
   }) async {
     final uri = _uri(candidate, path, query);
-    final requestHeaders = _headers(authenticated: authenticated);
+    final requestHeaders = {
+      ..._headers(authenticated: authenticated),
+      ...?headers,
+    };
 
     switch (method) {
       case 'POST':
@@ -1929,6 +2021,21 @@ class ApiException implements Exception {
   final Map<String, dynamic>? payload;
 
   const ApiException(this.message, {this.statusCode, this.cause, this.payload});
+
+  bool get isAircraftNotAvailable {
+    if (statusCode != 409) return false;
+    final values = [
+      payload?['code'],
+      payload?['error_code'],
+      payload?['error'],
+      payload?['message'],
+      message,
+    ];
+    return values.any(
+      (value) =>
+          value.toString().toUpperCase().contains('AIRCRAFT_NOT_AVAILABLE'),
+    );
+  }
 
   @override
   String toString() => message;

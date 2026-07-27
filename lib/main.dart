@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 
 import 'core/app_theme.dart';
 import 'core/config/app_environment.dart';
+import 'core/replay_guard.dart';
 import 'providers/proveedor_autenticacion.dart';
 import 'providers/proveedor_reservaciones.dart';
 import 'providers/proveedor_flujo_trabajo.dart';
@@ -29,7 +30,16 @@ Future<void> main() async {
   Intl.defaultLocale = 'es_MX';
   await initializeDateFormatting('es_MX');
   await initializeDateFormatting('es');
-  await PushNotificationsService.initialize();
+  try {
+    await PushNotificationsService.initialize();
+  } catch (error) {
+    // Las notificaciones son una capacidad opcional. Un problema de Firebase,
+    // FCM o APNs nunca debe bloquear autenticacion, cotizacion ni reservas.
+    debugPrint(
+      '[PUSH] Inicializacion no disponible; la app continuara sin push: '
+      '${error.runtimeType}',
+    );
+  }
 
   runApp(const MyApp());
 }
@@ -61,7 +71,7 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _paymentLinkSubscription;
-  String _lastHandledPaymentLink = '';
+  final ReplayGuard _paymentLinkReplayGuard = ReplayGuard();
 
   @override
   void initState() {
@@ -112,9 +122,8 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
     if (uri.path != kMobileCheckoutReturnPath) return;
 
     final linkKey = uri.toString();
-    if (_lastHandledPaymentLink == linkKey) return;
     if (ClientPaymentScreen.hasActiveCommercialAccessHandler) return;
-    _lastHandledPaymentLink = linkKey;
+    if (!_paymentLinkReplayGuard.accept(linkKey)) return;
 
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;

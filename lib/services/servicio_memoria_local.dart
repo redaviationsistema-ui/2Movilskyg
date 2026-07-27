@@ -264,6 +264,12 @@ class LocalCacheService {
     return rows.first['value'] as String?;
   }
 
+  Future<void> deleteMetadata(String key) async {
+    await _withWriteRecovery((db) async {
+      await db.delete(metadataTable, where: 'key = ?', whereArgs: [key]);
+    });
+  }
+
   Future<void> clearUserData() async {
     await _withWriteRecovery((db) async {
       final batch = db.batch();

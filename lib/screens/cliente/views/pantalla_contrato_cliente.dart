@@ -56,7 +56,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     exportBackgroundColor: kWhite,
   );
   bool _accepted = false;
-  bool _submitting = false;
+  final bool _submitting = false;
   bool _externalSigning = false;
   bool _downloading = false;
   bool _waitingForExternalSignatureReturn = false;
@@ -614,87 +614,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       _drawnSignatureController.isNotEmpty;
 
   Future<void> _signAndContinue() async {
-    final accessState = resolveCommercialAccessState(
-      context.read<AuthProvider>().accessData,
-    );
-    if (!accessState.canReserve) {
-      setState(() {
-        _submitMessage = accessState.reservationBlockedMessage;
-      });
-      return;
-    }
-
-    final request = widget.request;
-    final auth = context.read<AuthProvider>();
-    final contractModel = _contractModelForRequest(request, auth: auth);
-    final reservationId = _reservationId(request);
-    final flightRequestId = _flightRequestId(request);
-    final contractEntityId = _contractEntityId(request);
-
-    if (contractEntityId.isEmpty) {
-      setState(() {
-        _submitMessage =
-            'No se encontro un identificador del contrato para guardar la firma.';
-      });
-      return;
-    }
-
-    setState(() {
-      _submitting = true;
-      _submitMessage = 'Guardando firma del contrato...';
-    });
-
-    try {
-      final signatureBytes = await _drawnSignatureController.toPngBytes();
-      if (signatureBytes == null || signatureBytes.isEmpty) {
-        throw const ApiException('Dibuja tu firma antes de continuar.');
-      }
-
-      final signatureDataUrl =
-          'data:image/png;base64,${base64Encode(signatureBytes)}';
-      final payload = {
-        'reservation_id': reservationId,
-        'flight_request_id': flightRequestId,
-        'booking_id':
-            reservationId.isNotEmpty ? reservationId : contractEntityId,
-        'status': 'pending_payment',
-        'workflow_status': 'pago pendiente',
-        'contract_status': 'signed',
-        'payment_status': 'pending',
-        'signed_at': DateTime.now().toIso8601String(),
-        'signature': {
-          'type': 'drawn',
-          'name': _signatureController.text.trim(),
-          'data_url': signatureDataUrl,
-        },
-        'contract_snapshot': contractModel.toSnapshot(),
-      };
-
-      await _markContractReadyForPayment(
-        reservationId: contractEntityId,
-        payload: payload,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _submitMessage = 'Contrato firmado. Actualizando tus vuelos...';
-      });
-      widget.onConfirm();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _submitMessage = error.message;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _submitMessage = 'No fue posible guardar la firma: $error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
+    // Flutter nunca declara una firma como valida. La firma dibujada solo
+    // expresa consentimiento visual; DocuSign y el backend son la autoridad.
+    await _openExternalSignature();
   }
 
   Future<void> _openExternalSignature() async {
@@ -746,21 +668,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       if (reservationId.trim().isEmpty) {
         debugPrint('[DocuSign] reservation creada: $resolvedReservationId');
       }
-      final contractSnapshot = contractModel.toSnapshot(
-        reservationId: resolvedReservationId,
-        flightRequestId: flightRequestId,
-        clientSignatureAnchor: '/sig_cliente/',
-      );
-      final assets = await Future.wait([
-        _assetToDataUrl('assets/Logo.png'),
-        _assetToDataUrl('assets/contract_margin.png'),
-      ]);
-      final fullContractHtml = _buildContractHtmlDocument(
-        model: contractModel,
-        logoSrc: assets[0],
-        headerSrc: assets[1],
-      );
-      final fullContractPlainText = _buildContractPlainText(contractModel);
       final returnUrl = _buildDocuSignReturnUrl(
         reservationId: resolvedReservationId,
         flightRequestId: flightRequestId,
@@ -782,31 +689,16 @@ class _ClientContractScreenState extends State<ClientContractScreen>
               'flight_request_id': flightRequestId,
               'client_name': contractModel.customerName,
               'client_email': customerEmail,
-              'route': contractModel.routeLabel,
-              'flight_date': contractModel.compactDepartureLabel,
-              'aircraft': contractModel.aircraftLabel,
-              'total': contractModel.finalPriceLabel,
-              'currency': 'USD',
               'return_url': returnUrl,
               'callback_url': returnUrl,
               'return_path': kDocuSignReturnPath,
-              'contract_snapshot': contractSnapshot,
-              'contract_html': fullContractHtml,
-              'contract_markup': fullContractHtml,
-              'contract_plain_text': fullContractPlainText,
-              'document_html': fullContractHtml,
-              'full_contract_html': fullContractHtml,
-              'full_contract_text': fullContractPlainText,
-              'source_contract_path': _buildContractSourcePath(
-                resolvedReservationId,
-              ),
-              'document_source': 'client_contract_full_html',
               'regenerate': true,
               'docusign': {
                 'provider': 'docusign',
                 'client_signature_anchor': '/sig_cliente/',
               },
               'return_context': 'mobile',
+              'document_source': 'immutable_reservation_snapshot',
             },
           );
         } on ApiException catch (error) {
@@ -913,16 +805,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     } finally {
       if (mounted) setState(() => _externalSigning = false);
     }
-  }
-
-  Future<void> _markContractReadyForPayment({
-    required String reservationId,
-    required Map<String, dynamic> payload,
-  }) {
-    return ApiClient.instance.signClientContract(
-      reservationId: reservationId,
-      contractPayload: payload,
-    );
   }
 
   Future<void> _downloadContractPdf() async {
@@ -1104,45 +986,14 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
   bool _contractReadyForPayment(Map<String, dynamic>? payload) {
     if (payload == null || payload.isEmpty) return false;
-    final state = _nestedMap(payload['frontend_state']);
     final contract = _nestedMap(payload['contract']);
     final data = _nestedMap(payload['data']);
-    final nestedState = _nestedMap(contract['frontend_state']);
-
-    final ready =
-        state['ready_for_payment'] == true ||
-        nestedState['ready_for_payment'] == true ||
-        data['ready_for_payment'] == true;
-    final nextAction = _firstNonEmpty([
-      _firstText(payload, const ['next_action']),
-      _firstText(state, const ['next_action']),
-      _firstText(nestedState, const ['next_action']),
-    ]);
-    final status = _firstNonEmpty([
-      _firstText(payload, const [
-        'docusign_status',
-        'envelope_status',
-        'status',
-        'contract_status',
-      ]),
-      _firstText(contract, const ['docusign_status', 'status']),
-      _firstText(state, const ['ui_status', 'docusign_status', 'status']),
-      _firstText(nestedState, const ['ui_status', 'docusign_status', 'status']),
-    ]);
-    final signedPdf = _firstNonEmpty([
-      _firstText(payload, const ['signed_pdf_url', 'signedPdfUrl']),
-      _firstText(contract, const ['signed_pdf_url', 'signedPdfUrl']),
-      _firstText(state, const ['signed_pdf_url', 'signedPdfUrl']),
-      _firstText(nestedState, const ['signed_pdf_url', 'signedPdfUrl']),
-    ]);
-
-    final normalizedStatus = status.toLowerCase();
-    return ready ||
-        nextAction == 'go_to_payment' ||
-        nextAction == 'go_to_history' ||
-        normalizedStatus == 'completed' ||
-        normalizedStatus == 'signed' ||
-        signedPdf.isNotEmpty;
+    final dataContract = _nestedMap(data['contract']);
+    return [payload, data, contract, dataContract].any((source) {
+      return const ['docusign_status', 'envelope_status'].any(
+        (key) => source[key]?.toString().trim().toLowerCase() == 'completed',
+      );
+    });
   }
 
   Map<String, dynamic> _nestedMap(dynamic value) {

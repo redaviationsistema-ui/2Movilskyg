@@ -79,7 +79,7 @@ class ClientHeroCard extends StatelessWidget {
   final String primaryLabel;
   final VoidCallback primaryAction;
   final String secondaryLabel;
-  final VoidCallback secondaryAction;
+  final VoidCallback? secondaryAction;
 
   @override
   Widget build(BuildContext context) {

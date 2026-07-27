@@ -498,91 +498,6 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void markPaymentConfirmed({
-    required String flightRequestId,
-    String reservationId = '',
-    String paymentIntentId = '',
-    String brand = '',
-  }) {
-    if (flightRequestId.trim().isEmpty && reservationId.trim().isEmpty) return;
-
-    final paidAt = DateTime.now().toIso8601String();
-    final normalizedFlightRequestId = flightRequestId.trim();
-    final normalizedReservationId = reservationId.trim();
-
-    flightRequests =
-        flightRequests.map((row) {
-          final item = Map<String, dynamic>.from(row);
-          final itemId = _resolveEntityId(item) ?? '';
-          final itemFlightRequestId =
-              _resolveEntityId(item['flight_request_id']) ??
-              _resolveEntityId(_nestedMap(item['flight_request'])['id']) ??
-              '';
-          final itemReservationId =
-              _resolveEntityId(item['reservation_id']) ??
-              _resolveEntityId(_nestedMap(item['reservation'])['id']) ??
-              '';
-
-          final matches =
-              (normalizedFlightRequestId.isNotEmpty &&
-                  (itemId == normalizedFlightRequestId ||
-                      itemFlightRequestId == normalizedFlightRequestId)) ||
-              (normalizedReservationId.isNotEmpty &&
-                  itemReservationId == normalizedReservationId);
-
-          if (!matches) return item;
-
-          final reservation = _nestedMap(item['reservation']);
-          final payments =
-              item['payments'] is List
-                  ? List<Map<String, dynamic>>.from(
-                    (item['payments'] as List).whereType<Map>().map(
-                      (payment) => Map<String, dynamic>.from(payment),
-                    ),
-                  )
-                  : <Map<String, dynamic>>[];
-
-          return {
-            ...item,
-            if (normalizedFlightRequestId.isNotEmpty)
-              'flight_request_id': normalizedFlightRequestId,
-            if (normalizedReservationId.isNotEmpty)
-              'reservation_id': normalizedReservationId,
-            'payment_method': 'card',
-            'payment_status': 'paid',
-            'payment_completed': true,
-            'is_paid': true,
-            'status': 'confirmed',
-            'booking_status': 'confirmed',
-            'workflow_status': 'pago confirmado',
-            if (paymentIntentId.isNotEmpty)
-              'stripe_payment_intent_id': paymentIntentId,
-            'updated_at': paidAt,
-            'payments': [
-              {
-                'status': 'paid',
-                'paid_at': paidAt,
-                if (brand.isNotEmpty) 'brand': brand,
-                if (paymentIntentId.isNotEmpty)
-                  'stripe_payment_intent_id': paymentIntentId,
-              },
-              ...payments,
-            ],
-            'reservation': {
-              ...reservation,
-              if (normalizedReservationId.isNotEmpty)
-                'id': normalizedReservationId,
-              'status': 'confirmed',
-              'booking_status': 'confirmed',
-              'payment_status': 'paid',
-              'confirmed_at': reservation['confirmed_at'] ?? paidAt,
-            },
-          };
-        }).toList();
-
-    notifyListeners();
-  }
-
   void markPaymentPending({
     required String flightRequestId,
     String reservationId = '',
@@ -618,7 +533,6 @@ class ReservationProvider extends ChangeNotifier {
           if (!matches) return item;
 
           final reservation = _nestedMap(item['reservation']);
-          final contract = _nestedMap(item['contract']);
           final paymentOrder = _nestedMap(item['payment_order']);
           final payments = _paymentsFromRow(item);
 
@@ -635,7 +549,6 @@ class ReservationProvider extends ChangeNotifier {
             'status': 'payment_pending',
             'booking_status': 'pending_payment',
             'workflow_status': 'pago pendiente',
-            'contract_status': 'signed',
             if (checkoutSessionId.isNotEmpty)
               'checkout_session_id': checkoutSessionId,
             if (checkoutSessionId.isNotEmpty)
@@ -658,10 +571,6 @@ class ReservationProvider extends ChangeNotifier {
               },
               ...payments,
             ],
-            'contract': {
-              ...contract,
-              'contract_status': contract['contract_status'] ?? 'signed',
-            },
             'reservation': {
               ...reservation,
               if (normalizedReservationId.isNotEmpty)
@@ -669,7 +578,6 @@ class ReservationProvider extends ChangeNotifier {
               'status': 'pending_payment',
               'booking_status': 'pending_payment',
               'payment_status': 'pending',
-              'contract_status': 'signed',
               if (checkoutSessionId.isNotEmpty)
                 'checkout_session_id': checkoutSessionId,
               if (checkoutSessionId.isNotEmpty)
@@ -2555,6 +2463,125 @@ class ReservationProvider extends ChangeNotifier {
     selectedQuoteMatch =
         value == null ? null : Map<String, dynamic>.from(value);
     notifyListeners();
+  }
+
+  void handleAircraftUnavailable(Map<String, dynamic> request) {
+    final unavailableId =
+        _firstText(request, const ['aircraft_id', 'assigned_aircraft_id']) ??
+        _firstText(_nestedMap(request['aircraft']), const ['id']) ??
+        '';
+    final unavailableMatchId =
+        _firstText(request, const ['match_id', 'matched_option_id']) ?? '';
+
+    selectedAircraft = null;
+    selectedQuoteMatch = null;
+    quoteMatches =
+        quoteMatches.where((quote) {
+          final quoteAircraftId =
+              _firstText(quote, const [
+                'aircraft_id',
+                'assigned_aircraft_id',
+              ]) ??
+              _firstText(_nestedMap(quote['aircraft']), const ['id']) ??
+              '';
+          final quoteMatchId =
+              _firstText(quote, const [
+                'match_id',
+                'matched_option_id',
+                'id',
+              ]) ??
+              '';
+          if (unavailableId.isNotEmpty && quoteAircraftId == unavailableId) {
+            return false;
+          }
+          if (unavailableMatchId.isNotEmpty &&
+              quoteMatchId == unavailableMatchId) {
+            return false;
+          }
+          return true;
+        }).toList();
+    quoteError =
+        'La aeronave seleccionada ya no esta disponible. Elige otra opcion; tu solicitud y datos de busqueda se conservaron.';
+    notifyListeners();
+  }
+
+  Map<String, dynamic> exportSearchDraft() {
+    return {
+      'passengers': passengers,
+      'trip_type': currentTripTypeCode,
+      'trip_label': bookingTripLabel,
+      'priority_type': selectedPriorityType,
+      'pets': pets,
+      'special_baggage': specialBaggage,
+      'preference': preference,
+      'concierge_requested': conciergeRequested,
+      'selected_aircraft_id': selectedAircraft?.id ?? '',
+      'routes':
+          routes.map((route) {
+            return {
+              'origin': _backendAirportCode(route.fromAirport),
+              'destination': _backendAirportCode(route.toAirport),
+              'departure_datetime': route.startDate?.toIso8601String(),
+              'end_datetime': route.endDate?.toIso8601String(),
+              'passengers': route.passengers,
+            };
+          }).toList(),
+    };
+  }
+
+  void restoreSearchDraft(Map<String, dynamic> draft) {
+    if (draft.isEmpty) return;
+    passengers = int.tryParse(draft['passengers']?.toString() ?? '') ?? 1;
+    bookingTripLabel = draft['trip_label']?.toString() ?? bookingTripLabel;
+    selectedPriorityType =
+        draft['priority_type']?.toString() ?? selectedPriorityType;
+    pets = draft['pets']?.toString() ?? '';
+    specialBaggage = draft['special_baggage']?.toString() ?? '';
+    preference = draft['preference']?.toString() ?? '';
+    conciergeRequested = draft['concierge_requested'] == true;
+
+    final rawRoutes = draft['routes'];
+    if (rawRoutes is List && rawRoutes.isNotEmpty) {
+      routes =
+          rawRoutes.whereType<Map>().map((raw) {
+            final row = Map<String, dynamic>.from(raw);
+            return RouteModel(
+              fromAirport: _findAirportByCode(row['origin']?.toString() ?? ''),
+              toAirport: _findAirportByCode(
+                row['destination']?.toString() ?? '',
+              ),
+              startDate: DateTime.tryParse(
+                row['departure_datetime']?.toString() ?? '',
+              ),
+              endDate: DateTime.tryParse(row['end_datetime']?.toString() ?? ''),
+              passengers:
+                  int.tryParse(row['passengers']?.toString() ?? '') ??
+                  passengers,
+            );
+          }).toList();
+    }
+
+    final aircraftId = draft['selected_aircraft_id']?.toString() ?? '';
+    selectedAircraft =
+        aircraftId.isEmpty
+            ? null
+            : aircraftFleet.cast<Aircraft?>().firstWhere(
+              (item) => item?.id == aircraftId,
+              orElse: () => null,
+            );
+    notifyListeners();
+  }
+
+  Airport? _findAirportByCode(String code) {
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty) return null;
+    for (final airport in airports) {
+      if ((airport.icao ?? '').trim().toUpperCase() == normalized ||
+          (airport.iata ?? '').trim().toUpperCase() == normalized) {
+        return airport;
+      }
+    }
+    return null;
   }
 
   void resetRoutes() {

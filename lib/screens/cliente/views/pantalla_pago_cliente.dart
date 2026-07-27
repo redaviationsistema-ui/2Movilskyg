@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
+import '../../../core/payment_authorization_state.dart';
+import '../../../core/replay_guard.dart';
 import '../../../core/stripe_checkout_flow.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -32,6 +34,7 @@ class ClientPaymentScreen extends StatefulWidget {
     this.commercialAccessMode = false,
     this.showBackButton = true,
     this.initialCheckoutReturnUri,
+    this.onAircraftUnavailable,
   });
 
   final Map<String, dynamic> request;
@@ -41,6 +44,7 @@ class ClientPaymentScreen extends StatefulWidget {
   final bool commercialAccessMode;
   final bool showBackButton;
   final Uri? initialCheckoutReturnUri;
+  final ValueChanged<Map<String, dynamic>>? onAircraftUnavailable;
 
   static int _activeCommercialAccessHandlers = 0;
   static int _activeReservationPaymentHandlers = 0;
@@ -80,7 +84,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   String _reservationCheckoutFlightRequestId = '';
   String _reservationCheckoutReservationId = '';
   String _stripeCardError = '';
-  String _lastHandledCheckoutReturnUri = '';
+  final ReplayGuard _checkoutReturnReplayGuard = ReplayGuard();
   Map<String, dynamic>? _cardPaymentIntentSeed;
   StreamSubscription<Uri>? _appLinkSubscription;
   Timer? _reservationCheckoutOpeningTimer;
@@ -282,6 +286,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       });
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (error.isAircraftNotAvailable) {
+        context.read<ReservationProvider>().handleAircraftUnavailable(
+          widget.request,
+        );
+        widget.onAircraftUnavailable?.call(widget.request);
+      }
       setState(() {
         _stripeCardReady = false;
         _stripeCardError = error.message;
@@ -358,8 +368,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     if (uri.host != kMobileCheckoutReturnHost) return;
     if (uri.path != kMobileCheckoutReturnPath) return;
     final uriKey = uri.toString();
-    if (_lastHandledCheckoutReturnUri == uriKey) return;
-    _lastHandledCheckoutReturnUri = uriKey;
+    if (!_checkoutReturnReplayGuard.accept(uriKey)) return;
 
     final returnContext = parseReservationCheckoutReturn(
       uri,
@@ -1185,12 +1194,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                   'reservation_id': effectiveReservationId,
                 },
               );
-      final responseReservationId = _responseReservationId(intent);
-      final confirmedReservationId =
-          responseReservationId.isNotEmpty
-              ? responseReservationId
-              : effectiveReservationId;
-
       var status = _paymentStatus(intent);
       final clientSecret = _clientSecret(intent);
       final publishableKey = _publishableKey(intent);
@@ -1228,17 +1231,18 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       if (status == 'succeeded' || status == 'paid') {
-        reservationProvider.markPaymentConfirmed(
-          flightRequestId: flightRequestId,
-          reservationId: confirmedReservationId,
-          paymentIntentId: _paymentIntentId(intent),
-          brand: _cardBrand(),
+        await reservationProvider.loadClientWorkspaceData(force: true);
+        final backendSnapshot = _matchingRequestFromProvider(
+          reservationProvider,
         );
-        await _persistConfirmedReservationPayment(
-          flightRequestId: flightRequestId,
-          reservationId: confirmedReservationId,
-          payload: intent,
-        );
+        if (!_requestIndicatesPaymentConfirmed(backendSnapshot)) {
+          if (!mounted) return;
+          setState(() {
+            _inlineMessage =
+                'Stripe recibio el pago. Esperando confirmacion final del backend.';
+          });
+          return;
+        }
         if (!mounted) return;
         await _redirectToTripsAfterConfirmedReservation(
           message: 'Pago confirmado. Abriendo tus vuelos...',
@@ -1525,9 +1529,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     _scheduleReservationCheckoutOpeningTimeout();
 
     try {
-      if (!_contractAllowsPayment(widget.request)) {
-        unawaited(_resolveContractSignedState());
-      }
       final effectiveReservationId =
           reservationId.isNotEmpty
               ? reservationId
@@ -1541,10 +1542,25 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       final paymentPayload = _reservationCheckoutPayload(
         reservationId: effectiveReservationId,
       );
-      await _syncReservationReadyForCheckout(
-        reservationId: effectiveReservationId,
-        flightRequestId: effectiveFlightRequestId,
+      final authorizationPayload = await ApiClient.instance
+          .getClientPaymentAuthorization(
+            reservationId: effectiveReservationId,
+            flightRequestId: effectiveFlightRequestId,
+          );
+      final authorization = PaymentAuthorizationState.fromBackend(
+        authorizationPayload,
       );
+      if (!authorization.isAuthorized) {
+        if (!authorization.aircraftAvailable) {
+          throw ApiException(
+            authorization.message,
+            statusCode: 409,
+            payload: const {'code': 'AIRCRAFT_NOT_AVAILABLE'},
+          );
+        }
+        throw ApiException(authorization.message, statusCode: 403);
+      }
+      _mergeRequestSnapshot(authorizationPayload);
       _debugStripeCheckoutState(
         label: 'antes_checkout',
         flightRequestId: effectiveFlightRequestId,
@@ -1624,10 +1640,18 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         '[Pago][StripeCheckout] error_backend=${error.message} payload=${jsonEncode(error.payload ?? const {})}',
       );
       if (!mounted) return;
+      if (error.isAircraftNotAvailable) {
+        context.read<ReservationProvider>().handleAircraftUnavailable(
+          widget.request,
+        );
+        widget.onAircraftUnavailable?.call(widget.request);
+      }
       setState(() {
         _clearReservationCheckoutOpeningState();
         _inlineMessage =
-            _isContractGateError(error)
+            error.isAircraftNotAvailable
+                ? 'La aeronave ya no esta disponible. Conservamos tu solicitud para que elijas otra opcion.'
+                : _isContractGateError(error)
                 ? 'La firma ya fue enviada. Estamos sincronizando el estado de pago; vuelve a tocar Abrir Stripe Checkout en unos segundos.'
                 : error.message;
       });
@@ -1640,41 +1664,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       });
     } finally {
       if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  Future<void> _syncReservationReadyForCheckout({
-    required String reservationId,
-    required String flightRequestId,
-  }) async {
-    final normalizedReservationId = reservationId.trim();
-    if (normalizedReservationId.isEmpty) return;
-
-    final payload = {
-      'reservation_id': normalizedReservationId,
-      'booking_id': normalizedReservationId,
-      if (flightRequestId.trim().isNotEmpty)
-        'flight_request_id': flightRequestId.trim(),
-      'status': 'pending_payment',
-      'workflow_status': 'pago pendiente',
-      'contract_status': 'signed',
-      'payment_status': 'pending',
-      'frontend_state': {
-        'ready_for_payment': true,
-        'next_action': 'go_to_payment',
-        'ui_status': 'ready_for_payment',
-      },
-      'signed_at': DateTime.now().toIso8601String(),
-    };
-
-    try {
-      final synced = await ApiClient.instance.signClientContract(
-        reservationId: normalizedReservationId,
-        contractPayload: payload,
-      );
-      _mergeRequestSnapshot(synced);
-    } catch (error) {
-      debugPrint('[Pago][ready_for_checkout_sync_ignored] $error');
     }
   }
 
@@ -1824,22 +1813,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       );
 
       if (_requestIndicatesPaymentConfirmed(currentSnapshot)) {
-        final effectiveReservationId =
-            _effectiveReservationId(currentSnapshot).isNotEmpty
-                ? _effectiveReservationId(currentSnapshot)
-                : reservationId;
-        await _persistConfirmedReservationPayment(
-          flightRequestId: flightRequestId,
-          reservationId: effectiveReservationId,
-          payload: currentSnapshot,
-          paymentMethod: 'stripe_checkout',
-        );
-        reservationProvider.markPaymentConfirmed(
-          flightRequestId: flightRequestId,
-          reservationId: effectiveReservationId,
-          paymentIntentId: _paymentIntentId(currentSnapshot),
-          brand: _cardBrand(),
-        );
+        await reservationProvider.loadClientWorkspaceData(force: true);
         if (!mounted) return;
         setState(() {
           _isValidatingPayment = false;
@@ -1903,52 +1877,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           }
         });
       }
-    }
-  }
-
-  Future<void> _persistConfirmedReservationPayment({
-    required String flightRequestId,
-    required String reservationId,
-    required Map<String, dynamic> payload,
-    String paymentMethod = 'card',
-  }) async {
-    final confirmationPayload = <String, dynamic>{
-      'reservation_id': reservationId,
-      'flight_request_id': flightRequestId,
-      'payment_intent_id': _paymentIntentId(payload),
-      'status': 'confirmed',
-      'booking_status': 'confirmed',
-      'workflow_status': 'vuelo confirmado',
-      'payment_status': 'paid',
-      if (paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
-      if (_reservationCheckoutSessionId.trim().isNotEmpty)
-        'checkout_session_id': _reservationCheckoutSessionId.trim(),
-      if (_reservationCheckoutSessionId.trim().isNotEmpty)
-        'stripe_checkout_session_id': _reservationCheckoutSessionId.trim(),
-    };
-
-    if (paymentMethod == 'card') {
-      confirmationPayload['brand'] = _cardBrand();
-    }
-
-    try {
-      await ApiClient.instance.confirmClientPaymentIntent(
-        flightRequestId: flightRequestId,
-        paymentPayload: confirmationPayload,
-      );
-    } on ApiException catch (error) {
-      if (!_isMissingPaymentConfirmRoute(error)) rethrow;
-    }
-
-    if (reservationId.isEmpty) return;
-
-    try {
-      await ApiClient.instance.confirmClientPayment(
-        reservationId: reservationId,
-        paymentPayload: confirmationPayload,
-      );
-    } on ApiException catch (error) {
-      if (!_isMissingPaymentConfirmRoute(error)) rethrow;
     }
   }
 
@@ -2922,57 +2850,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   bool _readyForPayment(Map<String, dynamic> payload) {
-    final state = _asStringKeyMap(payload['frontend_state']);
-    final contract = _asStringKeyMap(payload['contract']);
-    final reservation = _asStringKeyMap(payload['reservation']);
     final data = _asStringKeyMap(payload['data']);
-    final dataState = _asStringKeyMap(data['frontend_state']);
+    final contract = _asStringKeyMap(payload['contract']);
     final dataContract = _asStringKeyMap(data['contract']);
-    final dataReservation = _asStringKeyMap(data['reservation']);
-    final reservationState = _asStringKeyMap(reservation['frontend_state']);
-    final nestedState = _asStringKeyMap(contract['frontend_state']);
-    final dataReservationState = _asStringKeyMap(
-      dataReservation['frontend_state'],
-    );
-    final dataContractState = _asStringKeyMap(dataContract['frontend_state']);
-    final statusSummary = _asStringKeyMap(payload['status_summary']);
-    final dataStatusSummary = _asStringKeyMap(data['status_summary']);
-    final nextAction =
-        _firstTextFromMaps(
-          const ['next_action', 'nextAction'],
-          [
-            payload,
-            state,
-            reservation,
-            reservationState,
-            contract,
-            nestedState,
-            data,
-            dataState,
-            dataReservation,
-            dataReservationState,
-            dataContract,
-            dataContractState,
-          ],
-        ).toLowerCase();
-
-    return _isTruthyValue(state['ready_for_payment']) ||
-        _isTruthyValue(reservation['ready_for_payment']) ||
-        _isTruthyValue(reservationState['ready_for_payment']) ||
-        _isTruthyValue(contract['ready_for_payment']) ||
-        _isTruthyValue(nestedState['ready_for_payment']) ||
-        _isTruthyValue(data['ready_for_payment']) ||
-        _isTruthyValue(dataState['ready_for_payment']) ||
-        _isTruthyValue(dataReservation['ready_for_payment']) ||
-        _isTruthyValue(dataReservationState['ready_for_payment']) ||
-        _isTruthyValue(dataContract['ready_for_payment']) ||
-        _isTruthyValue(dataContractState['ready_for_payment']) ||
-        _isTruthyValue(statusSummary['payment_enabled']) ||
-        _isTruthyValue(statusSummary['is_signed']) ||
-        _isTruthyValue(dataStatusSummary['payment_enabled']) ||
-        _isTruthyValue(dataStatusSummary['is_signed']) ||
-        nextAction == 'go_to_payment' ||
-        nextAction == 'go_to_history';
+    return _hasCompletedDocuSignStatus([payload, data, contract, dataContract]);
   }
 
   bool _isContractSigned(Map<String, dynamic> request) {
@@ -2996,118 +2877,30 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final statusSummary = _asStringKeyMap(request['status_summary']);
     final dataStatusSummary = _asStringKeyMap(data['status_summary']);
 
-    final status =
-        _firstTextFromMaps(
-          const [
-            'docusign_status',
-            'contract_status',
-            'signature_status',
-            'ui_status',
-            'status',
-            'workflow_status',
-            'envelope_status',
-          ],
-          [
-            request,
-            data,
-            reservation,
-            dataReservation,
-            contract,
-            dataContract,
-            frontendState,
-            dataFrontendState,
-            reservationFrontendState,
-            dataReservationFrontendState,
-            contractFrontendState,
-            dataContractFrontendState,
-            statusSummary,
-            dataStatusSummary,
-          ],
-        ).toLowerCase();
+    return _hasCompletedDocuSignStatus([
+      request,
+      data,
+      reservation,
+      dataReservation,
+      contract,
+      dataContract,
+      frontendState,
+      dataFrontendState,
+      reservationFrontendState,
+      dataReservationFrontendState,
+      contractFrontendState,
+      dataContractFrontendState,
+      statusSummary,
+      dataStatusSummary,
+    ]);
+  }
 
-    if (const {
-      'signed',
-      'contract_signed',
-      'completed',
-      'complete',
-      'approved',
-      'firmado',
-      'contrato firmado',
-      'pago pendiente',
-      'payment_pending',
-      'payment_confirmed',
-      'paid',
-      'signing_complete',
-      'signing_completed',
-    }.contains(status)) {
-      return true;
-    }
-
-    final signedPdf = _firstTextFromMaps(
-      const [
-        'signed_pdf_url',
-        'signedPdfUrl',
-        'contract_pdf_url',
-        'contract_url',
-        'contract_document_url',
-      ],
-      [
-        request,
-        data,
-        reservation,
-        dataReservation,
-        contract,
-        dataContract,
-        frontendState,
-        dataFrontendState,
-        reservationFrontendState,
-        dataReservationFrontendState,
-        contractFrontendState,
-        dataContractFrontendState,
-      ],
-    );
-    if (signedPdf.isNotEmpty) return true;
-
-    return _isTruthyValue(request['contract_signed']) ||
-        _isTruthyValue(request['contract_completed']) ||
-        _isTruthyValue(request['contract_ready']) ||
-        _isTruthyValue(data['contract_signed']) ||
-        _isTruthyValue(data['contract_completed']) ||
-        _isTruthyValue(data['contract_ready']) ||
-        _isTruthyValue(reservation['contract_signed']) ||
-        _isTruthyValue(reservation['contract_completed']) ||
-        _isTruthyValue(reservation['contract_ready']) ||
-        _isTruthyValue(dataReservation['contract_signed']) ||
-        _isTruthyValue(dataReservation['contract_completed']) ||
-        _isTruthyValue(dataReservation['contract_ready']) ||
-        _isTruthyValue(contract['contract_signed']) ||
-        _isTruthyValue(contract['contract_completed']) ||
-        _isTruthyValue(contract['contract_ready']) ||
-        _isTruthyValue(dataContract['contract_signed']) ||
-        _isTruthyValue(dataContract['contract_completed']) ||
-        _isTruthyValue(dataContract['contract_ready']) ||
-        _isTruthyValue(frontendState['contract_signed']) ||
-        _isTruthyValue(frontendState['contract_completed']) ||
-        _isTruthyValue(frontendState['contract_ready']) ||
-        _isTruthyValue(dataFrontendState['contract_signed']) ||
-        _isTruthyValue(dataFrontendState['contract_completed']) ||
-        _isTruthyValue(dataFrontendState['contract_ready']) ||
-        _isTruthyValue(reservationFrontendState['contract_signed']) ||
-        _isTruthyValue(reservationFrontendState['contract_completed']) ||
-        _isTruthyValue(reservationFrontendState['contract_ready']) ||
-        _isTruthyValue(dataReservationFrontendState['contract_signed']) ||
-        _isTruthyValue(dataReservationFrontendState['contract_completed']) ||
-        _isTruthyValue(dataReservationFrontendState['contract_ready']) ||
-        _isTruthyValue(contractFrontendState['contract_signed']) ||
-        _isTruthyValue(contractFrontendState['contract_completed']) ||
-        _isTruthyValue(contractFrontendState['contract_ready']) ||
-        _isTruthyValue(dataContractFrontendState['contract_signed']) ||
-        _isTruthyValue(dataContractFrontendState['contract_completed']) ||
-        _isTruthyValue(dataContractFrontendState['contract_ready']) ||
-        _isTruthyValue(statusSummary['payment_enabled']) ||
-        _isTruthyValue(statusSummary['is_signed']) ||
-        _isTruthyValue(dataStatusSummary['payment_enabled']) ||
-        _isTruthyValue(dataStatusSummary['is_signed']);
+  bool _hasCompletedDocuSignStatus(List<Map<String, dynamic>> sources) {
+    return sources.any((source) {
+      return const ['docusign_status', 'envelope_status'].any(
+        (key) => source[key]?.toString().trim().toLowerCase() == 'completed',
+      );
+    });
   }
 
   Map<String, dynamic> _reservationCheckoutPayload({
@@ -3264,23 +3057,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         .trim();
   }
 
-  String _responseReservationId(Map<String, dynamic> payload) {
-    final data = payload['data'];
-    final reservation =
-        payload['reservation'] ?? (data is Map ? data['reservation'] : null);
-
-    return (payload['reservation_id'] ??
-            payload['booking_id'] ??
-            (reservation is Map ? reservation['id'] : null) ??
-            (data is Map ? data['reservation_id'] : null) ??
-            (data is Map ? data['reservationId'] : null) ??
-            (data is Map ? data['booking_id'] : null) ??
-            (data is Map ? data['bookingId'] : null) ??
-            '')
-        .toString()
-        .trim();
-  }
-
   String _customerName(BuildContext context) {
     final auth = context.read<AuthProvider>();
     final user = auth.user;
@@ -3398,16 +3174,6 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       return const Color(0xFF9BE7B0);
     }
     return const Color(0xFFD6E1EA);
-  }
-
-  bool _isMissingPaymentConfirmRoute(ApiException error) {
-    final message = error.message.toLowerCase();
-    return (error.statusCode == 404 || error.statusCode == 405) &&
-        (message.contains('payment/confirm') ||
-            message.contains('payments/confirm') ||
-            message.contains('pago/confirmar') ||
-            message.contains('could not be found') ||
-            message.contains('not found'));
   }
 
   bool _requestIndicatesPaymentConfirmed(Map<String, dynamic> request) {

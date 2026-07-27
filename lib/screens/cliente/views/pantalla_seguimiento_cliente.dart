@@ -32,10 +32,10 @@ class ClientTrackingScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           ClientHeroCard(
-            badge: 'Estado del vuelo',
-            title: 'El cliente debe sentir control en cada momento del vuelo',
+            badge: 'Demostracion sin datos operativos',
+            title: 'Vista previa del seguimiento del vuelo',
             subtitle:
-                'La experiencia tipo Uber aqui significa ver que sigue, quien lo esta resolviendo y cuando se actualizo por ultima vez.',
+                'Los datos de timeline, tripulacion, FBO y horario que aparecen abajo son demostrativos y no representan el estado real de una reservacion.',
             metrics: [
               ClientHeroMetric(
                 label: 'Reservas activas',
@@ -59,12 +59,12 @@ class ClientTrackingScreen extends StatelessWidget {
                 ),
               );
             },
-            secondaryLabel: 'Actualizar vista',
-            secondaryAction: () {},
+            secondaryLabel: 'Sin tracking backend',
+            secondaryAction: null,
           ),
           const SizedBox(height: 24),
           const ClientSectionTitle(
-            title: 'Estado del servicio',
+            title: 'Ejemplo de estado del servicio',
             subtitle:
                 'Timeline pensado para clientes premium, no para backoffice.',
           ),

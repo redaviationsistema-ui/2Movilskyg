@@ -5,6 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
+import '../../services/servicio_persistencia_flujo_cliente.dart';
+import '../../services/servicio_notificaciones.dart';
+import '../../core/cliente_api.dart';
+import '../../core/client_request_matcher.dart';
 import '../reservation/pantalla_reservacion.dart';
 import '../subscription/pantalla_centro_membresia.dart';
 import 'tema_cliente.dart';
@@ -32,6 +36,9 @@ class _ClientMobileWorkspaceScreenState
   _TripsStage _tripsStage = _TripsStage.list;
   String? _selectedRequestId;
   Timer? _workspaceSyncTimer;
+  final ClientFlowPersistenceService _flowPersistence =
+      ClientFlowPersistenceService();
+  StreamSubscription<Map<String, dynamic>>? _notificationSubscription;
 
   @override
   void initState() {
@@ -39,7 +46,7 @@ class _ClientMobileWorkspaceScreenState
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ReservationProvider>().loadClientWorkspaceData();
+      unawaited(_restorePersistedFlow());
     });
     _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (!mounted) return;
@@ -47,12 +54,18 @@ class _ClientMobileWorkspaceScreenState
       if (!auth.isAuthenticated) return;
       context.read<ReservationProvider>().loadClientWorkspaceData(force: true);
     });
+    _notificationSubscription = PushNotificationsService.openedMessages.listen((
+      payload,
+    ) {
+      unawaited(_openReservationFromNotification(payload));
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _workspaceSyncTimer?.cancel();
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 
@@ -65,6 +78,7 @@ class _ClientMobileWorkspaceScreenState
     unawaited(
       context.read<ReservationProvider>().loadClientWorkspaceData(force: true),
     );
+    unawaited(_persistCurrentFlow());
   }
 
   @override
@@ -133,6 +147,7 @@ class _ClientMobileWorkspaceScreenState
       _selectedIndex = 0;
     });
     Navigator.of(context).pop();
+    unawaited(_persistCurrentFlow());
   }
 
   void _openReservationConfirmation(String? requestId) {
@@ -142,9 +157,20 @@ class _ClientMobileWorkspaceScreenState
       _selectedRequestId = requestId;
     });
     Navigator.of(context).pop();
+    unawaited(_persistCurrentFlow());
   }
 
   Widget _buildTripsScreen(Map<String, dynamic>? activeRequest) {
+    if (_tripsStage != _TripsStage.list && activeRequest == null) {
+      return _MissingClientRequestScreen(
+        onBack: () {
+          setState(() {
+            _selectedRequestId = null;
+            _tripsStage = _TripsStage.list;
+          });
+        },
+      );
+    }
     switch (_tripsStage) {
       case _TripsStage.contract:
         return ClientContractScreen(
@@ -200,6 +226,25 @@ class _ClientMobileWorkspaceScreenState
               _tripsStage = _TripsStage.list;
             });
           },
+          onAircraftUnavailable: (_) {
+            setState(() {
+              _selectedIndex = 0;
+              _tripsStage = _TripsStage.list;
+            });
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder:
+                    (_) => ClientResultsScreen(
+                      userInitial: _userInitial(
+                        context.read<AuthProvider>().displayName,
+                      ),
+                      onBackToSearch: _resetSearchFlow,
+                      onReservationCreated: _openReservationConfirmation,
+                      onCommercialAccessRequired: _openCommercialAccessPayment,
+                    ),
+              ),
+            );
+          },
         );
       case _TripsStage.confirmation:
         return ClientBookingConfirmationScreen(
@@ -221,15 +266,17 @@ class _ClientMobileWorkspaceScreenState
           },
           onOpenContract: (request) {
             setState(() {
-              _selectedRequestId = request['id']?.toString();
+              _selectedRequestId = _preferredRequestId(request);
               _tripsStage = _TripsStage.contract;
             });
+            unawaited(_persistCurrentFlow(request: request));
           },
           onOpenPayment: (request) {
             setState(() {
-              _selectedRequestId = request['id']?.toString();
+              _selectedRequestId = _preferredRequestId(request);
               _tripsStage = _TripsStage.payment;
             });
+            unawaited(_persistCurrentFlow(request: request));
           },
           onCommercialAccessRequired: _openCommercialAccessPayment,
         );
@@ -268,26 +315,7 @@ class _ClientMobileWorkspaceScreenState
     ReservationProvider reservation,
     String? requestId,
   ) {
-    final requests = reservation.flightRequests;
-    if (requests.isEmpty) return null;
-    if (requestId == null || requestId.isEmpty) {
-      return requests.first;
-    }
-
-    for (final request in requests) {
-      final id = request['id']?.toString();
-      final flightRequestId = request['flight_request_id']?.toString();
-      final reservationId = request['reservation_id']?.toString();
-      final requestRecordId = request['request_id']?.toString();
-      if (id == requestId ||
-          flightRequestId == requestId ||
-          reservationId == requestId ||
-          requestRecordId == requestId) {
-        return request;
-      }
-    }
-
-    return requests.first;
+    return findClientRequestByExactId(reservation.flightRequests, requestId);
   }
 
   Map<String, dynamic>? _resolveLatestRequest(
@@ -344,6 +372,147 @@ class _ClientMobileWorkspaceScreenState
     final signed = request['contract_signed'] == true ? 'signed' : 'unsigned';
     return 'payment-$id-$workflow-$contract-$signed';
   }
+
+  Future<void> _restorePersistedFlow() async {
+    final reservationProvider = context.read<ReservationProvider>();
+    final persisted = await _flowPersistence.load();
+    await reservationProvider.loadClientWorkspaceData(force: true);
+    if (!mounted) return;
+    reservationProvider.restoreSearchDraft(
+      persisted['search_draft'] is Map
+          ? Map<String, dynamic>.from(persisted['search_draft'] as Map)
+          : const {},
+    );
+
+    final stageName = persisted['stage']?.toString() ?? '';
+    final restoredStage = _TripsStage.values.where(
+      (stage) => stage.name == stageName,
+    );
+    setState(() {
+      final persistedRequestId =
+          persisted['current_request_id']?.toString().trim() ?? '';
+      final persistedReservationId =
+          persisted['current_reservation_id']?.toString().trim() ?? '';
+      _selectedRequestId =
+          persistedRequestId.isNotEmpty
+              ? persistedRequestId
+              : persistedReservationId.isNotEmpty
+              ? persistedReservationId
+              : null;
+      _tripsStage =
+          restoredStage.isEmpty ? _TripsStage.list : restoredStage.first;
+      _selectedIndex =
+          _tripsStage == _TripsStage.list && _selectedRequestId == null ? 0 : 1;
+    });
+    for (final payload
+        in PushNotificationsService.takePendingOpenedMessages()) {
+      if (!mounted) return;
+      await _openReservationFromNotification(payload);
+    }
+  }
+
+  Future<void> _persistCurrentFlow({Map<String, dynamic>? request}) async {
+    final active =
+        request ??
+        _findRequestById(
+          context.read<ReservationProvider>(),
+          _selectedRequestId,
+        );
+    await _flowPersistence.save({
+      'current_request_id': _preferredRequestId(active) ?? _selectedRequestId,
+      'current_reservation_id':
+          active?['reservation_id']?.toString() ??
+          (active?['reservation'] is Map
+              ? (active!['reservation'] as Map)['id']?.toString()
+              : null),
+      'selected_aircraft_id':
+          context.read<ReservationProvider>().selectedAircraft?.id ??
+          active?['aircraft_id']?.toString(),
+      'stage': _tripsStage.name,
+      'search_draft': context.read<ReservationProvider>().exportSearchDraft(),
+    });
+  }
+
+  Future<void> _openReservationFromNotification(
+    Map<String, dynamic> payload,
+  ) async {
+    final reservationId =
+        payload['reservation_id']?.toString().trim() ??
+        payload['reservationId']?.toString().trim() ??
+        '';
+    if (reservationId.isEmpty || !mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    final provider = context.read<ReservationProvider>();
+    try {
+      final verified = await ApiClient.instance.getAuthorizedClientReservation(
+        reservationId,
+      );
+      if (!clientOwnsReservationPayload(verified, auth.user?.id ?? '')) {
+        throw const ApiException(
+          'La reservacion de la notificacion no pertenece al usuario actual.',
+          statusCode: 403,
+        );
+      }
+
+      await provider.loadClientWorkspaceData(force: true);
+      if (!mounted) return;
+      final exactRequest = _findRequestById(provider, reservationId);
+      if (exactRequest == null) {
+        throw const ApiException(
+          'La reservacion no esta disponible para el usuario actual.',
+          statusCode: 404,
+        );
+      }
+      setState(() {
+        _selectedRequestId = reservationId;
+        _selectedIndex = 1;
+        _tripsStage = _TripsStage.confirmation;
+      });
+      await _persistCurrentFlow(request: exactRequest);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
 }
 
 enum _TripsStage { list, contract, payment, confirmation }
+
+class _MissingClientRequestScreen extends StatelessWidget {
+  const _MissingClientRequestScreen({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: context.clientPalette.background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline_rounded, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'No encontramos una solicitud que coincida exactamente con este enlace. Por seguridad no abrimos contrato ni pago.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: onBack,
+                  child: const Text('Volver a Tus vuelos'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
