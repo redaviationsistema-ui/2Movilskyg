@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
+import '../../../core/airport_name_index.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../core/media_utils.dart';
 import '../../../models/aeronave.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../../../services/servicio_aeropuertos.dart';
 import '../tema_cliente.dart';
 import '../views/pantalla_detalle_aeronave_cliente.dart';
 import '../views/pantalla_concierge_cliente.dart';
@@ -48,6 +50,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   late _TripTab _activeTab;
   Timer? _autoRefreshTimer;
   bool _showOnlyActionRequired = false;
+  Map<String, String> _airportNames = buildAirportNameIndex(const []);
 
   @override
   void initState() {
@@ -60,11 +63,30 @@ class _ClientFlightsListState extends State<ClientFlightsList>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       provider.loadClientWorkspaceData();
+      unawaited(_loadAirportNames());
     });
 
     _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
       _refreshFlights(force: true);
     });
+  }
+
+  Future<void> _loadAirportNames() async {
+    final names = <String, String>{
+      ...buildAirportNameIndex(context.read<ReservationProvider>().airports),
+    };
+    if (names.isNotEmpty && mounted) {
+      setState(() => _airportNames = Map.unmodifiable(names));
+    }
+
+    try {
+      final airports = await AirportService.getAirports();
+      if (!mounted) return;
+      names.addAll(buildAirportNameIndex(airports));
+      setState(() => _airportNames = Map.unmodifiable(names));
+    } catch (_) {
+      // Conserva el catálogo local; usa códigos solo si tampoco existe caché.
+    }
   }
 
   @override
@@ -156,6 +178,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
               visibleFlights: tabRequests.length,
               attentionCount: attentionCount,
               nextFlight: nextFlight,
+              airportNames: _airportNames,
               loading: provider.isLoadingWorkspace,
               lastSyncAt: provider.lastWorkspaceSyncAt,
               onRefresh: () => provider.loadClientWorkspaceData(force: true),
@@ -227,6 +250,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                     child: _MinimalFlightCard(
                       request: entry.value,
                       aircraftFleet: provider.aircraftFleet,
+                      airportNames: _airportNames,
                       onTap: () => _showFlightSheet(provider, entry.value),
                       onOpenAircraft:
                           () => _openAircraft(provider, entry.value),
@@ -430,7 +454,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                     builder: (context) {
                       final palette = context.clientPalette;
                       return Text(
-                        _routeLabel(request),
+                        _routeLabel(request, airportNames: _airportNames),
                         style: TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w900,
@@ -727,6 +751,7 @@ class _FlightsOverviewPanel extends StatelessWidget {
     required this.visibleFlights,
     required this.attentionCount,
     required this.nextFlight,
+    required this.airportNames,
     required this.loading,
     required this.lastSyncAt,
     required this.onRefresh,
@@ -737,6 +762,7 @@ class _FlightsOverviewPanel extends StatelessWidget {
   final int visibleFlights;
   final int attentionCount;
   final Map<String, dynamic>? nextFlight;
+  final Map<String, String> airportNames;
   final bool loading;
   final DateTime? lastSyncAt;
   final VoidCallback onRefresh;
@@ -748,7 +774,9 @@ class _FlightsOverviewPanel extends StatelessWidget {
     final isDark = context.isDarkMode;
     final hasNextFlight = nextFlight != null;
     final nextRoute =
-        hasNextFlight ? _routeLabel(nextFlight!) : 'Sin vuelo activo';
+        hasNextFlight
+            ? _routeLabel(nextFlight!, airportNames: airportNames)
+            : 'Sin vuelo activo';
     final nextDate =
         hasNextFlight ? _departureCopy(nextFlight!) : 'Cotiza una nueva ruta';
 
@@ -808,7 +836,7 @@ class _FlightsOverviewPanel extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       nextRoute,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: palette.heroTextPrimary,
@@ -1260,6 +1288,7 @@ class _MinimalFlightCard extends StatelessWidget {
   const _MinimalFlightCard({
     required this.request,
     required this.aircraftFleet,
+    required this.airportNames,
     required this.onTap,
     required this.onOpenAircraft,
     required this.onOpenContract,
@@ -1269,6 +1298,7 @@ class _MinimalFlightCard extends StatelessWidget {
 
   final Map<String, dynamic> request;
   final List<Aircraft> aircraftFleet;
+  final Map<String, String> airportNames;
   final VoidCallback onTap;
   final VoidCallback onOpenAircraft;
   final VoidCallback onOpenContract;
@@ -1355,8 +1385,8 @@ class _MinimalFlightCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              _routeLabel(request),
-              maxLines: 1,
+              _routeLabel(request, airportNames: airportNames),
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: palette.textPrimary,
@@ -2811,19 +2841,23 @@ String? _nestedText(dynamic value, String key) {
   return null;
 }
 
-String _routeLabel(Map<String, dynamic> request) {
+String _routeLabel(
+  Map<String, dynamic> request, {
+  Map<String, String> airportNames = const {},
+}) {
   final segments = _itinerarySegments(request);
   if (segments.isNotEmpty) {
     final points = <String>[];
     for (final segment in segments) {
+      final origin = airportDisplayName(segment.origin, airportNames);
+      final destination = airportDisplayName(segment.destination, airportNames);
       if (points.isEmpty) {
-        points.add(segment.origin);
-      } else if (points.last != segment.origin) {
-        points.add(segment.origin);
+        points.add(origin);
+      } else if (points.last != origin) {
+        points.add(origin);
       }
-      if (segment.destination.isNotEmpty &&
-          points.last != segment.destination) {
-        points.add(segment.destination);
+      if (destination.isNotEmpty && points.last != destination) {
+        points.add(destination);
       }
     }
     if (points.isNotEmpty) {
@@ -2835,7 +2869,8 @@ String _routeLabel(Map<String, dynamic> request) {
   final destination = request['destination']?.toString() ?? '';
 
   if (origin.isNotEmpty || destination.isNotEmpty) {
-    return '$origin → $destination';
+    return '${airportDisplayName(origin, airportNames)} → '
+        '${airportDisplayName(destination, airportNames)}';
   }
 
   return 'Ruta por confirmar';

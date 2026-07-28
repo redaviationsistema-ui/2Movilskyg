@@ -10,7 +10,6 @@ import '../../services/servicio_notificaciones.dart';
 import '../../core/cliente_api.dart';
 import '../../core/client_request_matcher.dart';
 import '../reservation/pantalla_reservacion.dart';
-import '../subscription/pantalla_centro_membresia.dart';
 import 'tema_cliente.dart';
 import 'views/pantalla_confirmacion_reserva_cliente.dart';
 import 'views/pantalla_contrato_cliente.dart';
@@ -108,7 +107,6 @@ class _ClientMobileWorkspaceScreenState
       ),
       _buildTripsScreen(activeRequest),
       const ClientLiveProfileScreen(showBackButton: false),
-      const MembershipCenterScreen(audience: MembershipAudience.client),
     ];
 
     return Scaffold(

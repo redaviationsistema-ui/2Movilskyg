@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../marketplace/pantalla_inicio_mercado.dart';
 import 'pantalla_inicio_sesion.dart';
-import 'pantalla_verificar_correo.dart';
 
 class AuthGateScreen extends StatefulWidget {
   const AuthGateScreen({super.key});
@@ -95,32 +94,6 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
       return const LoginScreen();
     }
 
-    final portal = MarketplaceHomeScreen(role: auth.role);
-    if (auth.hasVerifiedEmail) return portal;
-    return Stack(
-      children: [
-        portal,
-        Positioned(
-          left: 12,
-          right: 12,
-          top: MediaQuery.paddingOf(context).top + 8,
-          child: Material(
-            color: Theme.of(context).colorScheme.tertiaryContainer,
-            borderRadius: BorderRadius.circular(14),
-            child: ListTile(
-              leading: const Icon(Icons.mark_email_unread_outlined),
-              title: const Text('Correo pendiente de verificación'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap:
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const VerifyEmailScreen(),
-                    ),
-                  ),
-            ),
-          ),
-        ),
-      ],
-    );
+    return MarketplaceHomeScreen(role: auth.role);
   }
 }

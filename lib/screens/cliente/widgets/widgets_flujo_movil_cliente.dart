@@ -181,7 +181,6 @@ class ClientMobileBottomNav extends StatelessWidget {
       (label: 'Buscar', icon: Icons.search_rounded),
       (label: 'Reservas', icon: Icons.flight_rounded),
       (label: 'Perfil', icon: Icons.person_rounded),
-      (label: 'Club', icon: Icons.workspace_premium_rounded),
     ];
 
     return SafeArea(

@@ -20,14 +20,34 @@ class Airport {
   });
 
   factory Airport.fromJson(Map<String, dynamic> json) {
-    final name = json['AEROPUERTO'] ?? json['name'] ?? json['airport'] ?? '';
-    final city = json['CIUDAD'] ?? json['city'] ?? '';
+    final name =
+        json['AEROPUERTO'] ??
+        json['name'] ??
+        json['airport'] ??
+        json['nombre'] ??
+        json['airport_name'] ??
+        json['nombre_aeropuerto'] ??
+        '';
+    final city =
+        json['CIUDAD'] ??
+        json['city'] ??
+        json['municipality'] ??
+        json['ciudad'] ??
+        '';
     final state = json['ESTADO'] ?? json['state'];
     final country = json['PAIS'] ?? json['country'];
     final iata =
-        json['IATA'] ?? json['iata'] ?? json['iata_code'] ?? json['icao'];
+        json['IATA'] ??
+        json['iata'] ??
+        json['iata_code'] ??
+        json['codigo_iata'];
     final icao =
-        json['ICAO'] ?? json['icao'] ?? json['gps_code'] ?? json['ident'];
+        json['ICAO'] ??
+        json['icao'] ??
+        json['icao_code'] ??
+        json['codigo_icao'] ??
+        json['gps_code'] ??
+        json['ident'];
     final latValue = json['LATITUDE'] ?? json['lat'] ?? json['latitude'];
     final lngValue = json['LONGITUDE'] ?? json['lng'] ?? json['longitude'];
 

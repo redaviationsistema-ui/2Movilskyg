@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:red_sky/core/client_workflow_status.dart';
+import 'package:red_sky/models/aeronave.dart';
+import 'package:red_sky/models/aeropuerto.dart';
 import 'package:red_sky/providers/proveedor_reservaciones.dart';
 
 void main() {
@@ -45,4 +47,55 @@ void main() {
       expect(resolveClientWorkflowStage(request), 'provider_pending');
     });
   });
+
+  test(
+    'restoring a search keeps aircraft results and restores named airports',
+    () {
+      final provider = ReservationProvider();
+      final aircraft = Aircraft.fromJson({
+        'id': 'aircraft_550',
+        'name': 'Cessna Citation II (550)',
+        'aircraft_type': 'Light Jet',
+        'capacity_passengers': 7,
+      });
+      final origin = Airport.fromJson({
+        'name': 'Aeropuerto Internacional de Los Cabos',
+        'iata': 'SJD',
+        'icao': 'MMSD',
+        'city': 'San José del Cabo',
+      });
+      final destination = Airport.fromJson({
+        'name': 'Aeropuerto Internacional de Toluca',
+        'iata': 'TLC',
+        'icao': 'MMTO',
+        'city': 'Toluca',
+      });
+      provider.aircraftFleet = [aircraft];
+      provider.airports = [origin, destination];
+
+      provider.restoreSearchDraft({
+        'passengers': 1,
+        'selected_aircraft_id': 'aircraft_550',
+        'routes': [
+          {
+            'origin': 'MMSD',
+            'destination': 'MMTO',
+            'departure_datetime': '2026-07-27T15:30:00',
+            'passengers': 1,
+          },
+        ],
+      });
+
+      expect(provider.aircraftFleet, contains(same(aircraft)));
+      expect(provider.selectedAircraft, same(aircraft));
+      expect(
+        provider.routes.single.fromAirport?.name,
+        'Aeropuerto Internacional de Los Cabos',
+      );
+      expect(
+        provider.routes.single.toAirport?.name,
+        'Aeropuerto Internacional de Toluca',
+      );
+    },
+  );
 }
