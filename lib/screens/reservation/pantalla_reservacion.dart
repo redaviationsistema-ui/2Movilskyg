@@ -73,8 +73,8 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final commercialState = resolveCommercialAccessState(auth.accessData);
 
     return ClientMobileScreenShell(
-      welcomeTitle: 'Bienvenido, ${auth.displayName}',
-      welcomeSubtitle: 'Cotiza, reserva y administra tus vuelos privados',
+      welcomeTitle: 'Hola ${_firstName(auth.displayName)} 👋',
+      welcomeSubtitle: 'Listo para tu proximo vuelo',
       onSignOut: auth.signOut,
       child: ReservationScreenContent(
         reservation: reservation,
@@ -137,6 +137,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
         onPreview: () => _handlePreview(reservation),
       ),
     );
+  }
+
+  String _firstName(String label) {
+    final trimmed = label.trim();
+    if (trimmed.isEmpty) return 'cliente';
+    return trimmed.split(RegExp(r'\s+')).first;
   }
 
   void _openMembershipCenter() {

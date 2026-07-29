@@ -367,16 +367,6 @@ class _AccessPaymentMethodCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (showCommercialCardPaymentOption)
-            CompactPaymentOption(
-              label: 'Tarjeta Corporativa',
-              subtitle: 'Visa / Mastercard / Amex',
-              selected: paymentMethod == 'card',
-              expanded: paymentMethod == 'card',
-              onTap: onSelectCard,
-              child: cardPaymentPanel,
-            ),
-          if (showCommercialCardPaymentOption) const SizedBox(height: 10),
           CompactPaymentOption(
             label: 'Agregar tarjeta con Stripe',
             subtitle: 'Captura tu tarjeta en la pagina segura de Stripe',

@@ -85,47 +85,39 @@ class ReservationScreenContent extends StatelessWidget {
         primaryRoute.startDate != null;
 
     return Container(
-      color: palette.background,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFF8FAFC), Color(0xFFF2F5F9), Color(0xFFF8FAFC)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 148),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 136),
         children: [
           _FlightSearchHero(
             isReady: isPrimaryFormReady,
             remainingFreeQuotes: remainingFreeQuotes,
             hasActiveMembership: hasActiveMembership,
           ),
-          const SizedBox(height: 14),
-          QuickActionRail(
-            onTodayTrip: onTodayTrip,
-            onRoundTrip: onRoundTrip,
-            onMultiCity: onMultiCity,
-          ),
-          if (suggestedAirports.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _SuggestedDestinationRail(
-              airports: suggestedAirports,
-              isMultiCity: tripType == 'Multidestino',
-              onTap: onApplySuggestedDestination,
-            ),
-          ],
-          const SizedBox(height: 14),
-          _QuoteReadinessBand(
-            primaryRoute: primaryRoute,
-            routes: reservation.routes,
-            passengers: reservation.passengers,
-            tripType: tripType,
-            isLoading: reservation.isLoadingQuotePreview,
-          ),
+          const SizedBox(height: 12),
           if (needsCommercialAccess) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 2),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: palette.surfaceSoft,
-                borderRadius: BorderRadius.circular(20),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: palette.accent.withValues(alpha: 0.35),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,10 +163,21 @@ class ReservationScreenContent extends StatelessWidget {
               ),
             ),
           ],
-
-          const SizedBox(height: 10),
-          ConciergeCard(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFE5EBF2)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -184,11 +187,6 @@ class ReservationScreenContent extends StatelessWidget {
                   value: tripType,
                   onChanged: onTripTypeChanged,
                 ),
-                if (tripType == 'Ida y vuelta') ...[
-                  const SizedBox(height: 12),
-                ] else if (tripType == 'Multidestino') ...[
-                  const SizedBox(height: 12),
-                ],
                 const SizedBox(height: 12),
                 if (tripType == 'Multidestino') ...[
                   const RouteHeader(title: 'Tramo 1'),
@@ -229,12 +227,12 @@ class ReservationScreenContent extends StatelessWidget {
                   onTap: onPickPrimaryDate,
                   trailing: Icon(
                     Icons.calendar_today_outlined,
-                    size: 24,
+                    size: 22,
                     color: isDark ? palette.accent : palette.primary,
                   ),
                   placeholder: 'Seleccionar fecha',
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 InlinePreferenceButton(
                   title:
                       departureTime == null
@@ -261,12 +259,12 @@ class ReservationScreenContent extends StatelessWidget {
                     onTap: onPickReturnDate,
                     trailing: Icon(
                       Icons.calendar_today_outlined,
-                      size: 24,
+                      size: 22,
                       color: isDark ? palette.accent : palette.primary,
                     ),
                     placeholder: 'Seleccionar fecha',
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   InlinePreferenceButton(
                     title:
                         returnTime == null
@@ -321,10 +319,10 @@ class ReservationScreenContent extends StatelessWidget {
                             : onPreview,
                     style: FilledButton.styleFrom(
                       backgroundColor: palette.primary,
-                      disabledBackgroundColor: palette.surfaceSoft,
-                      disabledForegroundColor: palette.textSecondary,
+                      disabledBackgroundColor: const Color(0xFFE7EDF4),
+                      disabledForegroundColor: const Color(0xFF7D8B98),
                       foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(56),
+                      minimumSize: const Size.fromHeight(58),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -364,18 +362,11 @@ class ReservationScreenContent extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  isPrimaryFormReady
-                                      ? Icons.search_rounded
-                                      : Icons.info_outline_rounded,
-                                  size: 18,
-                                ),
+                                Icon(Icons.flight_takeoff_rounded, size: 18),
                                 const SizedBox(width: 8),
                                 Flexible(
                                   child: Text(
-                                    isPrimaryFormReady
-                                        ? 'Ver aeronaves disponibles'
-                                        : 'Completa origen, destino y fecha',
+                                    'Solicitar cotizacion',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
@@ -391,19 +382,47 @@ class ReservationScreenContent extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  'Cotizacion estimada, sujeta a disponibilidad y operacion.',
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 12,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFD),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8EEF4)),
+                  ),
+                  child: Text(
+                    isPrimaryFormReady
+                        ? 'Cotizacion estimada, sujeta a disponibilidad y operacion.'
+                        : 'Completa origen, destino y fecha para continuar.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 12.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
+          if (suggestedAirports.isNotEmpty)
+            _SuggestedDestinationRail(
+              airports: suggestedAirports.take(4).toList(),
+              isMultiCity: tripType == 'Multidestino',
+              onTap: onApplySuggestedDestination,
+            ),
+          const SizedBox(height: 14),
+          QuickActionRail(
+            onTodayTrip: onTodayTrip,
+            onRoundTrip: onRoundTrip,
+            onMultiCity: onMultiCity,
+          ),
+          const SizedBox(height: 14),
           if (reservation.isLoadingWorkspace) ...[
             const LoadingBand(text: 'Sincronizando rutas del cliente...'),
           ],
@@ -457,6 +476,11 @@ class _FlightSearchHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
+    final statusLabel =
+        hasActiveMembership
+            ? 'Acceso activo'
+            : '$remainingFreeQuotes cotizaciones disponibles';
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 520),
@@ -470,62 +494,94 @@ class _FlightSearchHero extends StatelessWidget {
             ),
           ),
       child: SizedBox(
-        height: 184,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomPaint(
-              painter: _FlightHeroPainter(
-                color: palette.primary,
-                accent: palette.accent,
+        height: 172,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                'assets/home/HomeCel.png',
+                fit: BoxFit.cover,
+                errorBuilder:
+                    (_, __, ___) => DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            palette.primary,
+                            palette.primary.withValues(alpha: 0.94),
+                            const Color(0xFF1A3E5A),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
               ),
-            ),
-            Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withValues(alpha: 0.22),
+                      Colors.black.withValues(alpha: 0.36),
+                      Colors.black.withValues(alpha: 0.68),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _HeroStatusPill(
-                      label:
-                          hasActiveMembership
-                              ? 'Acceso activo'
-                              : '$remainingFreeQuotes cotizaciones disponibles',
+                      label: statusLabel,
                       icon:
                           hasActiveMembership
                               ? Icons.verified_rounded
                               : Icons.bolt_rounded,
                     ),
-                    const SizedBox(height: 12),
+                    const Spacer(),
                     Text(
-                      'Cotiza tu vuelo privado',
+                      'Viaja a tu manera,\nnosotros nos encargamos.',
                       style: TextStyle(
-                        fontSize: 30,
-                        height: 1.02,
+                        fontSize: 17,
+                        height: 1.12,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: -1,
-                        color: palette.textPrimary,
+                        letterSpacing: -0.35,
+                        color: palette.heroTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isReady
-                          ? 'Ruta lista. Busquemos aeronaves disponibles.'
-                          : 'Selecciona ruta, fecha y pasajeros para empezar.',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 14,
-                        height: 1.35,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: const [
+                        _HeroTrustBadge(
+                          icon: Icons.verified_user_outlined,
+                          label: 'Aeronaves verificadas',
+                        ),
+                        _HeroTrustBadge(
+                          icon: Icons.badge_outlined,
+                          label: 'Pilotos certificados',
+                        ),
+                        _HeroTrustBadge(
+                          icon: Icons.support_agent_rounded,
+                          label: 'Atencion 24/7',
+                        ),
+                        _HeroTrustBadge(
+                          icon: Icons.schedule_rounded,
+                          label: 'Respuesta rapida',
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -542,22 +598,22 @@ class _HeroStatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: palette.surface,
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.accentBorder),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: palette.accent),
-          const SizedBox(width: 7),
+          Icon(icon, size: 14, color: palette.accent),
+          const SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 12,
+              color: Colors.white,
+              fontSize: 11,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -567,64 +623,38 @@ class _HeroStatusPill extends StatelessWidget {
   }
 }
 
-class _FlightHeroPainter extends CustomPainter {
-  const _FlightHeroPainter({required this.color, required this.accent});
+class _HeroTrustBadge extends StatelessWidget {
+  const _HeroTrustBadge({required this.icon, required this.label});
 
-  final Color color;
-  final Color accent;
+  final IconData icon;
+  final String label;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final basePaint =
-        Paint()
-          ..color = color.withValues(alpha: 0.08)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.3;
-    final accentPaint =
-        Paint()
-          ..color = accent.withValues(alpha: 0.44)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.4
-          ..strokeCap = StrokeCap.round;
-
-    for (var i = 0; i < 4; i++) {
-      final y = size.height * (0.18 + i * 0.18);
-      final path =
-          Path()
-            ..moveTo(size.width * 0.12, y)
-            ..cubicTo(
-              size.width * 0.32,
-              y - 42,
-              size.width * 0.64,
-              y + 38,
-              size.width * 0.96,
-              y - 20,
-            );
-      canvas.drawPath(path, basePaint);
-    }
-
-    final route =
-        Path()
-          ..moveTo(size.width * 0.42, size.height * 0.24)
-          ..cubicTo(
-            size.width * 0.62,
-            size.height * 0.06,
-            size.width * 0.84,
-            size.height * 0.22,
-            size.width * 0.94,
-            size.height * 0.10,
-          );
-    canvas.drawPath(route, accentPaint);
-    canvas.drawCircle(
-      Offset(size.width * 0.94, size.height * 0.10),
-      5,
-      Paint()..color = accent,
+  Widget build(BuildContext context) {
+    final palette = context.clientPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: palette.accent),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
-  }
-
-  @override
-  bool shouldRepaint(covariant _FlightHeroPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.accent != accent;
   }
 }
 
@@ -645,203 +675,47 @@ class _SuggestedDestinationRail extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Destinos sugeridos',
-          style: TextStyle(
-            color: palette.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 132,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: airports.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder:
-                (_, index) => SuggestedDestinationCard(
-                  airport: airports[index],
-                  isMultiCity: isMultiCity,
-                  onTap: () => onTap(airports[index]),
-                ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuoteReadinessBand extends StatelessWidget {
-  const _QuoteReadinessBand({
-    required this.primaryRoute,
-    required this.routes,
-    required this.passengers,
-    required this.tripType,
-    required this.isLoading,
-  });
-
-  final RouteModel primaryRoute;
-  final List<RouteModel> routes;
-  final int passengers;
-  final String tripType;
-  final bool isLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final routeReady =
-        primaryRoute.fromAirport != null && primaryRoute.toAirport != null;
-    final dateReady = primaryRoute.startDate != null;
-    final passengerReady = passengers > 0;
-    final completeRoutes =
-        routes
-            .where(
-              (route) =>
-                  route.fromAirport != null &&
-                  route.toAirport != null &&
-                  route.startDate != null,
-            )
-            .length;
-    final totalRoutes = routes.isEmpty ? 1 : routes.length;
-    final progress =
-        [
-          routeReady,
-          dateReady,
-          passengerReady,
-          completeRoutes == totalRoutes,
-        ].where((ready) => ready).length /
-        4;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isLoading ? Icons.sync_rounded : Icons.route_rounded,
-                size: 18,
-                color: palette.accent,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isLoading
-                      ? 'Consultando disponibilidad'
-                      : _readinessTitle(
-                        routeReady: routeReady,
-                        dateReady: dateReady,
-                        passengerReady: passengerReady,
-                        completeRoutes: completeRoutes,
-                        totalRoutes: totalRoutes,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              Text(
-                '${(progress * 100).round()}%',
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Destinos populares',
                 style: TextStyle(
-                  color: palette.accent,
-                  fontSize: 12,
+                  color: palette.textPrimary,
+                  fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: isLoading ? null : progress,
-              minHeight: 7,
-              backgroundColor: palette.surfaceSoft,
-              color: palette.accent,
             ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _ReadinessChip(
-                label: routeReady ? 'Ruta lista' : 'Falta ruta',
-                ready: routeReady,
+            Text(
+              'Ver todos',
+              style: TextStyle(
+                color: palette.accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
               ),
-              _ReadinessChip(
-                label: dateReady ? 'Fecha lista' : 'Falta fecha',
-                ready: dateReady,
-              ),
-              _ReadinessChip(
-                label: passengers == 1 ? '1 pasajero' : '$passengers pasajeros',
-                ready: passengerReady,
-              ),
-              _ReadinessChip(
-                label: '$completeRoutes/$totalRoutes tramos',
-                ready: completeRoutes == totalRoutes,
-              ),
-              _ReadinessChip(label: tripType, ready: true),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _readinessTitle({
-    required bool routeReady,
-    required bool dateReady,
-    required bool passengerReady,
-    required int completeRoutes,
-    required int totalRoutes,
-  }) {
-    if (!routeReady) return 'Selecciona origen y destino';
-    if (!dateReady) return 'Selecciona fecha de salida';
-    if (!passengerReady) return 'Indica pasajeros';
-    if (completeRoutes != totalRoutes) return 'Completa todos los tramos';
-    return 'Lista para cotizar';
-  }
-}
-
-class _ReadinessChip extends StatelessWidget {
-  const _ReadinessChip({required this.label, required this.ready});
-
-  final String label;
-  final bool ready;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: ready ? palette.accentSoft : palette.surfaceSoft,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: ready ? palette.accentBorder : palette.border,
+            ),
+          ],
         ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: ready ? ClientThemeColors.textOnAccent : palette.textSecondary,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.98,
+          ),
+          itemCount: airports.length,
+          itemBuilder:
+              (_, index) => SuggestedDestinationCard(
+                airport: airports[index],
+                isMultiCity: isMultiCity,
+                onTap: () => onTap(airports[index]),
+              ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -854,20 +728,13 @@ class _FormSectionHeader extends StatelessWidget {
     final palette = context.clientPalette;
     return Row(
       children: [
-        Icon(
-          Icons.flight_outlined,
-          color:
-              Theme.of(context).brightness == Brightness.dark
-                  ? palette.accent
-                  : palette.primary,
-          size: 18,
-        ),
-        const SizedBox(width: 6),
+        Icon(Icons.flight_outlined, color: palette.primary, size: 18),
+        const SizedBox(width: 8),
         Text(
           'Datos del vuelo',
           style: TextStyle(
             color: palette.textPrimary,
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.3,
           ),
@@ -891,36 +758,52 @@ class QuickActionRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 152,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          QuickActionCard(
-            icon: Icons.flash_on_rounded,
-            title: 'Vuelo inmediato',
-            subtitle: 'Disponibilidad prioritaria para salir hoy.',
-            tint: const Color(0xFF111111),
-            onTap: onTodayTrip,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Servicios',
+          style: TextStyle(
+            color: context.clientPalette.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
           ),
-          const SizedBox(width: 12),
-          QuickActionCard(
-            icon: Icons.swap_calls_rounded,
-            title: 'Ida y vuelta',
-            subtitle: 'Agenda ejecutiva con regreso coordinado.',
-            tint: const Color(0xFF111111),
-            onTap: onRoundTrip,
-          ),
-          const SizedBox(width: 12),
-          QuickActionCard(
-            icon: Icons.travel_explore_rounded,
-            title: 'Multi',
-            subtitle: 'Ruta privada con varias ciudades.',
-            tint: const Color(0xFF111111),
-            onTap: onMultiCity,
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: QuickActionCard(
+                icon: Icons.flash_on_rounded,
+                title: 'Vuelo inmediato',
+                subtitle: 'Disponible para salir hoy',
+                tint: const Color(0xFF111111),
+                onTap: onTodayTrip,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: QuickActionCard(
+                icon: Icons.swap_calls_rounded,
+                title: 'Ida y vuelta',
+                subtitle: 'Programa ambos trayectos',
+                tint: const Color(0xFF111111),
+                onTap: onRoundTrip,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: QuickActionCard(
+                icon: Icons.business_center_rounded,
+                title: 'Viaje corporativo',
+                subtitle: 'Soluciones para tu empresa',
+                tint: const Color(0xFF111111),
+                onTap: onMultiCity,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -944,69 +827,63 @@ class QuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
-    return SizedBox(
-      width: 220,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(26),
-        child: Ink(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: palette.headerGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE5EBF2)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
             ),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: palette.accentBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 28,
-                offset: Offset(0, 14),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7E7),
+                borderRadius: BorderRadius.circular(14),
               ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: palette.surfaceStrong,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: palette.accentBorder),
-                ),
-                alignment: Alignment.center,
-                child: Icon(icon, color: palette.accent, size: 20),
+              alignment: Alignment.center,
+              child: Icon(icon, color: palette.accent, size: 22),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: palette.textPrimary,
+                height: 1.1,
               ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  color: palette.textPrimary,
-                ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontSize: 12,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 12,
-                  height: 1.25,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1092,89 +969,157 @@ class SuggestedDestinationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final code = airport.iata?.trim().toUpperCase() ?? 'RUTA';
-    final location = [
-      airport.city,
-      airport.state,
-    ].whereType<String>().join(', ');
+    final location = _displayCityForCode(code, airport.city);
+    final imageUrl = _imageUrlForCode(code);
 
-    return SizedBox(
-      width: 164,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Ink(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: palette.headerGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE5EBF2)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
             ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: palette.accentBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 20,
-                offset: Offset(0, 10),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
               ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                code,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
+              child: SizedBox(
+                height: 92,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder:
+                          (_, __, ___) => DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  palette.primary.withValues(alpha: 0.90),
+                                  const Color(0xFF5F8CB5),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                            ),
+                          ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.black.withValues(alpha: 0.08),
+                            Colors.black.withValues(alpha: 0.32),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: palette.accent,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          code,
+                          style: TextStyle(
+                            color: palette.textOnAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                airport.city,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: palette.textPrimary,
-                  height: 1.05,
-                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: palette.textPrimary,
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    isMultiCity ? 'Agregar parada  →' : 'Usar destino  →',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.accent,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                location,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 11,
-                  height: 1.1,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                isMultiCity ? 'Agregar parada' : 'Usar destino',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  static String _displayCityForCode(String code, String fallback) {
+    switch (code) {
+      case 'MEX':
+        return 'Ciudad de Mexico';
+      case 'CUN':
+        return 'Cancun';
+      case 'MTY':
+        return 'Monterrey';
+      case 'SJD':
+        return 'Los Cabos';
+      default:
+        return fallback;
+    }
+  }
+
+  static String _imageUrlForCode(String code) {
+    switch (code) {
+      case 'MEX':
+        return 'https://images.unsplash.com/photo-1518105779142-d975f22f1b0a?auto=format&fit=crop&w=900&q=80';
+      case 'CUN':
+        return 'https://images.unsplash.com/photo-1510097467424-192d713fd8b2?auto=format&fit=crop&w=900&q=80';
+      case 'MTY':
+        return 'https://images.unsplash.com/photo-1574042320609-8cb5e7f4d13b?auto=format&fit=crop&w=900&q=80';
+      case 'SJD':
+        return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80';
+      default:
+        return 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80';
+    }
   }
 }
 
@@ -1216,30 +1161,29 @@ class InlinePreferenceButton extends StatelessWidget {
     final accentIcon = palette.accent;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(22),
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: palette.border),
-          color: palette.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE5EBF2)),
+          color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
         child: Row(
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: palette.surfaceStrong,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: palette.accentBorder),
+                color: const Color(0xFFF4F7FB),
+                borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
               child: Icon(icon, size: 18, color: accentIcon),
@@ -1250,7 +1194,7 @@ class InlinePreferenceButton extends StatelessWidget {
                 title,
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 15,
+                  fontSize: 14.5,
                   letterSpacing: -0.3,
                   color: palette.textPrimary,
                 ),
@@ -1258,7 +1202,7 @@ class InlinePreferenceButton extends StatelessWidget {
             ),
             Icon(
               Icons.keyboard_arrow_right_rounded,
-              color: palette.accent,
+              color: palette.primary,
               size: 22,
             ),
           ],
@@ -1279,38 +1223,72 @@ class PassengerRow extends StatelessWidget {
     final palette = context.clientPalette;
     final label = value == 1 ? '1 pasajero' : '$value pasajeros';
 
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            'Pasajeros',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              color: palette.textPrimary,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5EBF2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F7FB),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.person_outline_rounded,
+              color: palette.primary,
+              size: 20,
             ),
           ),
-        ),
-        PassengerButton(
-          icon: Icons.remove_rounded,
-          onTap: value <= 1 ? null : () => onChanged(value - 1),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-              color: palette.textPrimary,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pasajeros',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: palette.textPrimary,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        PassengerButton(
-          icon: Icons.add_rounded,
-          onTap: () => onChanged(value + 1),
-        ),
-      ],
+          PassengerButton(
+            icon: Icons.remove_rounded,
+            onTap: value <= 1 ? null : () => onChanged(value - 1),
+          ),
+          const SizedBox(width: 10),
+          PassengerButton(
+            icon: Icons.add_rounded,
+            onTap: () => onChanged(value + 1),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1328,19 +1306,29 @@ class PassengerButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Ink(
-        width: 38,
-        height: 38,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          color: onTap == null ? palette.surfaceSoft : palette.accent,
+          color: onTap == null ? const Color(0xFFF1F4F7) : Colors.white,
           shape: BoxShape.circle,
           border: Border.all(
-            color: onTap == null ? palette.border : palette.accent,
+            color: onTap == null ? const Color(0xFFD9E1E8) : palette.primary,
           ),
+          boxShadow:
+              onTap == null
+                  ? null
+                  : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
         ),
         child: Icon(
           icon,
           size: 18,
-          color: onTap == null ? palette.textSecondary : palette.textOnAccent,
+          color: onTap == null ? palette.textSecondary : palette.primary,
         ),
       ),
     );

@@ -434,15 +434,6 @@ class _FlightPaymentMethodCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           CompactPaymentOption(
-            label: 'Tarjeta Corporativa',
-            subtitle: 'Visa / Mastercard / Amex',
-            selected: paymentMethod == 'card',
-            expanded: paymentMethod == 'card',
-            onTap: onSelectCard,
-            child: cardPaymentPanel,
-          ),
-          const SizedBox(height: 10),
-          CompactPaymentOption(
             label: 'Link de Pago',
             subtitle: 'Abrimos Stripe Checkout en un enlace seguro',
             selected: paymentMethod == 'link',

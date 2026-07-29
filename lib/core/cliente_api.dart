@@ -854,10 +854,8 @@ class ApiClient {
     }
     return getFirstAvailable(
       [
-        '/client/reservations/$normalizedReservationId/payment-authorization',
+        '/cliente/reservas/$normalizedReservationId/payment-authorization',
         '/cliente/reservas/$normalizedReservationId/autorizacion-pago',
-        '/client/reservations/$normalizedReservationId/checkout-readiness',
-        '/cliente/reservas/$normalizedReservationId/estado-pago',
       ],
       authenticated: true,
       query: {
@@ -865,6 +863,7 @@ class ApiClient {
         if (flightRequestId.trim().isNotEmpty)
           'flight_request_id': flightRequestId.trim(),
       },
+      fallbackStatusCodes: const {404, 405},
     );
   }
 
@@ -898,6 +897,7 @@ class ApiClient {
       ],
       authenticated: true,
       query: query,
+      fallbackStatusCodes: const {404, 405},
     );
   }
 
@@ -1424,6 +1424,7 @@ class ApiClient {
     List<String> paths, {
     bool authenticated = false,
     Map<String, String>? query,
+    Set<int>? fallbackStatusCodes,
   }) async {
     ApiException? lastError;
 
@@ -1431,6 +1432,7 @@ class ApiClient {
       try {
         return await get(path, authenticated: authenticated, query: query);
       } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error, fallbackStatusCodes)) rethrow;
         lastError = error;
       }
     }
@@ -1456,7 +1458,7 @@ class ApiClient {
           headers: headers,
         );
       } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
+        if (!_shouldTryAlternative(error, null)) rethrow;
         lastError = error;
       }
     }
@@ -1484,7 +1486,7 @@ class ApiClient {
             headers: headers,
           );
         } on ApiException catch (error) {
-          if (!_shouldTryAlternative(error)) rethrow;
+          if (!_shouldTryAlternative(error, null)) rethrow;
           lastError = error;
         }
       }
@@ -1511,7 +1513,7 @@ class ApiClient {
           authenticated: authenticated,
         );
       } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
+        if (!_shouldTryAlternative(error, null)) rethrow;
         lastError = error;
       }
     }
@@ -1531,7 +1533,7 @@ class ApiClient {
       try {
         return await download(path, authenticated: authenticated, query: query);
       } on ApiException catch (error) {
-        if (!_shouldTryAlternative(error)) rethrow;
+        if (!_shouldTryAlternative(error, null)) rethrow;
         lastError = error;
       }
     }
@@ -1882,8 +1884,14 @@ class ApiClient {
     };
   }
 
-  bool _shouldTryAlternative(ApiException error) {
+  bool _shouldTryAlternative(
+    ApiException error,
+    Set<int>? fallbackStatusCodes,
+  ) {
     final status = error.statusCode ?? 0;
+    if (fallbackStatusCodes != null) {
+      return fallbackStatusCodes.contains(status);
+    }
     return status == 0 || status == 404 || status == 405 || status >= 500;
   }
 

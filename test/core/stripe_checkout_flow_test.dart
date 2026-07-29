@@ -186,5 +186,36 @@ void main() {
 
       expect(extractStripeCheckoutUrl(payload), isEmpty);
     });
+
+    test(
+      'returns empty string when backend marks checkout as non reusable',
+      () {
+        final payload = <String, dynamic>{
+          'checkout_url': 'https://checkout.stripe.com/explicit',
+          'checkout_reusable': false,
+          'requires_new_checkout': true,
+        };
+
+        expect(extractStripeCheckoutUrl(payload), isEmpty);
+        expect(stripeCheckoutSessionCanBeReused(payload), isFalse);
+        expect(stripeCheckoutSessionRequiresNewCheckout(payload), isTrue);
+      },
+    );
+
+    test('detects expired checkout from Stripe session status', () {
+      final payload = <String, dynamic>{
+        'payment_order': {
+          'gateway_response': {
+            'status': 'expired',
+            'payment_status': 'unpaid',
+            'url': 'https://checkout.stripe.com/c/pay/cs_test_expired',
+          },
+        },
+      };
+
+      expect(stripeCheckoutSessionCanBeReused(payload), isFalse);
+      expect(stripeCheckoutSessionRequiresNewCheckout(payload), isTrue);
+      expect(extractStripeCheckoutUrl(payload), isEmpty);
+    });
   });
 }

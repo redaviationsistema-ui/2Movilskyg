@@ -18,102 +18,97 @@ class ClientMobileTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: palette.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: palette.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(5),
-                child: Image.asset(
-                  'assets/LOGOINTERNO.png',
-                  fit: BoxFit.contain,
-                  color: isDark ? Colors.white : null,
-                  colorBlendMode: isDark ? BlendMode.srcIn : null,
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                        color: palette.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        height: 1.15,
-                        fontWeight: FontWeight.w700,
-                        color: palette.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        InkWell(
-          onTap: onSignOut,
-          borderRadius: BorderRadius.circular(999),
-          child: Ink(
-            width: 36,
-            height: 36,
+    return SizedBox(
+      height: 56,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: palette.surface,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: palette.border),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE6ECF2)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 18,
-                  offset: Offset(0, 8),
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: Center(
-              child: Icon(
-                Icons.logout_rounded,
-                color: palette.textPrimary,
-                size: 18,
+            padding: const EdgeInsets.all(8),
+            child: Image.asset(
+              'assets/LOGOINTERNO.png',
+              fit: BoxFit.contain,
+              color: isDark ? palette.primary : null,
+              colorBlendMode: isDark ? BlendMode.srcIn : null,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.05,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.4,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: palette.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            onTap: onSignOut,
+            borderRadius: BorderRadius.circular(16),
+            child: Ink(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE6ECF2)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.logout_rounded,
+                  color: palette.primary,
+                  size: 20,
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -143,7 +138,7 @@ class ClientMobileScreenShell extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 5),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               decoration: BoxDecoration(
                 color: palette.background,
                 border: Border(bottom: BorderSide(color: palette.border)),
@@ -325,9 +320,9 @@ class SegmentedTripSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: palette.surfaceSoft,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
+        color: const Color(0xFFF5F7FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE3EAF1)),
       ),
       child: Row(
         children:
@@ -338,25 +333,28 @@ class SegmentedTripSelector extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () => onChanged(option.value),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
+                    duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
                     padding: const EdgeInsets.symmetric(
-                      vertical: 10,
+                      vertical: 11,
                       horizontal: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isActive ? palette.primary : palette.surface,
-                      borderRadius: BorderRadius.circular(14),
+                      color: isActive ? palette.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isActive ? palette.accentBorder : palette.border,
+                        color:
+                            isActive
+                                ? palette.primary
+                                : const Color(0xFFE3EAF1),
                       ),
                       boxShadow:
                           isActive
                               ? [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.14),
-                                  blurRadius: 18,
-                                  offset: Offset(0, 8),
+                                  color: Colors.black.withValues(alpha: 0.10),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 6),
                                 ),
                               ]
                               : null,
@@ -376,7 +374,7 @@ class SegmentedTripSelector extends StatelessWidget {
                           style: TextStyle(
                             color: isActive ? onPrimary : inactiveColor,
                             fontWeight: FontWeight.w900,
-                            fontSize: 12,
+                            fontSize: 12.5,
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -449,118 +447,102 @@ class ConciergeField extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isPlaceholder = value == placeholder;
-    final fieldIconColor = palette.textPrimary.withValues(alpha: 0.72);
-    final fieldChevronColor = palette.textPrimary.withValues(alpha: 0.82);
+    final fieldIconColor = palette.primary;
+    final fieldChevronColor = palette.textPrimary.withValues(alpha: 0.70);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1,
-            color: palette.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: palette.border),
-              color: palette.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE5EBF2)),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (leadingIcon != null) ...[
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: palette.surfaceSoft,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: palette.border),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (leadingIcon != null) ...[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F7FB),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Icon(leadingIcon, size: 20, color: fieldIconColor),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w900,
                     ),
-                    alignment: Alignment.center,
-                    child: Icon(leadingIcon, size: 18, color: fieldIconColor),
                   ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color:
-                              isPlaceholder
-                                  ? palette.textSecondary
-                                  : palette.textPrimary,
-                          fontWeight:
-                              isPlaceholder ? FontWeight.w700 : FontWeight.w900,
-                          fontSize: isPlaceholder ? 15.5 : 18,
-                          height: 1.1,
-                          letterSpacing: -0.4,
-                        ),
+                  const SizedBox(height: 3),
+                  Text(
+                    isPlaceholder
+                        ? (helperText?.isNotEmpty == true
+                            ? helperText!
+                            : placeholder)
+                        : value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color:
+                          isPlaceholder
+                              ? palette.textSecondary
+                              : palette.textPrimary,
+                      fontWeight:
+                          isPlaceholder ? FontWeight.w600 : FontWeight.w800,
+                      fontSize: 15,
+                      height: 1.2,
+                    ),
+                  ),
+                  if (!isPlaceholder && secondaryValue != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      secondaryValue!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
-                      if (secondaryValue != null) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          secondaryValue!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: palette.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                      if (helperText != null) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          helperText!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: palette.textSecondary,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                trailing ??
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: fieldChevronColor,
-                      size: 23,
                     ),
-              ],
+                  ],
+                ],
+              ),
             ),
-          ),
+            trailing ??
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: fieldChevronColor,
+                  size: 24,
+                ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

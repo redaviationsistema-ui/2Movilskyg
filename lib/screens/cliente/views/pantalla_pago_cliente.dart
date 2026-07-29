@@ -75,6 +75,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   bool _waitingForCommercialAccessReturn = false;
   bool _waitingForReservationCheckoutReturn = false;
   bool _showTripsShortcut = false;
+  bool _forceNewCheckoutAfterValidation = false;
   bool _confirmedReservationRedirectScheduled = false;
   bool _stripeCardReady = false;
   bool _stripeCardLoading = false;
@@ -571,6 +572,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         !reservationPaymentConfirmed &&
         _requestHasStripeCheckoutSession(widget.request, includeLocal: false) &&
         _requestIndicatesPaymentPending(widget.request);
+    final reservationCheckoutNeedsRegeneration =
+        !widget.commercialAccessMode &&
+        reservationPaymentPending &&
+        _requestRequiresNewCheckoutSession(widget.request);
     final checkoutStatus =
         commercialAccessActive
             ? 'Acceso confirmado'
@@ -578,6 +583,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Validando pago con Stripe'
             : reservationPaymentConfirmed
             ? 'Pago confirmado'
+            : reservationCheckoutNeedsRegeneration
+            ? 'Necesita un enlace nuevo'
             : reservationPaymentPending
             ? 'Pago pendiente de confirmacion'
             : 'Listo para abrir enlace seguro';
@@ -586,6 +593,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Tu membresia comercial ya esta activa. Puedes continuar sin volver a pagar.'
             : reservationPaymentConfirmed
             ? 'El backend ya reflejo el pago. Tu reserva puede avanzar al siguiente paso operativo.'
+            : reservationCheckoutNeedsRegeneration
+            ? 'El checkout anterior de Stripe ya cerro o vencio. Generaremos un enlace nuevo y validaremos otra vez antes de avanzar.'
             : reservationPaymentPending
             ? 'Stripe recibio el checkout, pero el backend aun esta validando el pago. Actualizaremos la reserva al confirmarse.'
             : 'El cobro se completa fuera de la app en Stripe. Al terminar, volveras automaticamente para validar tu reserva.';
@@ -593,6 +602,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final ctaLabel =
         _openingReservationCheckout
             ? 'Abriendo Stripe Checkout...'
+            : _showTripsShortcut
+            ? 'Ir a Tus vuelos'
+            : _reservationCheckoutNeedsRegeneration
+            ? 'Generar nuevo enlace'
             : _reservationPaymentConfirmed
             ? 'Ir a Tus vuelos'
             : widget.commercialAccessMode && _submitting
@@ -1002,10 +1015,16 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       !_reservationPaymentConfirmed &&
       _requestIndicatesPaymentPending(widget.request);
 
+  bool get _reservationCheckoutNeedsRegeneration =>
+      !widget.commercialAccessMode &&
+      ((_requestIndicatesPaymentPending(widget.request) &&
+              _requestRequiresNewCheckoutSession(widget.request)) ||
+          _forceNewCheckoutAfterValidation);
+
   bool get _reservationCheckoutAwaitingCompletion =>
       !widget.commercialAccessMode &&
       _reservationPaymentPending &&
-      _effectiveCheckoutSessionId(widget.request).isNotEmpty &&
+      _requestHasReusableStripeCheckoutSession(widget.request) &&
       _paymentIntentId(widget.request).trim().isEmpty &&
       !_waitingForReservationCheckoutReturn;
 
@@ -1028,6 +1047,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   bool _resolvePrimaryAction() {
     if (_submitting) return false;
     if (widget.commercialAccessMode) return _canSubmit;
+    if (_showTripsShortcut) return true;
+    if (_reservationCheckoutNeedsRegeneration) return _canSubmit;
     if (_reservationPaymentConfirmed) return true;
     if (_reservationCheckoutAwaitingCompletion) return true;
     if (_reservationRequiresValidation) return false;
@@ -1035,6 +1056,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   Future<void> _handlePrimaryAction() async {
+    if (!widget.commercialAccessMode && _showTripsShortcut) {
+      _openTripsView();
+      return;
+    }
+    if (!widget.commercialAccessMode && _reservationCheckoutNeedsRegeneration) {
+      await _submitReservationCheckoutLink(forceRecreate: true);
+      return;
+    }
     if (!widget.commercialAccessMode && _reservationPaymentConfirmed) {
       _openTripsView();
       return;
@@ -1542,24 +1571,68 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       final paymentPayload = _reservationCheckoutPayload(
         reservationId: effectiveReservationId,
       );
+      final authorizationQuery = <String, String>{
+        'reservation_id': effectiveReservationId,
+        if (effectiveFlightRequestId.trim().isNotEmpty)
+          'flight_request_id': effectiveFlightRequestId.trim(),
+      };
+      debugPrint(
+        '[Pago][PreCheckout] GET ${_apiLogUrl('/cliente/reservas/$effectiveReservationId/payment-authorization', query: authorizationQuery)} '
+        'reservation_id=$effectiveReservationId '
+        'flight_request_id=$effectiveFlightRequestId',
+      );
       final authorizationPayload = await ApiClient.instance
           .getClientPaymentAuthorization(
             reservationId: effectiveReservationId,
             flightRequestId: effectiveFlightRequestId,
           );
+      debugPrint(
+        '[Pago][PreCheckout] GET /cliente/reservas/$effectiveReservationId/payment-authorization '
+        'status=200 '
+        'reservation_id=$effectiveReservationId '
+        'flight_request_id=$effectiveFlightRequestId '
+        'message=${_backendErrorMessage(authorizationPayload)}',
+      );
       final authorization = PaymentAuthorizationState.fromBackend(
         authorizationPayload,
       );
-      if (!authorization.isAuthorized) {
-        if (!authorization.aircraftAvailable) {
+      debugPrint(
+        '[Pago][PreCheckout] authorized=${authorization.isAuthorized} '
+        'can_pay=${authorization.canPay} '
+        'aircraft_available=${authorization.aircraftAvailable} '
+        'blocking_reasons=${jsonEncode(authorization.blockingReasons)}',
+      );
+      if (authorization.hasInconsistentAvailabilityPayload) {
+        debugPrint(
+          '[Pago][PreCheckout][Warning] Payload inconsistente: '
+          'authorized=true, can_pay=true, aircraft_available=false',
+        );
+      }
+      if (!authorization.isAuthorized ||
+          !authorization.canPay ||
+          authorization.blockingReasons.isNotEmpty) {
+        if (authorization.blockingReasons.contains('AIRCRAFT_NOT_AVAILABLE')) {
           throw ApiException(
             authorization.message,
             statusCode: 409,
-            payload: const {'code': 'AIRCRAFT_NOT_AVAILABLE'},
+            payload: const {
+              'code': 'AIRCRAFT_NOT_AVAILABLE',
+              'source': 'local_validation',
+            },
           );
         }
-        throw ApiException(authorization.message, statusCode: 403);
+        throw ApiException(
+          authorization.message,
+          statusCode: 403,
+          payload: const {
+            'code': 'PAYMENT_NOT_AUTHORIZED',
+            'source': 'local_validation',
+          },
+        );
       }
+      debugPrint(
+        '[Pago][PreCheckout] Autorizacion aprobada. Abriendo Stripe Checkout.',
+      );
       _mergeRequestSnapshot(authorizationPayload);
       _debugStripeCheckoutState(
         label: 'antes_checkout',
@@ -1604,6 +1677,18 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       );
 
       if (redirectUrl.isEmpty) {
+        if (_requestIndicatesPaymentConfirmed(payload)) {
+          _mergeRequestSnapshot(payload);
+          if (!mounted) return;
+          setState(() {
+            _clearReservationCheckoutOpeningState();
+            _inlineMessage = 'Pago confirmado. Redirigiendo a Tus Vuelos...';
+          });
+          await _redirectToTripsAfterConfirmedReservation(
+            message: 'Pago confirmado. Redirigiendo a Tus Vuelos...',
+          );
+          return;
+        }
         debugPrint(
           '[Pago][StripeCheckout] backend_sin_url=${jsonEncode(payload)}',
         );
@@ -1636,8 +1721,17 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             'Stripe Checkout abierto. Completa el pago y vuelve a la app; aqui validaremos el cobro antes de avanzar.';
       });
     } on ApiException catch (error) {
+      final logScope =
+          error.payload?['source'] == 'local_validation'
+              ? '[Pago][PreCheckout][LocalValidation]'
+              : '[Pago][PreCheckout][Backend]';
       debugPrint(
-        '[Pago][StripeCheckout] error_backend=${error.message} payload=${jsonEncode(error.payload ?? const {})}',
+        '$logScope GET /cliente/reservas/${_reservationCheckoutReservationId.isNotEmpty ? _reservationCheckoutReservationId : reservationId}/payment-authorization '
+        'status=${error.statusCode ?? 0} '
+        'reservation_id=${_reservationCheckoutReservationId.isNotEmpty ? _reservationCheckoutReservationId : reservationId} '
+        'flight_request_id=${_reservationCheckoutFlightRequestId.isNotEmpty ? _reservationCheckoutFlightRequestId : effectiveFlightRequestId} '
+        'message=${error.message} '
+        'payload=${jsonEncode(error.payload ?? const {})}',
       );
       if (!mounted) return;
       if (error.isAircraftNotAvailable) {
@@ -1691,6 +1785,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         _isValidatingPayment = false;
         _checkoutCompleted = false;
         _showTripsShortcut = false;
+        _forceNewCheckoutAfterValidation = false;
         _waitingForReservationCheckoutReturn = false;
         if (_reservationCheckoutAwaitingCompletion) {
           _inlineMessage =
@@ -1715,6 +1810,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       _submitting = true;
       _isValidatingPayment = true;
       _showTripsShortcut = false;
+      _forceNewCheckoutAfterValidation = false;
       _inlineMessage = 'Validando pago del vuelo...';
     });
 
@@ -1729,19 +1825,35 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
           flightRequestId = _effectiveFlightRequestId(widget.request);
         }
         debugPrint(
-          '[Pago][StripeCheckout][validacion_intento_${attempt + 1}] '
-          'sessionId_final=$sessionId '
-          'flightRequestId_final=$flightRequestId '
-          'reservationId_final=$reservationId',
+          '[Pago][PostCheckout] GET ${_apiLogUrl('/cliente/stripe/checkout/success', query: {if (sessionId.isNotEmpty) 'session_id': sessionId, if (sessionId.isNotEmpty) 'checkout_session_id': sessionId, if (sessionId.isNotEmpty) 'stripe_checkout_session_id': sessionId, if (reservationId.isNotEmpty) 'reservation_id': reservationId, if (reservationId.isNotEmpty) 'booking_id': reservationId, if (flightRequestId.isNotEmpty) 'flight_request_id': flightRequestId, if (flightRequestId.isNotEmpty) 'request_id': flightRequestId})} '
+          'attempt=${attempt + 1} '
+          'reservation_id=$reservationId '
+          'flight_request_id=$flightRequestId',
         );
         if (sessionId.isNotEmpty) {
-          successPayload = await ApiClient.instance
-              .getClientCheckoutSuccess(
-                sessionId: sessionId,
-                reservationId: reservationId,
-                flightRequestId: flightRequestId,
-              )
-              .catchError((_) => <String, dynamic>{});
+          try {
+            successPayload = await ApiClient.instance.getClientCheckoutSuccess(
+              sessionId: sessionId,
+              reservationId: reservationId,
+              flightRequestId: flightRequestId,
+            );
+            debugPrint(
+              '[Pago][PostCheckout] GET /cliente/stripe/checkout/success '
+              'status=200 '
+              'reservation_id=$reservationId '
+              'flight_request_id=$flightRequestId '
+              'message=${_backendErrorMessage(successPayload)}',
+            );
+          } on ApiException catch (error) {
+            debugPrint(
+              '[Pago][PostCheckout] GET /cliente/stripe/checkout/success '
+              'status=${error.statusCode ?? 0} '
+              'reservation_id=$reservationId '
+              'flight_request_id=$flightRequestId '
+              'message=${error.message}',
+            );
+            successPayload = const <String, dynamic>{};
+          }
         } else {
           successPayload = const <String, dynamic>{};
           debugPrint(
@@ -1818,6 +1930,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         setState(() {
           _isValidatingPayment = false;
           _showTripsShortcut = false;
+          _forceNewCheckoutAfterValidation = false;
           _waitingForReservationCheckoutReturn = false;
           _inlineMessage = 'Pago confirmado. Redirigiendo a Tus Vuelos...';
         });
@@ -1828,6 +1941,22 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       if (_requestIndicatesPaymentPending(currentSnapshot)) {
+        final requiresNewCheckout = shouldForceNewCheckoutAfterPendingValidation(
+          hadCheckoutSuccessReturn:
+              _checkoutCompleted ||
+              _requestHasCheckoutReturnSuccess(currentSnapshot) ||
+              _requestHasCheckoutReturnSuccess(widget.request),
+          paymentConfirmed: false,
+          paymentPending: true,
+          hasCheckoutSessionId:
+              _effectiveCheckoutSessionId(currentSnapshot).isNotEmpty ||
+              sessionId.isNotEmpty,
+          hasPaymentIntentId:
+              _paymentIntentId(currentSnapshot).trim().isNotEmpty,
+          hasExplicitNewCheckoutSignal: _requestRequiresNewCheckoutSession(
+            currentSnapshot,
+          ),
+        );
         final effectiveReservationId =
             _effectiveReservationId(currentSnapshot).isNotEmpty
                 ? _effectiveReservationId(currentSnapshot)
@@ -1841,10 +1970,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         if (!mounted) return;
         setState(() {
           _isValidatingPayment = false;
-          _showTripsShortcut = true;
+          _showTripsShortcut = !requiresNewCheckout;
+          _forceNewCheckoutAfterValidation = requiresNewCheckout;
           _waitingForReservationCheckoutReturn = false;
           _inlineMessage =
-              'Seguimos validando tu pago. Puedes continuar en Tus Vuelos.';
+              requiresNewCheckout
+                  ? 'El enlace anterior de Stripe ya cerro o vencio. Genera un nuevo enlace para reintentar; si Stripe ya capturo el pago, el backend lo reconciliara antes de cobrar otra vez.'
+                  : 'Seguimos validando tu pago. Puedes continuar en Tus Vuelos.';
         });
         return;
       }
@@ -1853,6 +1985,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       setState(() {
         _isValidatingPayment = false;
         _showTripsShortcut = true;
+        _forceNewCheckoutAfterValidation = false;
         _waitingForReservationCheckoutReturn = false;
         _reservationCheckoutSessionId = '';
         _inlineMessage =
@@ -1863,6 +1996,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       setState(() {
         _isValidatingPayment = false;
         _showTripsShortcut = true;
+        _forceNewCheckoutAfterValidation = false;
         _waitingForReservationCheckoutReturn = false;
         _reservationCheckoutSessionId = '';
         _inlineMessage =
@@ -2097,6 +2231,11 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   Future<void> _openReservationExistingCheckout() async {
     try {
+      if (_requestRequiresNewCheckoutSession(widget.request)) {
+        await _submitReservationCheckoutLink(forceRecreate: true);
+        return;
+      }
+
       if (mounted) {
         setState(() {
           _openingReservationCheckout = true;
@@ -2198,6 +2337,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   }
 
   Future<String> _resolveReservationCheckoutUrl() async {
+    if (_requestRequiresNewCheckoutSession(widget.request)) {
+      return '';
+    }
+
     final directUrl = _checkoutUrl(widget.request);
     if (directUrl.isNotEmpty) return directUrl;
 
@@ -2214,6 +2357,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         );
         if (payload.isNotEmpty) {
           _mergeRequestSnapshot(payload);
+          if (_requestRequiresNewCheckoutSession(payload)) {
+            return '';
+          }
           final recoveredUrl = _checkoutUrl(payload);
           if (recoveredUrl.isNotEmpty) return recoveredUrl;
         }
@@ -2226,6 +2372,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       final refreshedMatch = await _refreshMatchingPaymentSnapshot(force: true);
       if (refreshedMatch.isNotEmpty) {
         _mergeRequestSnapshot(refreshedMatch);
+        if (_requestRequiresNewCheckoutSession(refreshedMatch)) {
+          return '';
+        }
         final recoveredUrl = _checkoutUrl(refreshedMatch);
         if (recoveredUrl.isNotEmpty) return recoveredUrl;
       }
@@ -2918,6 +3067,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     return extractStripeCheckoutUrl(payload);
   }
 
+  String _apiLogUrl(String path, {Map<String, String>? query}) {
+    final uri = Uri.parse('${ApiClient.instance.baseUrl}$path');
+    if (query == null || query.isEmpty) return uri.toString();
+    return uri
+        .replace(queryParameters: {...uri.queryParameters, ...query})
+        .toString();
+  }
+
   String _backendErrorMessage(Map<String, dynamic> payload) {
     final data = _asStringKeyMap(payload['data']);
     final error = _asStringKeyMap(payload['error']);
@@ -3456,6 +3613,29 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
 
     return false;
+  }
+
+  bool _requestHasReusableStripeCheckoutSession(
+    Map<String, dynamic> request, {
+    bool includeLocal = false,
+  }) {
+    if (!_requestHasStripeCheckoutSession(
+      request,
+      includeLocal: includeLocal,
+    )) {
+      return false;
+    }
+
+    return stripeCheckoutSessionCanBeReused(request) &&
+        !_requestRequiresNewCheckoutSession(request);
+  }
+
+  bool _requestRequiresNewCheckoutSession(Map<String, dynamic> request) {
+    if (!_requestHasStripeCheckoutSession(request, includeLocal: true)) {
+      return false;
+    }
+
+    return stripeCheckoutSessionRequiresNewCheckout(request);
   }
 
   List<Map<String, dynamic>> _paymentsFromRow(Map<String, dynamic> row) {
