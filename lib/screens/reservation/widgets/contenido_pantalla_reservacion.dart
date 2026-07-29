@@ -75,8 +75,6 @@ class ReservationScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final needsCommercialAccess =
         !hasActiveMembership && remainingFreeQuotes <= 0;
     final isPrimaryFormReady =
@@ -84,355 +82,110 @@ class ReservationScreenContent extends StatelessWidget {
         primaryRoute.toAirport != null &&
         primaryRoute.startDate != null;
 
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFF8FAFC), Color(0xFFF2F5F9), Color(0xFFF8FAFC)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
+    return ColoredBox(
+      color: const Color(0xFF07111D),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 136),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 136),
         children: [
           _FlightSearchHero(
             isReady: isPrimaryFormReady,
             remainingFreeQuotes: remainingFreeQuotes,
             hasActiveMembership: hasActiveMembership,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           if (needsCommercialAccess) ...[
-            const SizedBox(height: 2),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+                color: const Color(0xFF101C2D),
+                borderRadius: BorderRadius.circular(28),
                 border: Border.all(
-                  color: palette.accent.withValues(alpha: 0.35),
+                  color: const Color(0xFFD9B25F).withValues(alpha: .28),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    'Prueba gratuita consumida',
-                    style: TextStyle(
-                      color: palette.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.3,
+                  const Icon(
+                    Icons.lock_outline_rounded,
+                    color: Color(0xFFD9B25F),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Activa tu acceso para seguir cotizando.',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tu siguiente paso es activar el acceso comercial para poder reservar, firmar contrato y pagar el vuelo.',
-                    style: TextStyle(
-                      color: palette.textSecondary,
-                      fontSize: 13,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  FilledButton.icon(
+                  TextButton(
                     onPressed: onOpenMembership,
-                    icon: const Icon(Icons.lock_open_rounded),
-                    label: const Text('Activar acceso comercial'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: palette.primary,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 48),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFD9B25F),
                     ),
+                    child: const Text('Activar'),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 20),
           ],
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE5EBF2)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 22,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _FormSectionHeader(),
-                const SizedBox(height: 12),
-                SegmentedTripSelector(
-                  value: tripType,
-                  onChanged: onTripTypeChanged,
-                ),
-                const SizedBox(height: 12),
-                if (tripType == 'Multidestino') ...[
-                  const RouteHeader(title: 'Tramo 1'),
-                  const SizedBox(height: 10),
-                ],
-                ConciergeField(
-                  label: 'Origen',
-                  value: _airportPrimaryLabel(primaryRoute.fromAirport),
-                  helperText: '¿Desde donde sales?',
-                  leadingIcon: Icons.location_on_outlined,
-                  secondaryValue: _airportSecondaryLabel(
-                    primaryRoute.fromAirport,
-                  ),
-                  placeholder: 'Seleccionar aeropuerto',
-                  onTap: onPickOrigin,
-                ),
-                const SizedBox(height: 10),
-                ConciergeField(
-                  label: 'Destino',
-                  value: _airportPrimaryLabel(primaryRoute.toAirport),
-                  helperText: '¿A donde vuelas?',
-                  leadingIcon: Icons.place_outlined,
-                  secondaryValue: _airportSecondaryLabel(
-                    primaryRoute.toAirport,
-                  ),
-                  placeholder: 'Seleccionar aeropuerto',
-                  onTap: onPickDestination,
-                ),
-                const SizedBox(height: 10),
-                ConciergeField(
-                  label: 'Salida',
-                  value:
-                      primaryRoute.startDate == null
-                          ? 'Seleccionar fecha'
-                          : dateFormat.format(primaryRoute.startDate!),
-                  helperText: 'Elige la fecha de salida',
-                  leadingIcon: Icons.calendar_month_outlined,
-                  onTap: onPickPrimaryDate,
-                  trailing: Icon(
-                    Icons.calendar_today_outlined,
-                    size: 22,
-                    color: isDark ? palette.accent : palette.primary,
-                  ),
-                  placeholder: 'Seleccionar fecha',
-                ),
-                const SizedBox(height: 10),
-                InlinePreferenceButton(
-                  title:
-                      departureTime == null
-                          ? 'Seleccionar hora de salida'
-                          : 'Hora de salida: ${departureTime!.format(context)}',
-                  icon: Icons.schedule_rounded,
-                  onTap: onPickDepartureTime,
-                ),
-                const SizedBox(height: 12),
-                PassengerRow(
-                  value: reservation.passengers,
-                  onChanged: onPassengerChanged,
-                ),
-                if (tripType == 'Ida y vuelta') ...[
-                  const SizedBox(height: 10),
-                  ConciergeField(
-                    label: 'Fecha de regreso',
-                    value:
-                        returnDate == null
-                            ? 'Seleccionar fecha'
-                            : dateFormat.format(returnDate!),
-                    helperText: 'Programa tu regreso',
-                    leadingIcon: Icons.event_repeat_outlined,
-                    onTap: onPickReturnDate,
-                    trailing: Icon(
-                      Icons.calendar_today_outlined,
-                      size: 22,
-                      color: isDark ? palette.accent : palette.primary,
-                    ),
-                    placeholder: 'Seleccionar fecha',
-                  ),
-                  const SizedBox(height: 10),
-                  InlinePreferenceButton(
-                    title:
-                        returnTime == null
-                            ? 'Seleccionar hora de regreso'
-                            : 'Hora de regreso: ${returnTime!.format(context)}',
-                    icon: Icons.more_time_rounded,
-                    onTap: onPickReturnTime,
-                  ),
-                ],
-                if (tripType == 'Multidestino') ...[
-                  const SizedBox(height: 10),
-                  ...List.generate(
-                    reservation.routes.length - 1,
-                    (extraIndex) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: MultiLegCard(
-                        index: extraIndex + 1,
-                        route: reservation.routes[extraIndex + 1],
-                        onPickOrigin: () => onPickRouteOrigin(extraIndex + 1),
-                        onPickDestination:
-                            () => onPickRouteDestination(extraIndex + 1),
-                        onPickDate: () => onPickRouteDate(extraIndex + 1),
-                        onRemove: () => onRemoveRoute(extraIndex + 1),
-                        formatDate: dateFormat,
-                      ),
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        primaryRoute.toAirport == null ? null : onAddRoute,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Agregar tramo'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      side: BorderSide(
-                        color: isDark ? palette.accentBorder : palette.border,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      foregroundColor: palette.textPrimary,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed:
-                        reservation.isLoadingQuotePreview || !isPrimaryFormReady
-                            ? null
-                            : onPreview,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: palette.primary,
-                      disabledBackgroundColor: const Color(0xFFE7EDF4),
-                      disabledForegroundColor: const Color(0xFF7D8B98),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(58),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                    ),
-                    child:
-                        reservation.isLoadingQuotePreview
-                            ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                Flexible(
-                                  child: Text(
-                                    'Consultando disponibilidad...',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                            : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.flight_takeoff_rounded, size: 18),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    'Solicitar cotizacion',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 15,
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFD),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE8EEF4)),
-                  ),
-                  child: Text(
-                    isPrimaryFormReady
-                        ? 'Cotizacion estimada, sujeta a disponibilidad y operacion.'
-                        : 'Completa origen, destino y fecha para continuar.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: palette.textSecondary,
-                      fontSize: 12.5,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          _LuxuryQuoteForm(
+            reservation: reservation,
+            primaryRoute: primaryRoute,
+            dateFormat: dateFormat,
+            tripType: tripType,
+            departureTime: departureTime,
+            returnDate: returnDate,
+            returnTime: returnTime,
+            isReady: isPrimaryFormReady,
+            onTripTypeChanged: onTripTypeChanged,
+            onPickOrigin: onPickOrigin,
+            onPickDestination: onPickDestination,
+            onPickDate: onPickPrimaryDate,
+            onPickTime: onPickDepartureTime,
+            onPickReturnDate: onPickReturnDate,
+            onPickReturnTime: onPickReturnTime,
+            onPassengerChanged: onPassengerChanged,
+            onPickRouteOrigin: onPickRouteOrigin,
+            onPickRouteDestination: onPickRouteDestination,
+            onPickRouteDate: onPickRouteDate,
+            onRemoveRoute: onRemoveRoute,
+            onAddRoute: onAddRoute,
+            onPreview: onPreview,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 26),
           if (suggestedAirports.isNotEmpty)
             _SuggestedDestinationRail(
               airports: suggestedAirports.take(4).toList(),
               isMultiCity: tripType == 'Multidestino',
               onTap: onApplySuggestedDestination,
             ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 26),
           QuickActionRail(
             onTodayTrip: onTodayTrip,
             onRoundTrip: onRoundTrip,
             onMultiCity: onMultiCity,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
           if (reservation.isLoadingWorkspace) ...[
             const LoadingBand(text: 'Sincronizando rutas del cliente...'),
           ],
           if (reservation.quoteError != null) ...[
-            ConciergeCard(
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C2D),
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Text(
                 reservation.quoteError!,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontWeight: FontWeight.w800,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -441,24 +194,536 @@ class ReservationScreenContent extends StatelessWidget {
       ),
     );
   }
+}
 
-  static String _airportPrimaryLabel(Airport? airport) {
-    if (airport == null) return 'Seleccionar aeropuerto';
-    return airport.city;
+class _LuxuryQuoteForm extends StatelessWidget {
+  const _LuxuryQuoteForm({
+    required this.reservation,
+    required this.primaryRoute,
+    required this.dateFormat,
+    required this.tripType,
+    required this.departureTime,
+    required this.returnDate,
+    required this.returnTime,
+    required this.isReady,
+    required this.onTripTypeChanged,
+    required this.onPickOrigin,
+    required this.onPickDestination,
+    required this.onPickDate,
+    required this.onPickTime,
+    required this.onPickReturnDate,
+    required this.onPickReturnTime,
+    required this.onPassengerChanged,
+    required this.onPickRouteOrigin,
+    required this.onPickRouteDestination,
+    required this.onPickRouteDate,
+    required this.onRemoveRoute,
+    required this.onAddRoute,
+    required this.onPreview,
+  });
+
+  final ReservationProvider reservation;
+  final RouteModel primaryRoute;
+  final DateFormat dateFormat;
+  final String tripType;
+  final TimeOfDay? departureTime;
+  final DateTime? returnDate;
+  final TimeOfDay? returnTime;
+  final bool isReady;
+  final ValueChanged<String> onTripTypeChanged;
+  final VoidCallback onPickOrigin;
+  final VoidCallback onPickDestination;
+  final VoidCallback onPickDate;
+  final VoidCallback onPickTime;
+  final VoidCallback onPickReturnDate;
+  final VoidCallback onPickReturnTime;
+  final ValueChanged<int> onPassengerChanged;
+  final ValueChanged<int> onPickRouteOrigin;
+  final ValueChanged<int> onPickRouteDestination;
+  final ValueChanged<int> onPickRouteDate;
+  final ValueChanged<int> onRemoveRoute;
+  final VoidCallback onAddRoute;
+  final VoidCallback onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 560),
+      curve: Curves.easeOutCubic,
+      builder:
+          (_, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 24 * (1 - value)),
+              child: child,
+            ),
+          ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF101C2D),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.flight_takeoff_rounded,
+                  color: Color(0xFFD9B25F),
+                  size: 24,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Cotiza tu vuelo',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -.5,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _LuxuryTripTabs(value: tripType, onChanged: onTripTypeChanged),
+            const SizedBox(height: 14),
+            Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                Column(
+                  children: [
+                    _LuxuryFormField(
+                      icon: Icons.location_on_outlined,
+                      label: 'Origen',
+                      value: _airportValue(primaryRoute.fromAirport),
+                      placeholder: '¿Desde dónde sales?',
+                      onTap: onPickOrigin,
+                    ),
+                    const SizedBox(height: 14),
+                    _LuxuryFormField(
+                      icon: Icons.place_outlined,
+                      label: 'Destino',
+                      value: _airportValue(primaryRoute.toAirport),
+                      placeholder: '¿A dónde vuelas?',
+                      onTap: onPickDestination,
+                    ),
+                  ],
+                ),
+                IgnorePointer(
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    margin: const EdgeInsets.only(right: 13),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF16253B),
+                      border: Border.all(
+                        color: const Color(0xFFD9B25F).withValues(alpha: .42),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.swap_vert_rounded,
+                      color: Color(0xFFD9B25F),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _LuxuryFormField(
+                    icon: Icons.calendar_month_outlined,
+                    label: 'Fecha',
+                    value:
+                        primaryRoute.startDate == null
+                            ? ''
+                            : dateFormat.format(primaryRoute.startDate!),
+                    placeholder: 'Seleccionar',
+                    onTap: onPickDate,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _LuxuryFormField(
+                    icon: Icons.schedule_rounded,
+                    label: 'Hora',
+                    value: departureTime?.format(context) ?? '',
+                    placeholder: 'Seleccionar',
+                    onTap: onPickTime,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _LuxuryPassengerField(
+              value: reservation.passengers,
+              onChanged: onPassengerChanged,
+            ),
+            if (tripType == 'Ida y vuelta') ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LuxuryFormField(
+                      icon: Icons.event_repeat_outlined,
+                      label: 'Regreso',
+                      value:
+                          returnDate == null
+                              ? ''
+                              : dateFormat.format(returnDate!),
+                      placeholder: 'Fecha',
+                      onTap: onPickReturnDate,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _LuxuryFormField(
+                      icon: Icons.more_time_rounded,
+                      label: 'Hora',
+                      value: returnTime?.format(context) ?? '',
+                      placeholder: 'Seleccionar',
+                      onTap: onPickReturnTime,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (tripType == 'Multidestino') ...[
+              const SizedBox(height: 14),
+              ...List.generate(
+                reservation.routes.length - 1,
+                (extraIndex) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: MultiLegCard(
+                    index: extraIndex + 1,
+                    route: reservation.routes[extraIndex + 1],
+                    onPickOrigin: () => onPickRouteOrigin(extraIndex + 1),
+                    onPickDestination:
+                        () => onPickRouteDestination(extraIndex + 1),
+                    onPickDate: () => onPickRouteDate(extraIndex + 1),
+                    onRemove: () => onRemoveRoute(extraIndex + 1),
+                    formatDate: dateFormat,
+                  ),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: primaryRoute.toAirport == null ? null : onAddRoute,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Agregar tramo'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFD9B25F),
+                  minimumSize: const Size.fromHeight(48),
+                  side: BorderSide(
+                    color: const Color(0xFFD9B25F).withValues(alpha: .45),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            _QuoteScaleButton(
+              onTap:
+                  reservation.isLoadingQuotePreview || !isReady
+                      ? null
+                      : onPreview,
+              child: Container(
+                height: 58,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient:
+                      isReady
+                          ? const LinearGradient(
+                            colors: [Color(0xFFF0D58F), Color(0xFFD9B25F)],
+                          )
+                          : const LinearGradient(
+                            colors: [Color(0xFF344052), Color(0xFF273344)],
+                          ),
+                  boxShadow:
+                      isReady
+                          ? [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFD9B25F,
+                              ).withValues(alpha: .18),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ]
+                          : null,
+                ),
+                child:
+                    reservation.isLoadingQuotePreview
+                        ? const SizedBox(
+                          width: 21,
+                          height: 21,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Color(0xFF111820),
+                          ),
+                        )
+                        : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.flight_takeoff_rounded,
+                              color:
+                                  isReady
+                                      ? const Color(0xFF111820)
+                                      : Colors.white.withValues(alpha: .45),
+                            ),
+                            const SizedBox(width: 9),
+                            Text(
+                              'Solicitar cotización',
+                              style: TextStyle(
+                                color:
+                                    isReady
+                                        ? const Color(0xFF111820)
+                                        : Colors.white.withValues(alpha: .45),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  static String? _airportSecondaryLabel(Airport? airport) {
-    if (airport == null) return null;
-    final parts = <String>[];
-    final iata = airport.iata?.trim();
-    if (iata != null && iata.isNotEmpty) {
-      parts.add(iata.toUpperCase());
-    }
-    if (airport.name.trim().isNotEmpty) {
-      parts.add(airport.name);
-    }
-    if (parts.isEmpty) return null;
-    return parts.join(' · ');
+  static String _airportValue(Airport? airport) {
+    if (airport == null) return '';
+    final code = airport.iata?.trim().toUpperCase() ?? '';
+    return code.isEmpty ? airport.city : '$code · ${airport.city}';
+  }
+}
+
+class _LuxuryTripTabs extends StatelessWidget {
+  const _LuxuryTripTabs({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const options = ['Solo ida', 'Ida y vuelta', 'Multidestino'];
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF07111D).withValues(alpha: .65),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children:
+            options.map((option) {
+              final active = option == value;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(option),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 240),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color:
+                          active ? const Color(0xFF16253B) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      border:
+                          active
+                              ? Border.all(
+                                color: const Color(
+                                  0xFFD9B25F,
+                                ).withValues(alpha: .55),
+                              )
+                              : null,
+                    ),
+                    child: Text(
+                      option,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color:
+                            active
+                                ? const Color(0xFFD9B25F)
+                                : Colors.white.withValues(alpha: .62),
+                        fontSize: 11,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+}
+
+class _LuxuryFormField extends StatelessWidget {
+  const _LuxuryFormField({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.placeholder,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String placeholder;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF07111D).withValues(alpha: .5),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFFD9B25F), size: 22),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .72),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value.isEmpty ? placeholder : value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color:
+                          value.isEmpty
+                              ? Colors.white.withValues(alpha: .42)
+                              : Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LuxuryPassengerField extends StatelessWidget {
+  const _LuxuryPassengerField({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF07111D).withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.person_outline_rounded, color: Color(0xFFD9B25F)),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pasajeros',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .72),
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  '$value ${value == 1 ? 'pasajero' : 'pasajeros'}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: value <= 1 ? null : () => onChanged(value - 1),
+            color: const Color(0xFFD9B25F),
+            icon: const Icon(Icons.remove_rounded),
+          ),
+          IconButton(
+            onPressed: () => onChanged(value + 1),
+            color: const Color(0xFFD9B25F),
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuoteScaleButton extends StatefulWidget {
+  const _QuoteScaleButton({required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  State<_QuoteScaleButton> createState() => _QuoteScaleButtonState();
+}
+
+class _QuoteScaleButtonState extends State<_QuoteScaleButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 140),
+        child: widget.child,
+      ),
+    );
   }
 }
 
@@ -475,7 +740,6 @@ class _FlightSearchHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     final statusLabel =
         hasActiveMembership
             ? 'Acceso activo'
@@ -494,9 +758,9 @@ class _FlightSearchHero extends StatelessWidget {
             ),
           ),
       child: SizedBox(
-        height: 172,
+        height: 220,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(28),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -508,8 +772,8 @@ class _FlightSearchHero extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            palette.primary,
-                            palette.primary.withValues(alpha: 0.94),
+                            const Color(0xFF12243B),
+                            const Color(0xFF101C2D),
                             const Color(0xFF1A3E5A),
                           ],
                           begin: Alignment.topLeft,
@@ -522,17 +786,17 @@ class _FlightSearchHero extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.black.withValues(alpha: 0.22),
-                      Colors.black.withValues(alpha: 0.36),
-                      Colors.black.withValues(alpha: 0.68),
+                      const Color(0xFF07111D).withValues(alpha: .88),
+                      const Color(0xFF07111D).withValues(alpha: .55),
+                      Colors.black.withValues(alpha: .48),
                     ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -545,35 +809,51 @@ class _FlightSearchHero extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      'Viaja a tu manera,\nnosotros nos encargamos.',
-                      style: TextStyle(
-                        fontSize: 17,
-                        height: 1.12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.35,
-                        color: palette.heroTextPrimary,
+                      'Viaja sin límites.',
+                      style: const TextStyle(
+                        fontSize: 29,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.8,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: const [
-                        _HeroTrustBadge(
-                          icon: Icons.verified_user_outlined,
-                          label: 'Aeronaves verificadas',
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Nos encargamos de todo.',
+                      style: TextStyle(
+                        color: Color(0xFFD9B25F),
+                        fontSize: 18,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: _HeroTrustBadge(
+                            icon: Icons.verified_user_outlined,
+                            label: 'Aeronaves\nverificadas',
+                          ),
                         ),
-                        _HeroTrustBadge(
-                          icon: Icons.badge_outlined,
-                          label: 'Pilotos certificados',
+                        Expanded(
+                          child: _HeroTrustBadge(
+                            icon: Icons.badge_outlined,
+                            label: 'Pilotos\ncertificados',
+                          ),
                         ),
-                        _HeroTrustBadge(
-                          icon: Icons.support_agent_rounded,
-                          label: 'Atencion 24/7',
+                        Expanded(
+                          child: _HeroTrustBadge(
+                            icon: Icons.support_agent_rounded,
+                            label: 'Concierge\n24/7',
+                          ),
                         ),
-                        _HeroTrustBadge(
-                          icon: Icons.schedule_rounded,
-                          label: 'Respuesta rapida',
+                        Expanded(
+                          child: _HeroTrustBadge(
+                            icon: Icons.bolt_rounded,
+                            label: 'Respuesta\ninmediata',
+                          ),
                         ),
                       ],
                     ),
@@ -596,23 +876,24 @@ class _HeroStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
+        color: const Color(0xFF07111D).withValues(alpha: .56),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: const Color(0xFF31D158).withValues(alpha: .35),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: palette.accent),
+          Icon(icon, size: 14, color: const Color(0xFF31D158)),
           const SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
-              color: Colors.white,
+              color: const Color(0xFF31D158),
               fontSize: 11,
               fontWeight: FontWeight.w900,
             ),
@@ -631,29 +912,23 @@ class _HeroTrustBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: palette.accent),
-          const SizedBox(width: 5),
-          Text(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: const Color(0xFFD9B25F)),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+              fontSize: 9.5,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -671,7 +946,6 @@ class _SuggestedDestinationRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -680,63 +954,40 @@ class _SuggestedDestinationRail extends StatelessWidget {
             Expanded(
               child: Text(
                 'Destinos populares',
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             Text(
               'Ver todos',
-              style: TextStyle(
-                color: palette.accent,
+              style: const TextStyle(
+                color: Color(0xFFD9B25F),
                 fontSize: 13,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 0.98,
-          ),
-          itemCount: airports.length,
-          itemBuilder:
-              (_, index) => SuggestedDestinationCard(
-                airport: airports[index],
-                isMultiCity: isMultiCity,
-                onTap: () => onTap(airports[index]),
-              ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FormSectionHeader extends StatelessWidget {
-  const _FormSectionHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Row(
-      children: [
-        Icon(Icons.flight_outlined, color: palette.primary, size: 18),
-        const SizedBox(width: 8),
-        Text(
-          'Datos del vuelo',
-          style: TextStyle(
-            color: palette.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.3,
+        SizedBox(
+          height: 170,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: airports.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder:
+                (_, index) => SizedBox(
+                  width: 160,
+                  child: SuggestedDestinationCard(
+                    airport: airports[index],
+                    isMultiCity: isMultiCity,
+                    onTap: () => onTap(airports[index]),
+                  ),
+                ),
           ),
         ),
       ],
@@ -761,45 +1012,64 @@ class QuickActionRail extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Servicios',
           style: TextStyle(
-            color: context.clientPalette.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 10),
-        Row(
+        const SizedBox(height: 12),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.72,
           children: [
-            Expanded(
-              child: QuickActionCard(
-                icon: Icons.flash_on_rounded,
-                title: 'Vuelo inmediato',
-                subtitle: 'Disponible para salir hoy',
-                tint: const Color(0xFF111111),
-                onTap: onTodayTrip,
-              ),
+            QuickActionCard(
+              icon: Icons.flash_on_rounded,
+              title: 'Vuelo inmediato',
+              subtitle: '',
+              tint: const Color(0xFF111111),
+              onTap: onTodayTrip,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: QuickActionCard(
-                icon: Icons.swap_calls_rounded,
-                title: 'Ida y vuelta',
-                subtitle: 'Programa ambos trayectos',
-                tint: const Color(0xFF111111),
-                onTap: onRoundTrip,
-              ),
+            QuickActionCard(
+              icon: Icons.sync_alt_rounded,
+              title: 'Ida y vuelta',
+              subtitle: '',
+              tint: const Color(0xFF111111),
+              onTap: onRoundTrip,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: QuickActionCard(
-                icon: Icons.business_center_rounded,
-                title: 'Viaje corporativo',
-                subtitle: 'Soluciones para tu empresa',
-                tint: const Color(0xFF111111),
-                onTap: onMultiCity,
-              ),
+            QuickActionCard(
+              icon: Icons.business_center_outlined,
+              title: 'Corporativo',
+              subtitle: '',
+              tint: const Color(0xFF111111),
+              onTap: onMultiCity,
+            ),
+            const QuickActionCard(
+              icon: Icons.airplanemode_active_rounded,
+              title: 'Helicópteros',
+              subtitle: '',
+              tint: Color(0xFF111111),
+              onTap: null,
+            ),
+            const QuickActionCard(
+              icon: Icons.directions_boat_outlined,
+              title: 'Yates',
+              subtitle: '',
+              tint: Color(0xFF111111),
+              onTap: null,
+            ),
+            const QuickActionCard(
+              icon: Icons.support_agent_rounded,
+              title: 'Concierge',
+              subtitle: '',
+              tint: Color(0xFF111111),
+              onTap: null,
             ),
           ],
         ),
@@ -815,73 +1085,57 @@ class QuickActionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.tint,
-    required this.onTap,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Color tint;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.all(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5EBF2)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: const Color(0xFF101C2D),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF7E7),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, color: palette.accent, size: 22),
+            Icon(
+              icon,
+              color:
+                  onTap == null
+                      ? const Color(0xFFD9B25F).withValues(alpha: .48)
+                      : const Color(0xFFD9B25F),
+              size: 24,
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                color: palette.textPrimary,
-                height: 1.1,
+            const SizedBox(width: 11),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      onTap == null
+                          ? Colors.white.withValues(alpha: .45)
+                          : Colors.white,
+                  height: 1.1,
+                ),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 12,
-                height: 1.3,
-                fontWeight: FontWeight.w600,
-              ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withValues(alpha: onTap == null ? .18 : .5),
             ),
           ],
         ),
@@ -967,7 +1221,6 @@ class SuggestedDestinationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     final code = airport.iata?.trim().toUpperCase() ?? 'RUTA';
     final location = _displayCityForCode(code, airport.city);
     final imageUrl = _imageUrlForCode(code);
@@ -977,16 +1230,9 @@ class SuggestedDestinationCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
       child: Ink(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFF101C2D),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5EBF2)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -996,7 +1242,7 @@ class SuggestedDestinationCard extends StatelessWidget {
                 top: Radius.circular(22),
               ),
               child: SizedBox(
-                height: 92,
+                height: 98,
                 width: double.infinity,
                 child: Stack(
                   fit: StackFit.expand,
@@ -1009,8 +1255,8 @@ class SuggestedDestinationCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  palette.primary.withValues(alpha: 0.90),
-                                  const Color(0xFF5F8CB5),
+                                  const Color(0xFF12243B),
+                                  const Color(0xFF07111D),
                                 ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -1039,17 +1285,26 @@ class SuggestedDestinationCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: palette.accent,
+                          color: const Color(0xFFD9B25F),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           code,
                           style: TextStyle(
-                            color: palette.textOnAccent,
+                            color: const Color(0xFF111820),
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Icon(
+                        Icons.favorite_border_rounded,
+                        color: Colors.white.withValues(alpha: .9),
+                        size: 22,
                       ),
                     ),
                   ],
@@ -1065,10 +1320,10 @@ class SuggestedDestinationCard extends StatelessWidget {
                     location,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                      color: palette.textPrimary,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                       height: 1.05,
                     ),
                   ),
@@ -1077,10 +1332,10 @@ class SuggestedDestinationCard extends StatelessWidget {
                     isMultiCity ? 'Agregar parada  →' : 'Usar destino  →',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: palette.accent,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w900,
+                    style: const TextStyle(
+                      color: Color(0xFFD9B25F),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],

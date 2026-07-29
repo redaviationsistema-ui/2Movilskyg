@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -62,6 +63,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   bool _waitingForExternalSignatureReturn = false;
   String _submitMessage = '';
   String _externalContractId = '';
+  int? _expandedContractSection;
 
   @override
   void initState() {
@@ -517,95 +519,107 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       fallbackCustomerName: auth.user?.companyName,
       fallbackRepresentativeName: auth.user?.name,
     );
-    final legalSections = [
-      ..._definitions(contractModel),
-      ..._clauses(contractModel),
-    ];
+    final isSigned = _contractAlreadySigned(request);
 
-    return ClientExperienceShell(
-      title: 'Contrato',
-      subtitle: 'Documento completo previo al checkout y liberacion operativa.',
-      showBackButton: widget.showBackButton,
-      trailing: const StatusBadge(label: 'Contrato', color: kBlack),
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
-              children: [
-                _ClientContractReplicaDocument(
-                  model: contractModel,
-                  legalSections: legalSections,
-                ),
-                const SizedBox(height: 18),
-                _SignaturePanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _SectionTitleRow(
-                        icon: Icons.draw_rounded,
-                        title: 'Aceptacion y firma',
-                        subtitle:
-                            'Firma local o DocuSign para liberar el checkout.',
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'La firma electronica tiene la misma validez que una firma autografa para efectos del flujo comercial y operativo dentro de Red Aviation.',
-                        style: TextStyle(color: Color(0xFF3B3428), height: 1.4),
-                      ),
-
-                      const SizedBox(height: 12),
-                      _DocuSignFlowCard(
-                        isLoading: _externalSigning,
-                        isWaitingForReturn: _waitingForExternalSignatureReturn,
-                        onOpen:
-                            _externalSigning || _submitting
-                                ? null
-                                : _openExternalSignature,
-                      ),
-                      const SizedBox(height: 14),
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        value: _accepted,
-                        onChanged: (value) {
-                          setState(() {
-                            _accepted = value ?? false;
-                          });
-                        },
-                        title: const Text(
-                          'Acepto los terminos del contrato y autorizo continuar al checkout.',
-                          style: TextStyle(
-                            color: Color(0xFF111111),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        activeColor: kBlack,
-                      ),
-                      if (_submitMessage.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _InlineContractMessage(message: _submitMessage),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-              ],
+    return Scaffold(
+      backgroundColor: const Color(0xFF07111D),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _PremiumContractHeader(
+              showBackButton: widget.showBackButton,
+              isSigned: isSigned,
+              onBack: () => Navigator.pop(context),
             ),
-          ),
-          _ContractActionBar(
-            canSign: _canContinue && !_submitting,
-            isSigning: _submitting,
-            isDownloading: _downloading,
-            onOpenTrips: widget.onOpenTrips,
-            onDownload:
-                _downloading || _submitting ? null : _downloadContractPdf,
-            onSign: _canContinue && !_submitting ? _signAndContinue : null,
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 26),
+                children: [
+                  _PremiumContractHero(
+                    model: contractModel,
+                    isSigned: isSigned,
+                  ),
+                  const SizedBox(height: 20),
+                  _PremiumCostSummary(model: contractModel),
+                  const SizedBox(height: 20),
+                  const _PremiumContractTimeline(),
+                  const SizedBox(height: 22),
+                  const _PremiumSectionHeading(title: 'Revisa lo esencial'),
+                  const SizedBox(height: 12),
+                  _PremiumContractAccordions(
+                    model: contractModel,
+                    expandedIndex: _expandedContractSection,
+                    onChanged: (index) {
+                      setState(() {
+                        _expandedContractSection =
+                            _expandedContractSection == index ? null : index;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _PremiumFullContractCard(
+                    isLoading: _downloading,
+                    onOpen:
+                        _downloading || _submitting
+                            ? null
+                            : _downloadContractPdf,
+                  ),
+                  const SizedBox(height: 16),
+                  _PremiumDocuSignCard(
+                    isLoading: _externalSigning,
+                    isWaitingForReturn: _waitingForExternalSignatureReturn,
+                    onSign:
+                        _externalSigning || _submitting
+                            ? null
+                            : _openExternalSignature,
+                  ),
+                  const SizedBox(height: 14),
+                  _PremiumAcceptanceRow(
+                    value: _accepted,
+                    onChanged: (value) {
+                      setState(() {
+                        _accepted = value;
+                      });
+                    },
+                  ),
+                  if (_submitMessage.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _PremiumContractMessage(message: _submitMessage),
+                  ],
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+            _PremiumContractFooter(
+              accepted: _accepted,
+              isSigning: _externalSigning || _submitting,
+              isDownloading: _downloading,
+              onDownload:
+                  _downloading || _submitting ? null : _downloadContractPdf,
+              onSign:
+                  _accepted && !_externalSigning && !_submitting
+                      ? _openExternalSignature
+                      : null,
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  bool _contractAlreadySigned(Map<String, dynamic> request) {
+    final status =
+        _firstMeaningfulText([
+          request['contract_status'],
+          request['docusign_status'],
+          request['envelope_status'],
+        ], fallback: '').toLowerCase();
+    return request['contract_signed'] == true ||
+        status.contains('signed') ||
+        status.contains('firmado') ||
+        status.contains('completed');
   }
 
   bool get _canContinue =>
@@ -1035,6 +1049,926 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       if (trimmed.isNotEmpty) return trimmed;
     }
     return '';
+  }
+}
+
+class _PremiumContractHeader extends StatelessWidget {
+  const _PremiumContractHeader({
+    required this.showBackButton,
+    required this.isSigned,
+    required this.onBack,
+  });
+
+  final bool showBackButton;
+  final bool isSigned;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+      child: Row(
+        children: [
+          if (showBackButton) ...[
+            InkWell(
+              onTap: onBack,
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF111C2C),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: .09),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 21,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          const Expanded(
+            child: Text(
+              'Contrato',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -.6,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: (isSigned
+                      ? const Color(0xFF31D158)
+                      : const Color(0xFFD7B05C))
+                  .withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: (isSigned
+                        ? const Color(0xFF31D158)
+                        : const Color(0xFFD7B05C))
+                    .withValues(alpha: .38),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSigned
+                      ? Icons.check_circle_rounded
+                      : Icons.schedule_rounded,
+                  color:
+                      isSigned
+                          ? const Color(0xFF31D158)
+                          : const Color(0xFFD7B05C),
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isSigned ? 'Firmado' : 'Pendiente de firma',
+                  style: TextStyle(
+                    color:
+                        isSigned
+                            ? const Color(0xFF31D158)
+                            : const Color(0xFFD7B05C),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumContractHero extends StatelessWidget {
+  const _PremiumContractHero({required this.model, required this.isSigned});
+
+  final _ContractModel model;
+  final bool isSigned;
+
+  @override
+  Widget build(BuildContext context) {
+    final routeParts = model.routeLabel.split(RegExp(r'\s*(?:→|->)\s*'));
+    final origin = routeParts.isNotEmpty ? routeParts.first : model.routeLabel;
+    final destination =
+        routeParts.length > 1 ? routeParts.sublist(1).join(' → ') : '';
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF14253B), Color(0xFF0D1928)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            origin.toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 27,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+          if (destination.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 7),
+              child: Icon(
+                Icons.south_rounded,
+                color: Color(0xFFD7B05C),
+                size: 24,
+              ),
+            ),
+            Text(
+              destination.toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Container(height: 1, color: Colors.white.withValues(alpha: .08)),
+          const SizedBox(height: 17),
+          Wrap(
+            spacing: 18,
+            runSpacing: 14,
+            children: [
+              _PremiumHeroFact(
+                icon: Icons.calendar_today_outlined,
+                label: 'Fecha',
+                value: model.compactDepartureLabel,
+              ),
+              _PremiumHeroFact(
+                icon: Icons.flight_rounded,
+                label: 'Aeronave',
+                value: model.aircraftLabel,
+              ),
+              _PremiumHeroFact(
+                icon: Icons.person_outline_rounded,
+                label: 'Pasajeros',
+                value: model.passengerLabel,
+              ),
+              _PremiumHeroFact(
+                icon:
+                    isSigned
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.pending_actions_rounded,
+                label: 'Estado',
+                value: isSigned ? 'Firmado' : 'Pendiente de firma',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumHeroFact extends StatelessWidget {
+  const _PremiumHeroFact({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 138,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFFD7B05C), size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .5),
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumCostSummary extends StatelessWidget {
+  const _PremiumCostSummary({required this.model});
+
+  final _ContractModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111C2C),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Resumen comercial',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 17),
+          _PremiumAmountRow(
+            label: 'Costo total',
+            value: model.finalPriceLabel,
+            emphasized: true,
+          ),
+          const SizedBox(height: 13),
+          _PremiumAmountRow(label: 'Depósito', value: model.depositLabel),
+          const SizedBox(height: 13),
+          _PremiumAmountRow(label: 'Saldo', value: model.balanceLabel),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumAmountRow extends StatelessWidget {
+  const _PremiumAmountRow({
+    required this.label,
+    required this.value,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .62),
+              fontSize: 13,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: emphasized ? const Color(0xFFD7B05C) : Colors.white,
+            fontSize: emphasized ? 22 : 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PremiumContractTimeline extends StatelessWidget {
+  const _PremiumContractTimeline();
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = ['Solicitud', 'Proveedor', 'Contrato', 'Pago', 'Vuelo'];
+    const completedThrough = 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PremiumSectionHeading(title: 'Siguiente paso'),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            for (var index = 0; index < steps.length; index++) ...[
+              Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 25,
+                      height: 25,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            index <= completedThrough
+                                ? const Color(0xFFD7B05C)
+                                : const Color(0xFF111C2C),
+                        border: Border.all(
+                          color:
+                              index <= completedThrough
+                                  ? const Color(0xFFD7B05C)
+                                  : Colors.white.withValues(alpha: .15),
+                        ),
+                      ),
+                      child: Icon(
+                        index <= completedThrough
+                            ? Icons.check_rounded
+                            : Icons.circle_outlined,
+                        color:
+                            index <= completedThrough
+                                ? const Color(0xFF07111D)
+                                : Colors.white.withValues(alpha: .32),
+                        size: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      steps[index],
+                      maxLines: 1,
+                      style: TextStyle(
+                        color:
+                            index <= completedThrough
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: .45),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (index != steps.length - 1)
+                Container(
+                  width: 12,
+                  height: 1,
+                  margin: const EdgeInsets.only(bottom: 22),
+                  color:
+                      index < completedThrough
+                          ? const Color(0xFFD7B05C)
+                          : Colors.white.withValues(alpha: .13),
+                ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PremiumSectionHeading extends StatelessWidget {
+  const _PremiumSectionHeading({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 21,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -.3,
+      ),
+    );
+  }
+}
+
+class _PremiumContractAccordions extends StatelessWidget {
+  const _PremiumContractAccordions({
+    required this.model,
+    required this.expandedIndex,
+    required this.onChanged,
+  });
+
+  final _ContractModel model;
+  final int? expandedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = <(String, String)>[
+      (
+        'Resumen comercial',
+        '${model.code} · ${model.operatorLabel}\n${model.serviceTier}',
+      ),
+      ('Itinerario', '${model.routeLabel}\nSalida: ${model.departureLabel}'),
+      (
+        'Qué incluye',
+        'Aeronave ${model.aircraftLabel}, operación aérea y servicios confirmados en la cotización.',
+      ),
+      (
+        'Qué NO incluye',
+        'Servicios adicionales no indicados expresamente en el resumen comercial.',
+      ),
+      (
+        'Condiciones de pago',
+        'Depósito: ${model.depositLabel}\nSaldo: ${model.balanceLabel}',
+      ),
+      (
+        'Política de cancelación',
+        'Las condiciones aplicables están disponibles en el documento legal completo.',
+      ),
+      (
+        'Cláusulas legales',
+        'Consulta el contrato completo antes de firmar mediante DocuSign.',
+      ),
+      (
+        'Datos bancarios',
+        'Los datos completos se muestran únicamente dentro del documento seguro.',
+      ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF111C2C),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var index = 0; index < sections.length; index++) ...[
+            InkWell(
+              onTap: () => onChanged(index),
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                padding: EdgeInsets.fromLTRB(
+                  17,
+                  16,
+                  14,
+                  expandedIndex == index ? 10 : 16,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        sections[index].$1,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: expandedIndex == index ? .5 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Color(0xFFD7B05C),
+                        size: 21,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 220),
+              crossFadeState:
+                  expandedIndex == index
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+              firstChild: const SizedBox(width: double.infinity),
+              secondChild: Padding(
+                padding: const EdgeInsets.fromLTRB(17, 0, 40, 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    sections[index].$2,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .62),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (index != sections.length - 1)
+              Divider(height: 1, color: Colors.white.withValues(alpha: .07)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumFullContractCard extends StatelessWidget {
+  const _PremiumFullContractCard({
+    required this.isLoading,
+    required this.onOpen,
+  });
+
+  final bool isLoading;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111C2C),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              color: const Color(0xFFD7B05C).withValues(alpha: .1),
+            ),
+            child: const Icon(
+              Icons.picture_as_pdf_outlined,
+              color: Color(0xFFD7B05C),
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 13),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Contrato completo',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Documento legal en PDF',
+                  style: TextStyle(color: Color(0xFF9DA6B3), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onOpen,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFD7B05C),
+            ),
+            child:
+                isLoading
+                    ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFD7B05C),
+                      ),
+                    )
+                    : const Text(
+                      'Ver documento',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumDocuSignCard extends StatelessWidget {
+  const _PremiumDocuSignCard({
+    required this.isLoading,
+    required this.isWaitingForReturn,
+    required this.onSign,
+  });
+
+  final bool isLoading;
+  final bool isWaitingForReturn;
+  final VoidCallback? onSign;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF16273D), Color(0xFF101C2D)],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFFD7B05C).withValues(alpha: .28),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFD7B05C).withValues(alpha: .1),
+                ),
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  color: Color(0xFFD7B05C),
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 13),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'DocuSign',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Firma digital · 2 minutos',
+                      style: TextStyle(color: Color(0xFFABB3BF), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onSign,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: const Color(0xFFD7B05C),
+                foregroundColor: const Color(0xFF07111D),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+              ),
+              icon:
+                  isLoading
+                      ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF07111D),
+                        ),
+                      )
+                      : const Icon(Icons.draw_rounded),
+              label: Text(
+                isWaitingForReturn
+                    ? 'Validar firma'
+                    : isLoading
+                    ? 'Preparando firma...'
+                    : 'Firmar contrato',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumAcceptanceRow extends StatelessWidget {
+  const _PremiumAcceptanceRow({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 23,
+              height: 23,
+              decoration: BoxDecoration(
+                color: value ? const Color(0xFFD7B05C) : Colors.transparent,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color:
+                      value
+                          ? const Color(0xFFD7B05C)
+                          : Colors.white.withValues(alpha: .32),
+                ),
+              ),
+              child:
+                  value
+                      ? const Icon(
+                        Icons.check_rounded,
+                        color: Color(0xFF07111D),
+                        size: 16,
+                      )
+                      : null,
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Text(
+                'He leído el resumen del contrato y acepto los términos.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .72),
+                  fontSize: 12.5,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumContractMessage extends StatelessWidget {
+  const _PremiumContractMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD7B05C).withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFD7B05C).withValues(alpha: .2),
+        ),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: .78),
+          fontSize: 12,
+          height: 1.35,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumContractFooter extends StatelessWidget {
+  const _PremiumContractFooter({
+    required this.accepted,
+    required this.isSigning,
+    required this.isDownloading,
+    required this.onDownload,
+    required this.onSign,
+  });
+
+  final bool accepted;
+  final bool isSigning;
+  final bool isDownloading;
+  final VoidCallback? onDownload;
+  final VoidCallback? onSign;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0B1625).withValues(alpha: .94),
+              border: Border(
+                top: BorderSide(color: Colors.white.withValues(alpha: .08)),
+              ),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: onDownload,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFD7B05C),
+                      side: BorderSide(
+                        color: const Color(0xFFD7B05C).withValues(alpha: .65),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                    ),
+                    icon:
+                        isDownloading
+                            ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFFD7B05C),
+                              ),
+                            )
+                            : const Icon(Icons.download_rounded, size: 19),
+                    label: const Text(
+                      'PDF',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onSign,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      backgroundColor: const Color(0xFFD7B05C),
+                      foregroundColor: const Color(0xFF07111D),
+                      disabledBackgroundColor: const Color(0xFF273242),
+                      disabledForegroundColor: Colors.white.withValues(
+                        alpha: .36,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                    ),
+                    icon:
+                        isSigning
+                            ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF07111D),
+                              ),
+                            )
+                            : const Icon(Icons.draw_rounded, size: 19),
+                    label: Text(
+                      accepted ? 'Firmar contrato' : 'Acepta los términos',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

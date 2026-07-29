@@ -110,7 +110,7 @@ class _ClientMobileWorkspaceScreenState
     ];
 
     return Scaffold(
-      backgroundColor: context.clientPalette.background,
+      backgroundColor: const Color(0xFF07111D),
       body: Column(
         children: [
           Expanded(

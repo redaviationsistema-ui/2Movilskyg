@@ -40,7 +40,6 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
   Widget build(BuildContext context) {
     final reservation = context.watch<ReservationProvider>();
     final auth = context.watch<AuthProvider>();
-    final palette = context.clientPalette;
     final accessState = resolveCommercialAccessState(auth.accessData);
     final matches = _sortMatches(reservation.quoteMatches);
     final selected = reservation.selectedQuoteMatch;
@@ -48,58 +47,76 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
         accessState.canReserve ? 'Crear solicitud' : 'Activar acceso comercial';
 
     return Scaffold(
-      backgroundColor: palette.background,
+      backgroundColor: const Color(0xFF07111D),
       body: SafeArea(
-        top: false,
+        top: true,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.showBackButton)
-                    _RoundIconButton(
-                      icon: Icons.arrow_back_rounded,
-                      onTap:
-                          widget.onBackToSearch ?? () => Navigator.pop(context),
+                  Row(
+                    children: [
+                      if (widget.showBackButton)
+                        _RoundIconButton(
+                          icon: Icons.arrow_back_rounded,
+                          onTap:
+                              widget.onBackToSearch ??
+                              () => Navigator.pop(context),
+                        ),
+                      if (widget.showBackButton) const SizedBox(width: 12),
+                      const _ResultsBrand(),
+                      const Spacer(),
+                      const _ResultsHeaderIcon(
+                        icon: Icons.notifications_none_rounded,
+                        showIndicator: true,
+                      ),
+                      const SizedBox(width: 8),
+                      const _ResultsHeaderIcon(icon: Icons.tune_rounded),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Aeronaves disponibles',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 25,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.65,
                     ),
-                  const Spacer(),
-                  _StatusBadge(label: '${matches.length} opciones'),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Selecciona tu opción y crea la solicitud en segundos.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .68),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 34),
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 34),
                 children: [
-                  Text(
-                    'Aeronaves disponibles',
-                    style: TextStyle(
-                      color: palette.textPrimary,
-                      fontSize: 28,
-                      height: 1,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Selecciona tu opcion y crea la solicitud en segundos.',
-                    style: TextStyle(
-                      color: palette.textSecondary,
-                      fontSize: 14,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   _ResultsSummaryBand(
                     routes: reservation.routes,
                     passengers: reservation.passengers,
-                    tripLabel: reservation.currentTripTypeLabel,
                     isLoading: reservation.isLoadingQuotePreview,
+                    onModify:
+                        widget.onBackToSearch ?? () => Navigator.pop(context),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   _ResultsSortCard(
                     activeCriterion: _sortCriterion,
                     onSelect:
@@ -107,7 +124,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                           _sortCriterion = criterion;
                         }),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   if (reservation.quoteError != null) ...[
                     _InfoCard(text: reservation.quoteError!),
                     const SizedBox(height: 16),
@@ -115,18 +132,22 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                   if (matches.isEmpty)
                     _EmptyResultsCard(onBackToSearch: widget.onBackToSearch)
                   else
-                    ...matches.map(
-                      (match) => Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
+                    ...matches.asMap().entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
                         child: _QuoteMatchCard(
-                          quote: match,
-                          isSelected: _sameQuote(match, selected),
+                          quote: entry.value,
+                          isRecommended:
+                              _sortCriterion == _ResultsSortCriterion.advisor &&
+                              entry.key == 0,
+                          isSelected: _sameQuote(entry.value, selected),
                           isBusy:
-                              _isCreatingRequest && _sameQuote(match, selected),
+                              _isCreatingRequest &&
+                              _sameQuote(entry.value, selected),
                           onSelect: () {
-                            reservation.setSelectedQuoteMatch(match);
+                            reservation.setSelectedQuoteMatch(entry.value);
                           },
-                          onCreateRequest: () => _createRequest(match),
+                          onCreateRequest: () => _createRequest(entry.value),
                           actionLabel: createActionLabel,
                         ),
                       ),
@@ -376,13 +397,13 @@ extension on _ResultsSortCriterion {
   String get label {
     switch (this) {
       case _ResultsSortCriterion.advisor:
-        return 'Recomendado por asesor';
+        return 'Recomendado';
       case _ResultsSortCriterion.investment:
-        return 'Mejor inversion';
+        return 'Mejor precio';
       case _ResultsSortCriterion.fastest:
-        return 'Salida mas rapida';
+        return 'Más rápido';
       case _ResultsSortCriterion.exclusive:
-        return 'Mayor exclusividad';
+        return 'Más lujo';
     }
   }
 }
@@ -391,18 +412,17 @@ class _ResultsSummaryBand extends StatelessWidget {
   const _ResultsSummaryBand({
     required this.routes,
     required this.passengers,
-    required this.tripLabel,
     required this.isLoading,
+    required this.onModify,
   });
 
   final List<RouteModel> routes;
   final int passengers;
-  final String tripLabel;
   final bool isLoading;
+  final VoidCallback onModify;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     final primaryRoute = routes.isEmpty ? null : routes.first;
     final origin = _airportCode(primaryRoute?.fromAirport);
     final destination = _airportCode(primaryRoute?.toAirport);
@@ -421,25 +441,25 @@ class _ResultsSummaryBand extends StatelessWidget {
             .length;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
       decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
       ),
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              color: palette.accentSoft,
-              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFFD8B15D).withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(15),
             ),
             alignment: Alignment.center,
             child: Icon(
               isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
-              color: ClientThemeColors.textOnAccent,
+              color: const Color(0xFFD8B15D),
               size: 19,
             ),
           ),
@@ -452,24 +472,41 @@ class _ResultsSummaryBand extends StatelessWidget {
                   routeLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '$tripLabel | $completeSegments tramos | $passengers pasajeros',
+                  '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}  •  $completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: palette.textSecondary,
+                    color: Colors.white.withValues(alpha: .62),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onModify,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFD8B15D),
+              side: BorderSide(
+                color: const Color(0xFFD8B15D).withValues(alpha: .5),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: const Text(
+              'Modificar',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -498,94 +535,69 @@ class _ResultsSortCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'COMPARAR POR',
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Prioriza criterio experto, inversion, rapidez o exclusividad.',
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children:
-                  _ResultsSortCriterion.values.map((criterion) {
-                    final active = criterion == activeCriterion;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(22),
-                        onTap: () => onSelect(criterion),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 14,
-                          ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children:
+            _ResultsSortCriterion.values.map((criterion) {
+              final active = criterion == activeCriterion;
+              return Padding(
+                padding: const EdgeInsets.only(right: 9),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => onSelect(criterion),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          active
+                              ? const Color(0xFFD8B15D).withValues(alpha: .12)
+                              : const Color(0xFF101C2D),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color:
+                            active
+                                ? const Color(0xFFD8B15D)
+                                : Colors.white.withValues(alpha: .08),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
                           decoration: BoxDecoration(
+                            shape: BoxShape.circle,
                             color:
                                 active
-                                    ? (isDark
-                                        ? palette.surfaceStrong
-                                        : palette.textPrimary)
-                                    : palette.surface,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color:
-                                  active
-                                      ? (isDark
-                                          ? palette.accentBorder
-                                          : palette.textPrimary)
-                                      : (isDark
-                                          ? palette.accentBorder
-                                          : palette.border),
-                            ),
-                          ),
-                          child: Text(
-                            criterion.label,
-                            style: TextStyle(
-                              color:
-                                  active ? Colors.white : palette.textPrimary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                            ),
+                                    ? const Color(0xFFD8B15D)
+                                    : Colors.white.withValues(alpha: .28),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-            ),
-          ),
-        ],
+                        const SizedBox(width: 7),
+                        Text(
+                          criterion.label,
+                          style: TextStyle(
+                            color:
+                                active
+                                    ? const Color(0xFFD8B15D)
+                                    : Colors.white.withValues(alpha: .62),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
@@ -594,6 +606,7 @@ class _ResultsSortCard extends StatelessWidget {
 class _QuoteMatchCard extends StatelessWidget {
   const _QuoteMatchCard({
     required this.quote,
+    required this.isRecommended,
     required this.isSelected,
     required this.isBusy,
     required this.onSelect,
@@ -602,6 +615,7 @@ class _QuoteMatchCard extends StatelessWidget {
   });
 
   final Map<String, dynamic> quote;
+  final bool isRecommended;
   final bool isSelected;
   final bool isBusy;
   final VoidCallback onSelect;
@@ -610,8 +624,6 @@ class _QuoteMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final aircraft = _aircraftName(quote);
     final cabin = _firstText(quote, const [
       'cabin',
@@ -628,185 +640,437 @@ class _QuoteMatchCard extends StatelessWidget {
       quote['final_price'] ?? quote['total'] ?? quote['price'],
     );
     final time = _firstText(quote, const ['time', 'flight_time', 'duration']);
-    final reason = _displayMatchReason(quote);
+    final autonomy = _firstText(quote, const [
+      'range',
+      'autonomy',
+      'range_km',
+      'aircraft_range',
+    ]);
+    final base = _firstText(quote, const [
+      'city',
+      'base',
+      'home_base',
+      'base_airport',
+      'base_airport_code',
+      'source_origin',
+      'queried_base_airport',
+      'origin',
+    ]);
 
-    return InkWell(
-      onTap: onSelect,
-      borderRadius: BorderRadius.circular(22),
-      child: Ink(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: isDark ? palette.accentBorder : palette.border,
-            width: isSelected ? 1.6 : 1,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder:
+          (_, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 18 * (1 - value)),
+              child: child,
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.10),
-              blurRadius: 22,
-              offset: Offset(0, 10),
+      child: InkWell(
+        onTap: onSelect,
+        borderRadius: BorderRadius.circular(28),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          height: 204,
+          decoration: BoxDecoration(
+            color: const Color(0xFF101C2D),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color:
+                  isSelected
+                      ? const Color(0xFFD8B15D)
+                      : Colors.white.withValues(alpha: .08),
+              width: isSelected ? 1.35 : 1,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _AircraftMedia(
-              imageUrl: imageUrl,
-              label: cabin.isEmpty ? 'Opcion privada' : cabin,
-            ),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(27),
+            child: Column(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        aircraft,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: palette.textPrimary,
-                          fontSize: 18,
-                          height: 1.05,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
+                      SizedBox(
+                        width: 142,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _AircraftMedia(
+                              imageUrl: imageUrl,
+                              label: cabin.isEmpty ? 'Jet privado' : cabin,
+                            ),
+                            if (isRecommended)
+                              Positioned(
+                                top: 9,
+                                left: 9,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF30D158),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    '★ Recomendado',
+                                    style: TextStyle(
+                                      color: Color(0xFF07111D),
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: IgnorePointer(
+                                child: Container(
+                                  width: 31,
+                                  height: 31,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(
+                                      0xFF07111D,
+                                    ).withValues(alpha: .72),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: .16,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.favorite_border_rounded,
+                                    color: Colors.white,
+                                    size: 17,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 9,
+                              bottom: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF07111D,
+                                  ).withValues(alpha: .78),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFFD8B15D,
+                                    ).withValues(alpha: .48),
+                                  ),
+                                ),
+                                child: Text(
+                                  cabin.isEmpty ? 'Jet privado' : cabin,
+                                  style: const TextStyle(
+                                    color: Color(0xFFD8B15D),
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        [
-                          if (provider.isNotEmpty) provider,
-                          if (cabin.isNotEmpty) cabin,
-                          if (capacity.isNotEmpty) '$capacity pasajeros',
-                        ].join(' | '),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(13, 13, 11, 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      aircraft,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 17,
+                                        height: 1.02,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -.35,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 5),
+                                      child: Icon(
+                                        Icons.check_circle_rounded,
+                                        color: Color(0xFFD8B15D),
+                                        size: 18,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                [
+                                  if (provider.isNotEmpty) provider,
+                                  if (cabin.isNotEmpty) cabin,
+                                  if (capacity.isNotEmpty)
+                                    '$capacity pasajeros',
+                                ].join('  •  '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: .58),
+                                  fontSize: 9.5,
+                                  height: 1.25,
+                                ),
+                              ),
+                              if (base.isNotEmpty) ...[
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.location_on_outlined,
+                                      color: Color(0xFFD8B15D),
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Expanded(
+                                      child: Text(
+                                        'Base operativa en ${base.toUpperCase()}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: .68,
+                                          ),
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              const Spacer(),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: _AircraftDataBox(
+                                      label: 'TOTAL',
+                                      value: price,
+                                      valueFontSize: 15.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    flex: 2,
+                                    child: _AircraftDataBox(
+                                      label: 'TIEMPO',
+                                      value: time.isEmpty ? '—' : time,
+                                      valueFontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (autonomy.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.route_rounded,
+                                      color: Color(0xFFD8B15D),
+                                      size: 11,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        'Autonomía $autonomy',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: .58,
+                                          ),
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (isSelected)
-                  Icon(Icons.check_circle_rounded, color: palette.accent),
-              ],
-            ),
-            if (reason.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                reason,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 13,
-                  height: 1.25,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(child: _MetricBox(label: 'Total', value: price)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _MetricBox(
-                    label: 'Tiempo',
-                    value: time.isEmpty ? 'Por confirmar' : time,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: _ResultsScaleButton(
+                    onTap: isBusy ? null : onCreateRequest,
+                    child: Container(
+                      height: 38,
+                      width: double.infinity,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? const Color(0xFFD8B15D)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFD8B15D),
+                          width: 1,
+                        ),
+                      ),
+                      child:
+                          isBusy
+                              ? const SizedBox(
+                                width: 17,
+                                height: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFD8B15D),
+                                ),
+                              )
+                              : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.flight_takeoff_rounded,
+                                    color: Color(0xFFD8B15D),
+                                    size: 17,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    actionLabel.contains('Activar')
+                                        ? 'Activar aeronave'
+                                        : 'Crear solicitud',
+                                    style: TextStyle(
+                                      color:
+                                          isSelected
+                                              ? const Color(0xFF07111D)
+                                              : const Color(0xFFD8B15D),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 12),
+                                    child: Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      color:
+                                          isSelected
+                                              ? const Color(0xFF07111D)
+                                              : const Color(0xFFD8B15D),
+                                      size: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: isBusy ? null : onCreateRequest,
-                style: FilledButton.styleFrom(
-                  backgroundColor: palette.primary,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: palette.surfaceSoft,
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon:
-                    isBusy
-                        ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                        : const Icon(Icons.send_rounded, size: 18),
-                label: Text(
-                  isBusy ? 'Creando solicitud...' : actionLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _MetricBox extends StatelessWidget {
-  const _MetricBox({required this.label, required this.value});
+class _AircraftDataBox extends StatelessWidget {
+  const _AircraftDataBox({
+    required this.label,
+    required this.value,
+    required this.valueFontSize,
+  });
 
   final String label;
   final String value;
+  final double valueFontSize;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.all(14),
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
+        color: const Color(0xFF07111D).withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             label,
             style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              color: Colors.white.withValues(alpha: .52),
+              fontSize: 7.5,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
+          const SizedBox(height: 1),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                color: const Color(0xFFD8B15D),
+                fontSize: valueFontSize,
+                height: 1,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ResultsScaleButton extends StatefulWidget {
+  const _ResultsScaleButton({required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  State<_ResultsScaleButton> createState() => _ResultsScaleButtonState();
+}
+
+class _ResultsScaleButtonState extends State<_ResultsScaleButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 140),
+        child: widget.child,
       ),
     );
   }
@@ -820,12 +1084,11 @@ class _AircraftMedia extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: SizedBox(
         width: double.infinity,
-        height: 204,
+        height: double.infinity,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -857,49 +1120,6 @@ class _AircraftMedia extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
-              ),
-            ),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 14,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      imageUrl.isEmpty ? 'Imagen en validacion' : label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  if (imageUrl.isNotEmpty)
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 150),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: palette.accentSoft.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: ClientThemeColors.textOnAccent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                ],
               ),
             ),
           ],
@@ -1027,33 +1247,6 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.accentBorder),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: palette.accent,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
 class _RoundIconButton extends StatelessWidget {
   const _RoundIconButton({required this.icon, required this.onTap});
 
@@ -1062,7 +1255,6 @@ class _RoundIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -1070,11 +1262,102 @@ class _RoundIconButton extends StatelessWidget {
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: palette.surface,
+          color: const Color(0xFF101C2D),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: palette.border),
+          border: Border.all(color: Colors.white.withValues(alpha: .10)),
         ),
-        child: Icon(icon, color: palette.accent),
+        child: Icon(icon, color: const Color(0xFFD8B15D), size: 20),
+      ),
+    );
+  }
+}
+
+class _ResultsBrand extends StatelessWidget {
+  const _ResultsBrand();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ColorFiltered(
+          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+          child: Image.asset(
+            'assets/LOGOINTERNO.png',
+            width: 42,
+            height: 34,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(width: 7),
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'RED SKY',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                height: 1,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.1,
+              ),
+            ),
+            SizedBox(height: 3),
+            Text(
+              'G R O U P',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 5.5,
+                height: 1,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ResultsHeaderIcon extends StatelessWidget {
+  const _ResultsHeaderIcon({required this.icon, this.showIndicator = false});
+
+  final IconData icon;
+  final bool showIndicator;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF101C2D),
+              border: Border.all(color: Colors.white.withValues(alpha: .10)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 19),
+          ),
+          if (showIndicator)
+            const Positioned(
+              top: 1,
+              right: 2,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFD8B15D),
+                ),
+                child: SizedBox(width: 7, height: 7),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1164,21 +1447,4 @@ String _moneyLabel(dynamic value) {
   if (numeric != null) return 'USD ${numeric.toStringAsFixed(0)}';
 
   return text;
-}
-
-String _displayMatchReason(Map<String, dynamic> quote) {
-  final reason = _firstText(quote, const ['match_reason']);
-  if (reason.isNotEmpty && !reason.toLowerCase().contains('base_airport')) {
-    return reason;
-  }
-
-  final sourceOrigin = _firstText(quote, const ['source_origin']);
-  if (sourceOrigin.isNotEmpty) {
-    final baseMatch = quote['base_airport_match'] == true;
-    return baseMatch
-        ? 'Base operativa en $sourceOrigin'
-        : 'Salida optimizada desde $sourceOrigin';
-  }
-
-  return '';
 }

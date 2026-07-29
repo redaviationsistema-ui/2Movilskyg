@@ -43,6 +43,7 @@ dependencies:
   flutter_local_notifications: ^19.5.0
   app_links: ^6.4.1
   flutter_secure_storage: ^10.3.1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -61,6 +62,7 @@ flutter:
     - assets/
     - assets/home/HomeCel.png
     - assets/login/image.png
+    - assets/login/image_portrait.png
 
 flutter_launcher_icons:
   android: true

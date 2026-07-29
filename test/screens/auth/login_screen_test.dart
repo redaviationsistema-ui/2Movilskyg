@@ -16,7 +16,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bienvenido a'), findsOneWidget);
-    expect(find.text('Red Sky'), findsOneWidget);
+    expect(find.text('Red Sky Group'), findsOneWidget);
+    expect(find.text('Tu vuelo comienza aquí.'), findsOneWidget);
     expect(find.text('Acceder'), findsOneWidget);
     expect(find.text('Correo electrónico'), findsOneWidget);
     expect(find.text('Contraseña'), findsOneWidget);

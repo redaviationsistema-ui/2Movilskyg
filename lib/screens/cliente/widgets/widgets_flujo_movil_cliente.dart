@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../tema_cliente.dart';
@@ -16,98 +18,101 @@ class ClientMobileTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
-      height: 56,
+      height: 90,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE6ECF2)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(8),
-            child: Image.asset(
-              'assets/LOGOINTERNO.png',
-              fit: BoxFit.contain,
-              color: isDark ? palette.primary : null,
-              colorBlendMode: isDark ? BlendMode.srcIn : null,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.05,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.4,
-                    color: palette.textPrimary,
-                  ),
+                Image.asset(
+                  'assets/LOGOINTERNO.png',
+                  width: 42,
+                  height: 42,
+                  fit: BoxFit.contain,
+                  color: const Color(0xFFD9B25F),
+                  colorBlendMode: BlendMode.srcIn,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    height: 1.1,
-                    fontWeight: FontWeight.w700,
-                    color: palette.textSecondary,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.7,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tu próximo vuelo comienza aquí.',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: .7),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          InkWell(
+          const SizedBox(width: 8),
+          _TopGlassButton(
+            icon: Icons.notifications_none_rounded,
+            tooltip: 'Notificaciones',
+            onTap: null,
+          ),
+          const SizedBox(width: 8),
+          _TopGlassButton(
+            icon: Icons.logout_rounded,
+            tooltip: 'Cerrar sesión',
             onTap: onSignOut,
-            borderRadius: BorderRadius.circular(16),
-            child: Ink(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE6ECF2)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.logout_rounded,
-                  color: palette.primary,
-                  size: 20,
-                ),
-              ),
-            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TopGlassButton extends StatelessWidget {
+  const _TopGlassButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onTap,
+          style: IconButton.styleFrom(
+            fixedSize: const Size(46, 46),
+            foregroundColor: Colors.white,
+            disabledForegroundColor: Colors.white,
+            backgroundColor: const Color(0xFF101C2D).withValues(alpha: .76),
+            side: BorderSide(color: Colors.white.withValues(alpha: .08)),
+          ),
+          icon: Icon(icon, size: 22),
+        ),
       ),
     );
   }
@@ -129,20 +134,16 @@ class ClientMobileScreenShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     return Material(
-      color: palette.background,
+      color: const Color(0xFF07111D),
       child: SafeArea(
         top: true,
         bottom: false,
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-              decoration: BoxDecoration(
-                color: palette.background,
-                border: Border(bottom: BorderSide(color: palette.border)),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              color: const Color(0xFF07111D),
               child: ClientMobileTopBar(
                 title: welcomeTitle,
                 subtitle: welcomeSubtitle,
@@ -169,9 +170,8 @@ class ClientMobileBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final onPrimary = Theme.of(context).colorScheme.onPrimary;
-    final inactiveColor = palette.textPrimary.withValues(alpha: 0.78);
+    const gold = Color(0xFFD7B15D);
+    final inactiveColor = Colors.white.withValues(alpha: 0.58);
     const items = [
       (label: 'Buscar', icon: Icons.search_rounded),
       (label: 'Reservas', icon: Icons.flight_rounded),
@@ -181,90 +181,88 @@ class ClientMobileBottomNav extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: palette.surface,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: palette.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 24,
-                offset: Offset(0, 10),
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: Container(
+              height: 76,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C2D).withValues(alpha: .82),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white.withValues(alpha: .08)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .28),
+                    blurRadius: 30,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(
-            children: List.generate(items.length, (index) {
-              final item = items[index];
-              final isActive = index == currentIndex;
+              child: Row(
+                children: List.generate(items.length, (index) {
+                  final item = items[index];
+                  final isActive = index == currentIndex;
 
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => onSelect(index),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive ? palette.primary : palette.surfaceSoft,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isActive ? palette.primary : palette.border,
+                  return Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () => onSelect(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color:
+                              isActive
+                                  ? gold.withValues(alpha: .10)
+                                  : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
                         ),
-                        boxShadow:
-                            isActive
-                                ? [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.12),
-                                    blurRadius: 18,
-                                    offset: Offset(0, 8),
-                                  ),
-                                ]
-                                : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            item.icon,
-                            size: 17,
-                            color: isActive ? onPrimary : inactiveColor,
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                item.label,
-                                maxLines: 1,
-                                style: TextStyle(
-                                  color: isActive ? onPrimary : inactiveColor,
-                                  fontWeight:
-                                      isActive
-                                          ? FontWeight.w900
-                                          : FontWeight.w700,
-                                  fontSize: 13,
-                                ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            AnimatedScale(
+                              scale: isActive ? 1.18 : 1,
+                              duration: const Duration(milliseconds: 260),
+                              child: Icon(
+                                item.icon,
+                                size: isActive ? 25 : 22,
+                                color: isActive ? gold : inactiveColor,
                               ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 3),
+                            Text(
+                              item.label,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: isActive ? gold : inactiveColor,
+                                fontWeight:
+                                    isActive
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 260),
+                              width: isActive ? 20 : 0,
+                              height: 2,
+                              decoration: BoxDecoration(
+                                color: gold,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              );
-            }),
+                  );
+                }),
+              ),
+            ),
           ),
         ),
       ),

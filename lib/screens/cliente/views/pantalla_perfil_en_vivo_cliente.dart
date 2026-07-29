@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -6,8 +8,6 @@ import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
-import '../tema_cliente.dart';
-import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientLiveProfileScreen extends StatefulWidget {
   const ClientLiveProfileScreen({
@@ -25,276 +25,209 @@ class ClientLiveProfileScreen extends StatefulWidget {
 }
 
 class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
-  _ProfileTab _activeTab = _ProfileTab.dashboard;
+  static const _background = Color(0xFF07111D);
+  static const _card = Color(0xFF101C2D);
+  static const _gold = Color(0xFFD8B25D);
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     final auth = context.watch<AuthProvider>();
     final reservation = context.watch<ReservationProvider>();
     final access = auth.accessData ?? const <String, dynamic>{};
     final dashboard = reservation.dashboardData ?? const <String, dynamic>{};
+    final metrics = _nestedMap(dashboard['metrics'] ?? dashboard['summary']);
     final user = auth.user;
-
     final commercialState = resolveCommercialAccessState(access);
-    final statusLabel = _accountStatusLabel(access);
-    final planLabel = _planLabel(access);
-    final membershipCaption = _membershipCaption(access);
-    final phone =
-        user?.phone.isNotEmpty == true
-            ? user!.phone
-            : 'Pendiente por registrar';
-    final company =
-        user?.companyName.isNotEmpty == true
-            ? user!.companyName
-            : 'Cuenta privada';
-    final displayName =
-        auth.displayName.trim().isNotEmpty ? auth.displayName : 'Cliente';
-    final email = user?.email ?? 'Sin correo';
-    final initial =
-        displayName.trim().isNotEmpty
-            ? displayName.trim().characters.first.toUpperCase()
-            : 'C';
-    final validationItems = _validationItems(
-      auth: auth,
-      access: access,
-      email: email,
-      phone: phone,
-      commercialState: commercialState,
-    );
-    final completedValidations =
-        validationItems.where((item) => item.ready).length;
-    final readinessPercent =
-        validationItems.isEmpty
-            ? 0
-            : ((completedValidations / validationItems.length) * 100).round();
 
-    return ClientExperienceShell(
-      title: 'Perfil',
-      subtitle: 'Cuenta, expediente y preferencias.',
-      showBackButton: widget.showBackButton,
-      includeTopSafeArea: !widget.hasExternalTopBanner,
-      child: Container(
-        color: palette.background,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 132),
-          children: [
-            Text(
-              'Perfil cliente',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: palette.textPrimary,
-                height: 1,
-                letterSpacing: -1.1,
+    final displayName =
+        auth.displayName.trim().isNotEmpty
+            ? auth.displayName.trim()
+            : 'Cliente';
+    final initial =
+        displayName.isEmpty ? 'C' : displayName.characters.first.toUpperCase();
+    final email =
+        user?.email.trim().isNotEmpty == true
+            ? user!.email.trim()
+            : 'Sin correo';
+    final phone =
+        user?.phone.trim().isNotEmpty == true
+            ? user!.phone.trim()
+            : 'Sin teléfono';
+    final membership = _planLabel(access);
+    final active =
+        commercialState.hasPaidAccess ||
+        commercialState.canReserve ||
+        _hasMembership(access);
+    final requests = reservation.flightRequests;
+    final requestsCount =
+        (metrics['solicitudes'] ?? metrics['requests'] ?? requests.length)
+            .toString();
+    final flightsCount =
+        (metrics['vuelos'] ??
+                metrics['flights'] ??
+                metrics['completed_flights'] ??
+                0)
+            .toString();
+    final validations = _validationItems(
+      auth: auth,
+      email: email,
+      membershipReady: _hasMembership(access),
+      accessReady: commercialState.canReserve,
+    );
+
+    return Scaffold(
+      backgroundColor: _background,
+      body: SafeArea(
+        top: !widget.hasExternalTopBanner,
+        bottom: false,
+        child: RefreshIndicator(
+          color: _gold,
+          backgroundColor: _card,
+          onRefresh: _refreshProfile,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 18, 24, 132),
+            children: [
+              _ProfileHeader(
+                showBackButton: widget.showBackButton,
+                onBack: () => Navigator.pop(context),
+                onEdit: _showEditMessage,
+                onRefresh: _refreshProfile,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Cuenta, validaciones y preferencias listas para volar.',
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 24),
+              _ProfileHero(
+                initial: initial,
+                name: displayName,
+                email: email,
+                phone: phone,
+                membership: _memberTitle(membership),
+                active: active,
               ),
-            ),
-            const SizedBox(height: 14),
-            _AccountHeaderCard(
-              initial: initial,
-              name: displayName,
-              email: email,
-              phone: phone,
-              company: company,
-              status: statusLabel,
-              membership: planLabel,
-              membershipCaption: membershipCaption,
-              onRefresh: _refreshProfile,
-            ),
-            const SizedBox(height: 12),
-            _ProfileCommandCenter(
-              readinessPercent: readinessPercent,
-              completedValidations: completedValidations,
-              totalValidations: validationItems.length,
-              requestsCount: reservation.flightRequests.length,
-              planLabel: planLabel,
-              canReserve: commercialState.canReserve,
-              onRefresh: _refreshProfile,
-            ),
-            const SizedBox(height: 12),
-            _ProfileReadinessCard(items: validationItems),
-            const SizedBox(height: 12),
-            _ProfileTabBar(
-              activeTab: _activeTab,
-              onSelect: (tab) => setState(() => _activeTab = tab),
-            ),
-            const SizedBox(height: 8),
-            ..._tabContent(
-              auth: auth,
-              reservation: reservation,
-              access: access,
-              commercialState: commercialState,
-              dashboard: dashboard,
-              displayName: displayName,
-              email: email,
-              phone: phone,
-              company: company,
-              statusLabel: statusLabel,
-              planLabel: planLabel,
-            ),
-            const SizedBox(height: 20),
-            _ActionCard(onRefresh: _refreshProfile, onSignOut: auth.signOut),
-          ],
+              const SizedBox(height: 24),
+              const _SectionTitle('Resumen'),
+              const SizedBox(height: 14),
+              _SummaryGrid(
+                flights: flightsCount,
+                requests: requestsCount,
+                active: active,
+                membership: _shortMembership(membership),
+              ),
+              const SizedBox(height: 28),
+              const _SectionTitle('Validaciones'),
+              const SizedBox(height: 18),
+              _ValidationCircles(items: validations),
+              const SizedBox(height: 30),
+              const _SectionTitle('Actividad'),
+              const SizedBox(height: 16),
+              _ActivityTimeline(requests: requests),
+              const SizedBox(height: 28),
+              _MembershipCard(
+                membership: _memberTitle(membership),
+                active: active,
+                renewal: _renewalLabel(access, commercialState),
+                onManage: _showMembershipMessage,
+              ),
+              const SizedBox(height: 28),
+              const _SectionTitle('Preferencias'),
+              const SizedBox(height: 8),
+              _PreferencesList(
+                paymentMethod: reservation.paymentMethod ?? 'Por definir',
+                onTap: _showPreferenceMessage,
+              ),
+              const SizedBox(height: 28),
+              _ScaleButton(
+                onTap: _showEditMessage,
+                child: Container(
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _gold,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Text(
+                    'Editar perfil',
+                    style: TextStyle(
+                      color: Color(0xFF111820),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ScaleButton(
+                onTap: auth.signOut,
+                child: Container(
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: _gold),
+                  ),
+                  child: const Text(
+                    'Cerrar sesión',
+                    style: TextStyle(
+                      color: _gold,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _refreshProfile() {
-    context.read<AuthProvider>().loadUserRole();
-    context.read<ReservationProvider>().loadClientWorkspaceData(force: true);
+  Future<void> _refreshProfile() async {
+    await Future.wait([
+      context.read<AuthProvider>().loadUserRole(),
+      context.read<ReservationProvider>().loadClientWorkspaceData(force: true),
+    ]);
   }
 
-  List<Widget> _tabContent({
-    required AuthProvider auth,
-    required ReservationProvider reservation,
-    required Map<String, dynamic> access,
-    required CommercialAccessState commercialState,
-    required Map<String, dynamic> dashboard,
-    required String displayName,
-    required String email,
-    required String phone,
-    required String company,
-    required String statusLabel,
-    required String planLabel,
-  }) {
-    final requests = reservation.flightRequests;
-    final metrics = _nestedMap(dashboard['metrics'] ?? dashboard['summary']);
+  void _showEditMessage() {
+    _showMessage('Edición de perfil disponible próximamente.');
+  }
 
-    switch (_activeTab) {
-      case _ProfileTab.dashboard:
-        return [
-          _MetricWrap(
-            metrics: [
-              _MetricData(
-                label: 'Solicitudes',
-                value:
-                    (metrics['solicitudes'] ??
-                            metrics['requests'] ??
-                            requests.length)
-                        .toString(),
-              ),
-              _MetricData(
-                label: 'Vuelos',
-                value:
-                    (metrics['vuelos'] ??
-                            metrics['flights'] ??
-                            metrics['completed_flights'] ??
-                            0)
-                        .toString(),
-              ),
-              _MetricData(
-                label: 'Estado',
-                value:
-                    commercialState.hasPaidAccess || commercialState.canReserve
-                        ? 'Activa'
-                        : 'Pendiente',
-              ),
-              _MetricData(label: 'Membresía', value: planLabel),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _MinimalProfileCard(
-            title: 'Actividad reciente',
-            items:
-                requests.isEmpty
-                    ? const [
-                      _ProfileData(
-                        label: 'Estado',
-                        value: 'Aún no hay operaciones recientes',
-                      ),
-                    ]
-                    : requests
-                        .take(4)
-                        .map(
-                          (request) => _ProfileData(
-                            label: _routeLabel(request),
-                            value: _recentActivityValue(request),
-                          ),
-                        )
-                        .toList(),
-          ),
-        ];
+  void _showMembershipMessage() {
+    _showMessage('Administración de membresía disponible próximamente.');
+  }
 
-      case _ProfileTab.billing:
-        return [
-          _MinimalProfileCard(
-            title: 'Pago',
-            items: [
-              _ProfileData(label: 'Empresa', value: company),
-              _ProfileData(label: 'Correo fiscal', value: email),
-              _ProfileData(
-                label: 'Método',
-                value: reservation.paymentMethod ?? 'Por definir',
-              ),
-              _ProfileData(
-                label: 'Banco',
-                value: reservation.bankName ?? 'Por definir',
-              ),
-            ],
-          ),
-        ];
+  void _showPreferenceMessage(String label) {
+    _showMessage('$label disponible próximamente.');
+  }
 
-      case _ProfileTab.security:
-        return [
-          _MinimalProfileCard(
-            title: 'Seguridad',
-            items: [
-              _ProfileData(
-                label: 'Sesión',
-                value: auth.isAuthenticated ? 'Activa' : 'Inactiva',
-              ),
-              _ProfileData(label: 'Rol', value: auth.role.name),
-              _ProfileData(
-                label: 'Validación',
-                value: _identityStatus(auth.userPayload),
-              ),
-              _ProfileData(
-                label: 'Última actualización',
-                value: _syncLabel(reservation.lastWorkspaceSyncAt),
-              ),
-            ],
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _card,
+          margin: const EdgeInsets.fromLTRB(24, 0, 24, 96),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: _gold.withValues(alpha: .24)),
           ),
-        ];
-    }
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
   }
 
   Map<String, dynamic> _nestedMap(dynamic value) {
     if (value is Map) return Map<String, dynamic>.from(value);
     return const {};
-  }
-
-  String _routeLabel(Map<String, dynamic> request) {
-    final origin = request['origin']?.toString() ?? '';
-    final destination = request['destination']?.toString() ?? '';
-    if (origin.isEmpty && destination.isEmpty) return 'Solicitud';
-    return '$origin → $destination';
-  }
-
-  String _recentActivityValue(Map<String, dynamic> request) {
-    final stage = resolveClientWorkflowStage(request);
-    switch (stage) {
-      case 'contract_pending':
-        return 'Contrato pendiente';
-      case 'contract_signed':
-        return 'Contrato firmado';
-      case 'payment_pending':
-        return 'Pago pendiente';
-      case 'provider_accepted':
-        return 'Respuesta proveedor';
-      default:
-        return clientWorkflowLabelForStage(stage);
-    }
   }
 
   String _identityStatus(Map<String, dynamic>? payload) {
@@ -304,284 +237,533 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     if (verified == true || verified == 1 || verified == '1') {
       return 'Verificada';
     }
-    final value =
-        (payload?['identity_verification_status'] ??
+    return (payload?['identity_verification_status'] ??
                 payload?['identity_status'] ??
                 profile['identity_verification_status'])
             ?.toString()
             .trim() ??
-        '';
-    return value.isEmpty ? 'Pendiente' : value;
-  }
-
-  String _syncLabel(DateTime? value) {
-    if (value == null) return 'Sin sincronización';
-    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+        'Pendiente';
   }
 
   bool _hasMembership(Map<String, dynamic> access) {
-    final commercialState = resolveCommercialAccessState(access);
-    if (commercialState.hasPaidAccess || commercialState.canReserve) {
-      return true;
-    }
-
-    final subscription = access['subscription'];
-    if (subscription is Map) {
-      final status = subscription['status']?.toString().trim().toLowerCase();
-      if (status == 'active' || status == 'activo') return true;
-
-      final rawDate =
-          subscription['current_period_end'] ??
-          subscription['expires_at'] ??
-          subscription['renewal_date'];
-      final parsed =
-          rawDate == null ? null : DateTime.tryParse(rawDate.toString());
-      if (parsed != null && parsed.isAfter(DateTime.now())) return true;
-    }
-
-    final membership = access['membership'];
-    if (membership is Map) {
-      final status = membership['status']?.toString().trim().toLowerCase();
+    final state = resolveCommercialAccessState(access);
+    if (state.hasPaidAccess || state.canReserve) return true;
+    for (final source in [access['subscription'], access['membership']]) {
+      if (source is! Map) continue;
+      final status = source['status']?.toString().trim().toLowerCase();
       if (status == 'active' || status == 'activo') return true;
     }
-
     return false;
   }
 
-  String _accountStatusLabel(Map<String, dynamic> access) {
-    final commercialState = resolveCommercialAccessState(access);
-    if (commercialState.hasPaidAccess ||
-        commercialState.canReserve ||
-        access['has_access'] == true ||
-        _hasMembership(access)) {
-      return 'Cuenta activa';
+  String _planLabel(Map<String, dynamic> access) {
+    final subscription = access['subscription'];
+    if (subscription is Map) {
+      final value = subscription['plan_name'] ?? subscription['plan'];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
     }
-    return 'Cuenta pendiente';
+    final name = access['plan_name']?.toString().trim() ?? '';
+    if (name.isNotEmpty) return name;
+    return _hasMembership(access) ? 'Executive' : 'Sin membresía';
   }
 
-  String _membershipCaption(Map<String, dynamic> access) {
-    final commercialState = resolveCommercialAccessState(access);
-    if (_hasMembership(access) && commercialState.expiresAtLabel.isNotEmpty) {
-      return 'Activo hasta ${commercialState.expiresAtLabel}';
-    }
+  String _memberTitle(String membership) {
+    final clean =
+        membership
+            .replaceAll(RegExp(r'membres[ií]a', caseSensitive: false), '')
+            .trim();
+    if (clean.toLowerCase().contains('sin')) return clean;
+    return clean.toLowerCase().contains('member') ? clean : '$clean Member';
+  }
 
+  String _shortMembership(String membership) {
+    final clean =
+        membership
+            .replaceAll(RegExp(r'membres[ií]a', caseSensitive: false), '')
+            .trim();
+    return clean.isEmpty ? 'Executive' : clean;
+  }
+
+  String _renewalLabel(
+    Map<String, dynamic> access,
+    CommercialAccessState state,
+  ) {
+    if (state.expiresAtLabel.trim().isNotEmpty) return state.expiresAtLabel;
     final subscription = access['subscription'];
-    final rawDate =
+    final raw =
         subscription is Map
             ? subscription['current_period_end'] ??
                 subscription['expires_at'] ??
                 subscription['renewal_date']
             : null;
-    final parsed =
-        rawDate == null ? null : DateTime.tryParse(rawDate.toString());
-    if (_hasMembership(access) && parsed != null) {
-      return 'Activo hasta ${DateFormat('dd MMM yyyy', 'es_MX').format(parsed)}';
-    }
-    if (_hasMembership(access)) return 'Membresía activa';
-    return 'Sin membresía';
+    final parsed = raw == null ? null : DateTime.tryParse(raw.toString());
+    if (parsed == null) return 'Por confirmar';
+    return DateFormat('dd MMM yyyy', 'es_MX').format(parsed);
   }
 
-  String _planLabel(Map<String, dynamic> access) {
-    final subscription = access['subscription'];
-    if (subscription is Map && subscription['plan_name'] != null) {
-      return subscription['plan_name'].toString();
-    }
-    if (subscription is Map && subscription['plan'] != null) {
-      return subscription['plan'].toString();
-    }
-    if (access['plan_name'] != null) return access['plan_name'].toString();
-    if (_hasMembership(access)) return 'Membresía Executive';
-    return 'Sin membresía';
-  }
-
-  List<_ValidationItem> _validationItems({
+  List<_ValidationData> _validationItems({
     required AuthProvider auth,
-    required Map<String, dynamic> access,
     required String email,
-    required String phone,
-    required CommercialAccessState commercialState,
+    required bool membershipReady,
+    required bool accessReady,
   }) {
-    final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final identity = _identityStatus(auth.userPayload);
-    final normalizedIdentity = identity.toLowerCase();
-    final identityReady =
-        normalizedIdentity.contains('verificada') ||
-        normalizedIdentity.contains('verified');
-    final membershipReady =
-        commercialState.hasPaidAccess ||
-        commercialState.canReserve ||
-        _hasMembership(access);
-
+    final identity = _identityStatus(auth.userPayload).toLowerCase();
     return [
-      _ValidationItem(
+      _ValidationData(
         label: 'Correo',
-        detail:
-            email.contains('@')
-                ? 'Correo listo para avisos de vuelo.'
-                : 'Agrega un correo valido.',
+        icon: Icons.mail_outline_rounded,
         ready: email.contains('@'),
-        icon: Icons.mail_rounded,
       ),
-      _ValidationItem(
-        label: 'Telefono',
-        detail:
-            normalizedPhone.length >= 10
-                ? 'Contacto disponible para operaciones.'
-                : 'Completa un telefono de contacto.',
-        ready: normalizedPhone.length >= 10,
-        icon: Icons.phone_rounded,
-      ),
-      _ValidationItem(
+      _ValidationData(
         label: 'Identidad',
-        detail:
-            identityReady ? 'Validacion completada.' : 'Validacion pendiente.',
-        ready: identityReady,
-        icon: Icons.badge_rounded,
+        icon: Icons.badge_outlined,
+        ready: identity.contains('verificada') || identity.contains('verified'),
       ),
-      _ValidationItem(
-        label: 'Acceso',
-        detail:
-            membershipReady
-                ? 'Puedes reservar vuelos.'
-                : 'Activa tu acceso comercial para reservar.',
+      _ValidationData(
+        label: 'Membresía',
+        icon: Icons.workspace_premium_outlined,
         ready: membershipReady,
-        icon: Icons.workspace_premium_rounded,
+      ),
+      _ValidationData(
+        label: 'Acceso',
+        icon: Icons.lock_open_rounded,
+        ready: accessReady,
       ),
     ];
   }
 }
 
-enum _ProfileTab { dashboard, billing, security }
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.showBackButton,
+    required this.onBack,
+    required this.onEdit,
+    required this.onRefresh,
+  });
 
-extension _ProfileTabCopy on _ProfileTab {
-  String get label {
-    switch (this) {
-      case _ProfileTab.dashboard:
-        return 'Resumen';
-
-      case _ProfileTab.billing:
-        return 'Pago';
-
-      case _ProfileTab.security:
-        return 'Seguridad';
-    }
-  }
-}
-
-class _ProfileTabBar extends StatelessWidget {
-  const _ProfileTabBar({required this.activeTab, required this.onSelect});
-
-  final _ProfileTab activeTab;
-  final ValueChanged<_ProfileTab> onSelect;
+  final bool showBackButton;
+  final VoidCallback onBack;
+  final VoidCallback onEdit;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children:
-            _ProfileTab.values.map((tab) {
-              final active = tab == activeTab;
-              return Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () => onSelect(tab),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color:
-                          active && isDark
-                              ? palette.surfaceStrong
-                              : palette.surface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: isDark ? palette.accentBorder : palette.border,
-                      ),
-                    ),
-                    child: Text(
-                      tab.label,
-                      style: TextStyle(
-                        color:
-                            active
-                                ? (isDark ? palette.accent : palette.primary)
-                                : palette.textSecondary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showBackButton) ...[
+          _GlassCircle(
+            icon: Icons.arrow_back_rounded,
+            tooltip: 'Volver',
+            onTap: onBack,
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Perfil',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 40,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1.2,
                 ),
-              );
-            }).toList(),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Todo listo para volar.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: .7),
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _GlassCircle(
+          icon: Icons.edit_outlined,
+          tooltip: 'Editar perfil',
+          onTap: onEdit,
+        ),
+        const SizedBox(width: 10),
+        _GlassCircle(
+          icon: Icons.refresh_rounded,
+          tooltip: 'Actualizar',
+          onTap: onRefresh,
+        ),
+      ],
+    );
+  }
+}
+
+class _GlassCircle extends StatelessWidget {
+  const _GlassCircle({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onTap,
+          style: IconButton.styleFrom(
+            fixedSize: const Size(52, 52),
+            foregroundColor: const Color(0xFFD8B25D),
+            backgroundColor: const Color(0xFF101C2D).withValues(alpha: .74),
+            side: BorderSide(color: Colors.white.withValues(alpha: .08)),
+          ),
+          icon: Icon(icon, size: 23),
+        ),
       ),
     );
   }
 }
 
-class _MetricWrap extends StatelessWidget {
-  const _MetricWrap({required this.metrics});
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({
+    required this.initial,
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.membership,
+    required this.active,
+  });
 
-  final List<_MetricData> metrics;
+  final String initial;
+  final String name;
+  final String email;
+  final String phone;
+  final String membership;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GridView.builder(
-      itemCount: metrics.length,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        mainAxisExtent: 96,
-      ),
-      itemBuilder: (context, index) {
-        final metric = metrics[index];
-        return Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: palette.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isDark ? palette.accentBorder : palette.border,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder:
+          (_, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 18 * (1 - value)),
+              child: child,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: SizedBox(
+          height: 270,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Text(
-                metric.value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF101C2D), Color(0xFF162A45)],
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                metric.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+              Positioned(
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: MediaQuery.sizeOf(context).width * .46,
+                child: Image.asset(
+                  'assets/login/image.png',
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(.45, .1),
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: [0, .62, 1],
+                    colors: [
+                      Color(0xFF101C2D),
+                      Color(0xEE101C2D),
+                      Color(0x55101C2D),
+                    ],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: .08),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 66,
+                      height: 66,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF07111D).withValues(alpha: .82),
+                        border: Border.all(
+                          color: const Color(0xFFD8B25D),
+                          width: 1.4,
+                        ),
+                      ),
+                      child: Text(
+                        initial,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 27,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 245),
+                      child: Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          height: 1.02,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      membership,
+                      style: const TextStyle(
+                        color: Color(0xFFD8B25D),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          active
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.schedule_rounded,
+                          color:
+                              active
+                                  ? const Color(0xFF35D06F)
+                                  : const Color(0xFFD8B25D),
+                          size: 17,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          active ? 'Cuenta activa' : 'Cuenta pendiente',
+                          style: TextStyle(
+                            color:
+                                active
+                                    ? const Color(0xFF35D06F)
+                                    : const Color(0xFFD8B25D),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ContactLine(
+                            icon: Icons.mail_outline_rounded,
+                            value: email,
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 26,
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          color: Colors.white.withValues(alpha: .14),
+                        ),
+                        Expanded(
+                          child: _ContactLine(
+                            icon: Icons.phone_outlined,
+                            value: phone,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactLine extends StatelessWidget {
+  const _ContactLine({required this.icon, required this.value});
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFFD8B25D), size: 18),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .75),
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -.4,
+      ),
+    );
+  }
+}
+
+class _SummaryGrid extends StatelessWidget {
+  const _SummaryGrid({
+    required this.flights,
+    required this.requests,
+    required this.active,
+    required this.membership,
+  });
+
+  final String flights;
+  final String requests;
+  final bool active;
+  final String membership;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _SummaryData(Icons.flight_takeoff_rounded, flights, 'Vuelos'),
+      _SummaryData(Icons.description_outlined, requests, 'Solicitudes'),
+      _SummaryData(
+        Icons.verified_user_outlined,
+        active ? 'Activo' : 'Pendiente',
+        'Estado',
+      ),
+      _SummaryData(Icons.workspace_premium_outlined, membership, 'Membresía'),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        mainAxisExtent: 116,
+      ),
+      itemBuilder: (_, index) {
+        final item = items[index];
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: Duration(milliseconds: 380 + index * 70),
+          curve: Curves.easeOutCubic,
+          builder:
+              (_, value, child) => Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, 18 * (1 - value)),
+                  child: child,
+                ),
+              ),
+          child: Container(
+            padding: const EdgeInsets.all(17),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101C2D),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            ),
+            child: Row(
+              children: [
+                Icon(item.icon, color: const Color(0xFFD8B25D), size: 25),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .65),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -589,386 +771,382 @@ class _MetricWrap extends StatelessWidget {
   }
 }
 
-class _MetricData {
-  const _MetricData({required this.label, required this.value});
-
-  final String label;
-  final String value;
-}
-
-class _ProfileCommandCenter extends StatelessWidget {
-  const _ProfileCommandCenter({
-    required this.readinessPercent,
-    required this.completedValidations,
-    required this.totalValidations,
-    required this.requestsCount,
-    required this.planLabel,
-    required this.canReserve,
-    required this.onRefresh,
-  });
-
-  final int readinessPercent;
-  final int completedValidations;
-  final int totalValidations;
-  final int requestsCount;
-  final String planLabel;
-  final bool canReserve;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isReady = readinessPercent >= 75 && canReserve;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: palette.headerGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: palette.accentBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: palette.surfaceStrong,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: palette.accentBorder),
-                ),
-                child: Icon(
-                  isReady
-                      ? Icons.verified_user_rounded
-                      : Icons.manage_accounts_rounded,
-                  color: palette.accent,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isReady
-                          ? 'Cuenta lista para reservar'
-                          : 'Completa tu cuenta',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.heroTextPrimary,
-                        fontSize: 18,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$completedValidations de $totalValidations validaciones listas',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.heroTextSecondary,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Actualizar cuenta',
-                onPressed: onRefresh,
-                icon: Icon(Icons.refresh_rounded, color: palette.accent),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: readinessPercent / 100,
-              minHeight: 8,
-              backgroundColor: palette.surfaceStrong,
-              color: palette.accent,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _CommandChip(
-                icon: Icons.percent_rounded,
-                label: '$readinessPercent% listo',
-                highlighted: true,
-              ),
-              _CommandChip(
-                icon: Icons.workspace_premium_rounded,
-                label: planLabel,
-              ),
-              _CommandChip(
-                icon: Icons.flight_takeoff_rounded,
-                label:
-                    requestsCount == 1
-                        ? '1 solicitud'
-                        : '$requestsCount solicitudes',
-              ),
-              _CommandChip(
-                icon: canReserve ? Icons.lock_open_rounded : Icons.lock_rounded,
-                label: canReserve ? 'Puede reservar' : 'Acceso pendiente',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CommandChip extends StatelessWidget {
-  const _CommandChip({
-    required this.icon,
-    required this.label,
-    this.highlighted = false,
-  });
+class _SummaryData {
+  const _SummaryData(this.icon, this.value, this.label);
 
   final IconData icon;
+  final String value;
   final String label;
-  final bool highlighted;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 220),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: highlighted ? palette.accentSoft : palette.surfaceStrong,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.accentBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 15,
-            color:
-                highlighted ? ClientThemeColors.textOnAccent : palette.accent,
-          ),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color:
-                    highlighted
-                        ? ClientThemeColors.textOnAccent
-                        : palette.heroTextPrimary,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _AccountHeaderCard extends StatelessWidget {
-  const _AccountHeaderCard({
-    required this.initial,
-    required this.name,
-    required this.email,
-    required this.phone,
-    required this.company,
-    required this.status,
-    required this.membership,
-    required this.membershipCaption,
-    required this.onRefresh,
-  });
+class _ValidationCircles extends StatelessWidget {
+  const _ValidationCircles({required this.items});
 
-  final String initial;
-  final String name;
-  final String email;
-  final String phone;
-  final String company;
-  final String status;
-  final String membership;
-  final String membershipCaption;
-  final VoidCallback onRefresh;
+  final List<_ValidationData> items;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.surface,
-          border: Border.all(
-            color: isDark ? palette.accentBorder : palette.border,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.10),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              height: 112,
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(18, 14, 14, 0),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors:
-                      isDark
-                          ? const [Color(0xFF123047), Color(0xFF24526F)]
-                          : const [Color(0xFF1F6FEB), Color(0xFF123047)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  tooltip: 'Actualizar perfil',
-                  onPressed: onRefresh,
-                  icon: const Icon(Icons.refresh_rounded),
-                  color: Colors.white,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.16),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children:
+          items.map((item) {
+            final color =
+                item.ready ? const Color(0xFF35D06F) : const Color(0xFFD8B25D);
+            return Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Transform.translate(
-                    offset: const Offset(0, -34),
-                    child: Container(
-                      width: 78,
-                      height: 78,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: palette.surface,
-                        border: Border.all(color: palette.surface, width: 4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.18),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF101C2D),
+                          border: Border.all(
+                            color: color.withValues(alpha: .32),
                           ),
-                        ],
-                      ),
-                      child: CircleAvatar(
-                        backgroundColor:
-                            isDark ? palette.surfaceStrong : palette.accentSoft,
-                        child: Text(
-                          initial,
-                          style: TextStyle(
-                            color: isDark ? palette.accent : palette.primary,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Transform.translate(
-                    offset: const Offset(0, -22),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 27,
-                            height: 1.02,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          company,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: palette.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _ContactPill(
-                              icon: Icons.mail_rounded,
-                              label: email,
-                            ),
-                            _ContactPill(
-                              icon: Icons.phone_rounded,
-                              label: phone,
+                          boxShadow: [
+                            BoxShadow(
+                              color: color.withValues(alpha: .14),
+                              blurRadius: 20,
                             ),
                           ],
                         ),
-                      ],
+                        child: Icon(item.icon, color: const Color(0xFFD8B25D)),
+                      ),
+                      Positioned(
+                        right: -2,
+                        bottom: 1,
+                        child: Container(
+                          width: 19,
+                          height: 19,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF07111D),
+                            border: Border.all(color: color, width: 1.5),
+                          ),
+                          child: Icon(
+                            item.ready ? Icons.check_rounded : Icons.more_horiz,
+                            color: color,
+                            size: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .78),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  Transform.translate(
-                    offset: const Offset(0, -6),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _HeaderInfoPill(
-                            icon: Icons.verified_rounded,
-                            label: 'Estado',
-                            value: status,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _HeaderInfoPill(
-                            icon: Icons.workspace_premium_rounded,
-                            label: 'Membresia',
-                            value: membership,
-                            subtitle: membershipCaption,
-                          ),
-                        ),
-                      ],
+                ],
+              ),
+            );
+          }).toList(),
+    );
+  }
+}
+
+class _ValidationData {
+  const _ValidationData({
+    required this.label,
+    required this.icon,
+    required this.ready,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool ready;
+}
+
+class _ActivityTimeline extends StatelessWidget {
+  const _ActivityTimeline({required this.requests});
+
+  final List<Map<String, dynamic>> requests;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries =
+        requests.isEmpty
+            ? const [
+              _ActivityData(
+                date: 'Hoy',
+                title: 'Perfil actualizado',
+                detail: 'Tu cuenta está al día',
+                icon: Icons.person_outline_rounded,
+              ),
+            ]
+            : requests
+                .take(3)
+                .map(
+                  (request) => _ActivityData(
+                    date: _activityDate(request),
+                    title: clientWorkflowLabelForStage(
+                      resolveClientWorkflowStage(request),
                     ),
+                    detail: _activityRoute(request),
+                    icon: Icons.flight_takeoff_rounded,
+                  ),
+                )
+                .toList();
+
+    return Column(
+      children: List.generate(entries.length, (index) {
+        final entry = entries[index];
+        final last = index == entries.length - 1;
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 26,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF101C2D),
+                        border: Border.all(color: const Color(0xFFD8B25D)),
+                      ),
+                      child: Icon(
+                        entry.icon,
+                        color: const Color(0xFFD8B25D),
+                        size: 13,
+                      ),
+                    ),
+                    if (!last)
+                      Expanded(
+                        child: Container(
+                          width: 1,
+                          margin: const EdgeInsets.symmetric(vertical: 5),
+                          color: const Color(0xFFD8B25D).withValues(alpha: .35),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: last ? 0 : 22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.date,
+                        style: const TextStyle(
+                          color: Color(0xFFD8B25D),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        entry.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        entry.detail,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .62),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  static String _activityRoute(Map<String, dynamic> request) {
+    final origin = request['origin']?.toString().trim() ?? '';
+    final destination = request['destination']?.toString().trim() ?? '';
+    if (origin.isEmpty && destination.isEmpty) return 'Vuelo privado';
+    return '$origin → $destination';
+  }
+
+  static String _activityDate(Map<String, dynamic> request) {
+    final raw =
+        request['updated_at'] ??
+        request['created_at'] ??
+        request['departure_datetime'];
+    final parsed = raw == null ? null : DateTime.tryParse(raw.toString());
+    if (parsed == null) return 'Reciente';
+    final difference = DateTime.now().difference(parsed).inDays;
+    if (difference <= 0) return 'Hoy';
+    if (difference == 1) return 'Ayer';
+    return 'Hace $difference días';
+  }
+}
+
+class _ActivityData {
+  const _ActivityData({
+    required this.date,
+    required this.title,
+    required this.detail,
+    required this.icon,
+  });
+
+  final String date;
+  final String title;
+  final String detail;
+  final IconData icon;
+}
+
+class _MembershipCard extends StatelessWidget {
+  const _MembershipCard({
+    required this.membership,
+    required this.active,
+    required this.renewal,
+    required this.onManage,
+  });
+
+  final String membership;
+  final bool active;
+  final String renewal;
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: SizedBox(
+        height: 190,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/profile_membership_cabin.png',
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xF5101C2D), Color(0xA8101C2D)],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: .08)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(21),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    membership,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color:
+                              active
+                                  ? const Color(0xFF35D06F)
+                                  : const Color(0xFFD8B25D),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        active ? 'Activo' : 'Pendiente',
+                        style: TextStyle(
+                          color:
+                              active
+                                  ? const Color(0xFF35D06F)
+                                  : const Color(0xFFD8B25D),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Renueva',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: .58),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              renewal,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: onManage,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFD8B25D)),
+                          ),
+                          child: const Text(
+                            'Administrar',
+                            style: TextStyle(
+                              color: Color(0xFFD8B25D),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -980,523 +1158,104 @@ class _AccountHeaderCard extends StatelessWidget {
   }
 }
 
-class _ContactPill extends StatelessWidget {
-  const _ContactPill({required this.icon, required this.label});
+class _PreferencesList extends StatelessWidget {
+  const _PreferencesList({required this.paymentMethod, required this.onTap});
 
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 260),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: palette.surfaceSoft,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: palette.textSecondary),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileReadinessCard extends StatelessWidget {
-  const _ProfileReadinessCard({required this.items});
-
-  final List<_ValidationItem> items;
+  final String paymentMethod;
+  final ValueChanged<String> onTap;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final readyCount = items.where((item) => item.ready).length;
-    final progress = items.isEmpty ? 0.0 : readyCount / items.length;
+    final items = [
+      (Icons.notifications_none_rounded, 'Notificaciones', 'Activadas'),
+      (Icons.language_rounded, 'Idioma', 'Español'),
+      (Icons.credit_card_outlined, 'Método de pago', paymentMethod),
+      (Icons.folder_outlined, 'Documentos', ''),
+    ];
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: palette.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Validaciones del perfil',
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Text(
-                '$readyCount/${items.length}',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: palette.surfaceSoft,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                readyCount == items.length
-                    ? const Color(0xFF2E7D4F)
-                    : palette.accent,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...items.map((item) => _ValidationRow(item: item)),
-        ],
-      ),
-    );
-  }
-}
-
-class _ValidationRow extends StatelessWidget {
-  const _ValidationRow({required this.item});
-
-  final _ValidationItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final color =
-        item.ready ? const Color(0xFF2E7D4F) : const Color(0xFF9A6A00);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              item.ready ? Icons.check_rounded : item.icon,
-              color: color,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.detail,
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    height: 1.25,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ValidationItem {
-  const _ValidationItem({
-    required this.label,
-    required this.detail,
-    required this.ready,
-    required this.icon,
-  });
-
-  final String label;
-  final String detail;
-  final bool ready;
-  final IconData icon;
-}
-
-/*
-                decoration: BoxDecoration(
-                  color: palette.surfaceStrong,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: palette.accentBorder),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    color: palette.accent,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: List.generate(items.length, (index) {
+        final item = items[index];
+        return Column(
+          children: [
+            InkWell(
+              onTap: () => onTap(item.$2),
+              child: SizedBox(
+                height: 56,
+                child: Row(
                   children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: palette.textPrimary,
-                        fontSize: 24,
-                        height: 1.05,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.8,
+                    Icon(item.$1, color: const Color(0xFFD8B25D), size: 21),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        item.$2,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      email,
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
+                    if (item.$3.isNotEmpty)
+                      Flexible(
+                        child: Text(
+                          item.$3,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: .55),
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
+                    const SizedBox(width: 7),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white.withValues(alpha: .42),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: onRefresh,
-                borderRadius: BorderRadius.circular(999),
-                child: Ink(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color:
-                        isDark
-                            ? palette.surfaceStrong
-                            : Colors.white.withValues(alpha: 0.92),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isDark ? palette.accentBorder : palette.border,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    color: isDark ? palette.accent : palette.primary,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _HeaderInfoPill(
-                  icon: Icons.verified_rounded,
-                  label: 'Estado de cuenta',
-                  value: status,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _HeaderInfoPill(
-                  icon: Icons.workspace_premium_rounded,
-                  label: 'Membresía',
-                  value: membership,
-                  subtitle: membershipCaption,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-*/
-
-class _HeaderInfoPill extends StatelessWidget {
-  const _HeaderInfoPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.subtitle,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color: isDark ? palette.accent : palette.primary,
-            size: 18,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            label,
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: palette.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              height: 1.25,
-            ),
-          ),
-          if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtitle!,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 12,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
+            if (index != items.length - 1)
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Colors.white.withValues(alpha: .08),
               ),
-            ),
           ],
-        ],
-      ),
+        );
+      }),
     );
   }
 }
 
-class _MinimalProfileCard extends StatelessWidget {
-  const _MinimalProfileCard({required this.title, required this.items});
+class _ScaleButton extends StatefulWidget {
+  const _ScaleButton({required this.child, required this.onTap});
 
-  final String title;
-  final List<_ProfileData> items;
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_ScaleButton> createState() => _ScaleButtonState();
+}
+
+class _ScaleButtonState extends State<_ScaleButton> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              color: isDark ? palette.accent : palette.primary,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 14),
-          ...List.generate(items.length, (index) {
-            final item = items[index];
-            final isLast = index == items.length - 1;
-            return _ProfileRow(
-              label: item.label,
-              value: item.value,
-              showDivider: !isLast,
-            );
-          }),
-        ],
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
-}
-
-class _ActionCard extends StatelessWidget {
-  const _ActionCard({required this.onRefresh, required this.onSignOut});
-
-  final VoidCallback onRefresh;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: FilledButton(
-              onPressed: onRefresh,
-              style: FilledButton.styleFrom(
-                backgroundColor: palette.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: const Text(
-                'Actualizar',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: onSignOut,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: palette.textPrimary,
-                minimumSize: const Size.fromHeight(52),
-                side: BorderSide(
-                  color: isDark ? palette.accentBorder : palette.border,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: const Text(
-                'Cerrar sesión',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileRow extends StatelessWidget {
-  const _ProfileRow({
-    required this.label,
-    required this.value,
-    this.showDivider = true,
-  });
-
-  final String label;
-  final String value;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Column(
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 96,
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  height: 1.25,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (showDivider) ...[
-          const SizedBox(height: 12),
-          Divider(height: 1, color: palette.border),
-          const SizedBox(height: 12),
-        ],
-      ],
-    );
-  }
-}
-
-class _ProfileData {
-  const _ProfileData({required this.label, required this.value});
-
-  final String label;
-  final String value;
 }

@@ -663,6 +663,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       amount: amount,
       route: route,
       passengerCount: passengerCount,
+      aircraftLabel: _paymentAircraftLabel(widget.request),
+      departureLabel: _paymentDepartureLabel(widget.request),
       paymentBreakdown: paymentBreakdown,
       checkoutDescription: checkoutDescription,
       checkoutStatus: checkoutStatus,
@@ -695,6 +697,70 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       isPrimaryEnabled: _resolvePrimaryAction(),
       isLoading: _openingReservationCheckout || _isValidatingPayment,
     );
+  }
+
+  String _paymentAircraftLabel(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final aircraft = _asStringKeyMap(request['aircraft']);
+    final snapshot = _asStringKeyMap(request['aircraft_snapshot']);
+    return _firstTextFromMaps(
+          const [
+            'aircraft_name',
+            'aircraft_model',
+            'assigned_aircraft_model',
+            'model',
+            'name',
+          ],
+          [request, data, reservation, aircraft, snapshot],
+        ).trim().isNotEmpty
+        ? _firstTextFromMaps(
+          const [
+            'aircraft_name',
+            'aircraft_model',
+            'assigned_aircraft_model',
+            'model',
+            'name',
+          ],
+          [request, data, reservation, aircraft, snapshot],
+        )
+        : 'Jet privado';
+  }
+
+  String _paymentDepartureLabel(Map<String, dynamic> request) {
+    final data = _asStringKeyMap(request['data']);
+    final reservation = _asStringKeyMap(request['reservation']);
+    final raw = _firstTextFromMaps(
+      const [
+        'departure_datetime',
+        'start_datetime',
+        'departure_at',
+        'scheduled_at',
+        'date',
+      ],
+      [request, data, reservation],
+    );
+    if (raw.trim().isEmpty) return 'Salida por confirmar';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    const months = [
+      'Ene',
+      'Feb',
+      'Mar',
+      'Abr',
+      'May',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dic',
+    ];
+    final suffix = parsed.hour >= 12 ? 'PM' : 'AM';
+    final hour = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    return '${parsed.day} ${months[parsed.month - 1]} · $hour:$minute $suffix';
   }
 
   Widget _buildCardPaymentPanel() {
@@ -1941,22 +2007,23 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       if (_requestIndicatesPaymentPending(currentSnapshot)) {
-        final requiresNewCheckout = shouldForceNewCheckoutAfterPendingValidation(
-          hadCheckoutSuccessReturn:
-              _checkoutCompleted ||
-              _requestHasCheckoutReturnSuccess(currentSnapshot) ||
-              _requestHasCheckoutReturnSuccess(widget.request),
-          paymentConfirmed: false,
-          paymentPending: true,
-          hasCheckoutSessionId:
-              _effectiveCheckoutSessionId(currentSnapshot).isNotEmpty ||
-              sessionId.isNotEmpty,
-          hasPaymentIntentId:
-              _paymentIntentId(currentSnapshot).trim().isNotEmpty,
-          hasExplicitNewCheckoutSignal: _requestRequiresNewCheckoutSession(
-            currentSnapshot,
-          ),
-        );
+        final requiresNewCheckout =
+            shouldForceNewCheckoutAfterPendingValidation(
+              hadCheckoutSuccessReturn:
+                  _checkoutCompleted ||
+                  _requestHasCheckoutReturnSuccess(currentSnapshot) ||
+                  _requestHasCheckoutReturnSuccess(widget.request),
+              paymentConfirmed: false,
+              paymentPending: true,
+              hasCheckoutSessionId:
+                  _effectiveCheckoutSessionId(currentSnapshot).isNotEmpty ||
+                  sessionId.isNotEmpty,
+              hasPaymentIntentId:
+                  _paymentIntentId(currentSnapshot).trim().isNotEmpty,
+              hasExplicitNewCheckoutSignal: _requestRequiresNewCheckoutSession(
+                currentSnapshot,
+              ),
+            );
         final effectiveReservationId =
             _effectiveReservationId(currentSnapshot).isNotEmpty
                 ? _effectiveReservationId(currentSnapshot)

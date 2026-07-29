@@ -3,8 +3,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/aeropuerto.dart';
-import '../../cliente/tema_cliente.dart';
-import '../../cliente/widgets/widgets_flujo_movil_cliente.dart';
 
 class AirportPickerSheet extends StatefulWidget {
   const AirportPickerSheet({
@@ -32,8 +30,6 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final search = _query.trim().toUpperCase();
     final filtered =
         widget.airports
@@ -52,82 +48,101 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
       maxChildSize: 0.95,
       builder: (context, scrollController) {
         return Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: palette.appGradient,
+              colors: [Color(0xFF101C2D), Color(0xFF07111D)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: Column(
             children: [
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Container(
-                width: 48,
-                height: 5,
+                width: 44,
+                height: 4,
                 decoration: BoxDecoration(
-                  color: palette.accentBorder,
+                  color: const Color(0xFFD9B25F).withValues(alpha: .72),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       widget.title,
-                      style: TextStyle(
-                        color:
-                            isDark
-                                ? palette.heroTextPrimary
-                                : palette.textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 27,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.6,
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 18),
                     TextField(
                       controller: _controller,
+                      autofocus: true,
                       onChanged: (value) {
                         setState(() {
                           _query = value;
                         });
                       },
-                      style: TextStyle(
-                        color:
-                            isDark
-                                ? palette.heroTextPrimary
-                                : palette.textPrimary,
-                        fontWeight: FontWeight.w700,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Buscar ciudad, aeropuerto o codigo',
+                        hintText: 'Ciudad, aeropuerto o código',
                         filled: true,
-                        fillColor: palette.surface,
+                        fillColor: const Color(
+                          0xFF07111D,
+                        ).withValues(alpha: .7),
                         hintStyle: TextStyle(
-                          color:
-                              isDark
-                                  ? palette.heroTextSecondary
-                                  : palette.textSecondary,
-                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: .42),
+                          fontSize: 16,
                         ),
-                        prefixIcon: Icon(
+                        prefixIcon: const Icon(
                           Icons.search_rounded,
-                          color: palette.accent,
+                          color: Color(0xFFD9B25F),
+                        ),
+                        suffixIcon:
+                            search.isEmpty
+                                ? null
+                                : IconButton(
+                                  tooltip: 'Limpiar',
+                                  onPressed: () {
+                                    _controller.clear();
+                                    setState(() => _query = '');
+                                  },
+                                  icon: Icon(
+                                    Icons.close_rounded,
+                                    color: Colors.white.withValues(alpha: .5),
+                                  ),
+                                ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 17,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(18),
                           borderSide: BorderSide.none,
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: BorderSide(color: palette.border),
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: .08),
+                          ),
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: BorderSide(color: palette.accentBorder),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(18)),
+                          borderSide: BorderSide(
+                            color: Color(0xFFD9B25F),
+                            width: 1.2,
+                          ),
                         ),
                       ),
                     ),
@@ -137,44 +152,18 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
               Expanded(
                 child:
                     search.isEmpty
-                        ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Text(
-                              'Escribe para buscar un aeropuerto.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color:
-                                    isDark
-                                        ? palette.heroTextSecondary
-                                        : palette.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                        ? const _AirportEmptyState(
+                          icon: Icons.travel_explore_rounded,
+                          message: 'Busca tu próximo aeropuerto.',
                         )
                         : filtered.isEmpty
-                        ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Text(
-                              'No encontramos aeropuertos con esa búsqueda.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color:
-                                    isDark
-                                        ? palette.heroTextSecondary
-                                        : palette.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                        ? const _AirportEmptyState(
+                          icon: Icons.location_off_outlined,
+                          message: 'No encontramos ese aeropuerto.',
                         )
                         : ListView.separated(
                           controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                          padding: const EdgeInsets.fromLTRB(24, 2, 24, 28),
                           itemBuilder: (context, index) {
                             final airport = filtered[index];
                             final code =
@@ -182,35 +171,96 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
                                     ? airport.iata!
                                     : '--';
 
-                            return ConciergeCard(
-                              padding: const EdgeInsets.all(16),
-                              child: ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  airport.city,
-                                  style: TextStyle(
-                                    color: palette.textPrimary,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '${airport.name}\n$code',
-                                  style: TextStyle(
-                                    height: 1.35,
-                                    color: palette.textSecondary,
-                                  ),
-                                ),
-                                trailing: Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 16,
-                                  color: palette.accent,
-                                ),
+                            return Material(
+                              color: const Color(0xFF101C2D),
+                              borderRadius: BorderRadius.circular(22),
+                              child: InkWell(
                                 onTap: () => Navigator.pop(context, airport),
+                                borderRadius: BorderRadius.circular(22),
+                                child: Container(
+                                  height: 78,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: .08,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 46,
+                                        height: 46,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFFD9B25F,
+                                          ).withValues(alpha: .1),
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          code.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Color(0xFFD9B25F),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 13),
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              airport.city,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              airport.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Colors.white.withValues(
+                                                  alpha: .55,
+                                                ),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: Colors.white.withValues(
+                                          alpha: .42,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             );
                           },
                           separatorBuilder:
-                              (_, __) => const SizedBox(height: 8),
+                              (_, __) => const SizedBox(height: 10),
                           itemCount: filtered.length,
                         ),
               ),
@@ -218,6 +268,44 @@ class _AirportPickerSheetState extends State<AirportPickerSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+class _AirportEmptyState extends StatelessWidget {
+  const _AirportEmptyState({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF101C2D),
+              border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            ),
+            child: Icon(icon, color: const Color(0xFFD9B25F), size: 28),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .58),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

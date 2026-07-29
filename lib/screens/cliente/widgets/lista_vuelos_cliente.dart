@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/airport_name_index.dart';
@@ -15,7 +17,6 @@ import '../../../services/servicio_aeropuertos.dart';
 import '../tema_cliente.dart';
 import '../views/pantalla_detalle_aeronave_cliente.dart';
 import '../views/pantalla_concierge_cliente.dart';
-import 'widgets_experiencia_cliente.dart';
 
 class ClientFlightsList extends StatefulWidget {
   const ClientFlightsList({
@@ -46,10 +47,10 @@ class ClientFlightsList extends StatefulWidget {
 class _ClientFlightsListState extends State<ClientFlightsList>
     with WidgetsBindingObserver {
   static const Duration _autoRefreshInterval = Duration(seconds: 35);
+  static const String _guideCompletedKey = 'client_flights_guide_completed_v1';
 
   late _TripTab _activeTab;
   Timer? _autoRefreshTimer;
-  bool _showOnlyActionRequired = false;
   Map<String, String> _airportNames = buildAirportNameIndex(const []);
 
   @override
@@ -64,6 +65,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
       if (!mounted) return;
       provider.loadClientWorkspaceData();
       unawaited(_loadAirportNames());
+      unawaited(_showFirstVisitGuide());
     });
 
     _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
@@ -87,6 +89,42 @@ class _ClientFlightsListState extends State<ClientFlightsList>
     } catch (_) {
       // Conserva el catálogo local; usa códigos solo si tampoco existe caché.
     }
+  }
+
+  Future<void> _showFirstVisitGuide() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted || preferences.getBool(_guideCompletedKey) == true) return;
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Guía de Tus vuelos',
+      barrierColor: Colors.black.withValues(alpha: .82),
+      transitionDuration: const Duration(milliseconds: 360),
+      pageBuilder:
+          (dialogContext, animation, secondaryAnimation) =>
+              _FlightsFirstVisitGuide(
+                onComplete: () async {
+                  await preferences.setBool(_guideCompletedKey, true);
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+              ),
+      transitionBuilder:
+          (_, animation, secondaryAnimation, child) => FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            ),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: .96, end: 1).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+              ),
+              child: child,
+            ),
+          ),
+    );
   }
 
   @override
@@ -113,155 +151,106 @@ class _ClientFlightsListState extends State<ClientFlightsList>
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.clientPalette;
     final provider = context.watch<ReservationProvider>();
     final allRequests = provider.flightRequests;
     final tabRequests = _filterRequests(allRequests);
-    final filteredRequests =
-        _showOnlyActionRequired
-            ? tabRequests.where(_needsClientAttention).toList()
-            : tabRequests;
+    final filteredRequests = tabRequests;
     final upcomingRequests = _filterRequestsForTab(
       allRequests,
       _TripTab.upcoming,
     );
-    final attentionCount = allRequests.where(_needsClientAttention).length;
     final nextFlight = upcomingRequests.isEmpty ? null : upcomingRequests.first;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
-    return ClientExperienceShell(
-      title: 'Mis vuelos',
-      subtitle: 'Reservas y seguimiento.',
-      showBackButton: widget.showBackButton,
-      child: RefreshIndicator(
-        color: palette.primary,
-        backgroundColor: palette.surface,
-        onRefresh: () => provider.loadClientWorkspaceData(force: true),
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(18, 10, 18, 136 + bottomInset),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.heading,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: palette.textPrimary,
-                      height: 1,
-                      letterSpacing: -1,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                StatusBadge(
-                  label: '${allRequests.length} vuelos',
-                  color: ClientThemeColors.accent,
+    return Scaffold(
+      backgroundColor: const Color(0xFF08111E),
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: const Color(0xFFD7B15D),
+          backgroundColor: const Color(0xFF101C2D),
+          onRefresh: () => provider.loadClientWorkspaceData(force: true),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.fromLTRB(24, 18, 24, 34 + bottomInset),
+            children: [
+              _PremiumFlightsHeader(
+                flightCount: allRequests.length,
+                showBackButton: widget.showBackButton,
+                onBack: () => Navigator.pop(context),
+                onNotifications:
+                    () => _showActionMessage('Sin notificaciones nuevas.'),
+              ),
+              const SizedBox(height: 24),
+              _NextFlightHero(
+                request: nextFlight,
+                aircraftFleet: provider.aircraftFleet,
+                airportNames: _airportNames,
+                onTap:
+                    nextFlight == null
+                        ? widget.onOpenSearch
+                        : () =>
+                            _openRequestForCurrentStage(provider, nextFlight),
+              ),
+              if (_shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
+                const SizedBox(height: 14),
+                _WorkspaceAlert(
+                  message: provider.workspaceMessage,
+                  loading: provider.isLoadingWorkspace,
+                  onRefresh:
+                      () => provider.loadClientWorkspaceData(force: true),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.description,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 22),
+              _PremiumTripTabs(
+                tabs: _availableTabs,
+                activeTab: _activeTab,
+                onChanged: (tab) => setState(() => _activeTab = tab),
               ),
-            ),
-            const SizedBox(height: 14),
-            _FlightsOverviewPanel(
-              totalFlights: allRequests.length,
-              visibleFlights: tabRequests.length,
-              attentionCount: attentionCount,
-              nextFlight: nextFlight,
-              airportNames: _airportNames,
-              loading: provider.isLoadingWorkspace,
-              lastSyncAt: provider.lastWorkspaceSyncAt,
-              onRefresh: () => provider.loadClientWorkspaceData(force: true),
-              onOpenSearch: widget.onOpenSearch,
-            ),
-            const SizedBox(height: 12),
-            _FlightExperienceStrip(
-              attentionCount: attentionCount,
-              upcomingCount: upcomingRequests.length,
-              onOpenSearch: widget.onOpenSearch,
-            ),
-            if (provider.isLoadingWorkspace ||
-                _shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
-              const SizedBox(height: 14),
-              _WorkspaceAlert(
-                message: provider.workspaceMessage,
-                loading: provider.isLoadingWorkspace,
-                onRefresh: () => provider.loadClientWorkspaceData(force: true),
-              ),
-            ],
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children:
-                  _availableTabs
-                      .map(
-                        (tab) => _TripTabButton(
-                          label: _tabLabel(tab),
-                          active: _activeTab == tab,
-                          onTap: () => setState(() => _activeTab = tab),
+              const SizedBox(height: 22),
+              if (provider.isLoadingWorkspace && allRequests.isEmpty)
+                const _MinimalLoadingCard()
+              else if (filteredRequests.isEmpty)
+                _EmptyFlightsPanel(
+                  label: _activeTabLabel,
+                  onOpenSearch: widget.onOpenSearch,
+                )
+              else
+                ...filteredRequests.asMap().entries.map(
+                  (entry) => TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: Duration(milliseconds: 360 + entry.key * 70),
+                    curve: Curves.easeOutCubic,
+                    builder:
+                        (context, value, child) => Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 28 * (1 - value)),
+                            child: child,
+                          ),
                         ),
-                      )
-                      .toList(),
-            ),
-            const SizedBox(height: 12),
-            _AttentionFilterBar(
-              active: _showOnlyActionRequired,
-              count: attentionCount,
-              onChanged:
-                  (value) => setState(() {
-                    _showOnlyActionRequired = value;
-                  }),
-            ),
-            const SizedBox(height: 16),
-            if (provider.isLoadingWorkspace && allRequests.isEmpty)
-              const _MinimalLoadingCard()
-            else if (filteredRequests.isEmpty)
-              _EmptyFlightsPanel(
-                label: _activeTabLabel,
-                onOpenSearch: widget.onOpenSearch,
-              )
-            else
-              ...filteredRequests.asMap().entries.map(
-                (entry) => TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: 1),
-                  duration: Duration(milliseconds: 260 + entry.key * 35),
-                  curve: Curves.easeOutCubic,
-                  builder:
-                      (context, value, child) => Opacity(
-                        opacity: value,
-                        child: Transform.translate(
-                          offset: Offset(0, 18 * (1 - value)),
-                          child: child,
-                        ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 18),
+                      child: _PremiumFlightCard(
+                        request: entry.value,
+                        aircraftFleet: provider.aircraftFleet,
+                        airportNames: _airportNames,
+                        onTap:
+                            () => _openRequestForCurrentStage(
+                              provider,
+                              entry.value,
+                            ),
+                        onMenu: () => _showFlightMenu(entry.value),
                       ),
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _MinimalFlightCard(
-                      request: entry.value,
-                      aircraftFleet: provider.aircraftFleet,
-                      airportNames: _airportNames,
-                      onTap: () => _showFlightSheet(provider, entry.value),
-                      onOpenAircraft:
-                          () => _openAircraft(provider, entry.value),
-                      onOpenContract: () => _handleOpenContract(entry.value),
-                      onOpenPayment: () => _handleOpenPayment(entry.value),
-                      onOpenConcierge: () => _openConcierge(entry.value),
                     ),
                   ),
                 ),
-              ),
-          ],
+              const SizedBox(height: 2),
+              _NewFlightButton(onTap: widget.onOpenSearch),
+            ],
+          ),
         ),
       ),
     );
@@ -433,130 +422,114 @@ class _ClientFlightsListState extends State<ClientFlightsList>
     final contractEnabled = _contractActionEnabled(request, workflowId);
     final paymentEnabled = _paymentActionEnabled(request, workflowId);
     final conciergeEnabled = _conciergeActionEnabled(request, workflowId);
+    final aircraft = _resolveAircraft(provider, request);
+    final imageUrl = _aircraftImageUrl(request, provider.aircraftFleet);
 
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: context.clientPalette.surface,
+      showDragHandle: false,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: .78),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       builder:
-          (_) => SafeArea(
+          (sheetContext) => _LuxuryFlightDetailSheet(
+            request: request,
+            meta: meta,
+            aircraft: aircraft,
+            aircraftFleet: provider.aircraftFleet,
+            airportNames: _airportNames,
+            imageUrl: imageUrl,
+            contractEnabled: contractEnabled,
+            paymentEnabled: paymentEnabled,
+            conciergeEnabled: conciergeEnabled,
+            onClose: () => Navigator.pop(sheetContext),
+            onConcierge: () => _openConcierge(request),
+            onAircraft: () => _openAircraft(provider, request),
+            onContract: () => _handleOpenContract(request),
+            onPayment: () => _handleOpenPayment(request),
+            onTracking: null,
+          ),
+    );
+  }
+
+  void _openRequestForCurrentStage(
+    ReservationProvider provider,
+    Map<String, dynamic> request,
+  ) {
+    final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
+
+    if (_contractActionEnabled(request, workflowId)) {
+      _handleOpenContract(request);
+      return;
+    }
+
+    if (_paymentActionEnabled(request, workflowId)) {
+      _handleOpenPayment(request);
+      return;
+    }
+
+    _showFlightSheet(provider, request);
+  }
+
+  void _showFlightMenu(Map<String, dynamic> request) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.72),
+      builder:
+          (sheetContext) => SafeArea(
             top: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C2D),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white.withValues(alpha: .08)),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Builder(
-                    builder: (context) {
-                      final palette = context.clientPalette;
-                      return Text(
-                        _routeLabel(request, airportNames: _airportNames),
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          color: palette.textPrimary,
-                          height: 1,
-                          letterSpacing: -0.8,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _MinimalStatusPill(meta: meta),
-                  const SizedBox(height: 18),
-                  _DetailRow(label: 'Fecha', value: _departureCopy(request)),
-                  _DetailRow(label: 'Aeronave', value: _aircraftLabel(request)),
-                  _DetailRow(
-                    label: 'Pasajeros',
-                    value: '${_passengerCount(request)} pasajeros',
-                  ),
-                  _DetailRow(label: 'Reserva', value: _requestCode(request)),
-                  const SizedBox(height: 14),
                   Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: context.clientPalette.surfaceSoft,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: context.clientPalette.border),
-                    ),
-                    child: Text(
-                      meta.nextAction,
-                      style: TextStyle(
-                        color: context.clientPalette.textPrimary,
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
-                      ),
+                      color: Colors.white.withValues(alpha: .2),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SheetButton(
-                          label: 'Concierge',
-                          icon: Icons.support_agent_rounded,
-                          onTap:
-                              conciergeEnabled
-                                  ? () => _openConcierge(request)
-                                  : null,
-                          visualState: _actionVisualState(
-                            meta: meta,
-                            stepIndex: 5,
-                            enabled: conciergeEnabled,
-                          ),
+                  for (final action in const [
+                    (Icons.edit_outlined, 'Editar'),
+                    (Icons.copy_rounded, 'Duplicar'),
+                    (Icons.cancel_outlined, 'Cancelar'),
+                    (Icons.ios_share_rounded, 'Compartir'),
+                  ])
+                    ListTile(
+                      minTileHeight: 52,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      leading: Icon(
+                        action.$1,
+                        color:
+                            action.$2 == 'Cancelar'
+                                ? const Color(0xFFFF6B6B)
+                                : const Color(0xFFD7B15D),
+                      ),
+                      title: Text(
+                        action.$2,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _SheetButton(
-                          label: 'Aeronave',
-                          icon: Icons.flight_rounded,
-                          onTap: () => _openAircraft(provider, request),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SheetButton(
-                          label: 'Contrato',
-                          icon: Icons.description_outlined,
-                          onTap:
-                              contractEnabled
-                                  ? () => _handleOpenContract(request)
-                                  : null,
-                          visualState: _actionVisualState(
-                            meta: meta,
-                            stepIndex: 2,
-                            enabled: contractEnabled,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _SheetButton(
-                          label: 'Pago',
-                          icon: Icons.credit_card_rounded,
-                          onTap:
-                              paymentEnabled
-                                  ? () => _handleOpenPayment(request)
-                                  : null,
-                          visualState: _actionVisualState(
-                            meta: meta,
-                            stepIndex: 3,
-                            enabled: paymentEnabled,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                      onTap: () => Navigator.pop(sheetContext),
+                    ),
                 ],
               ),
             ),
@@ -601,17 +574,7 @@ bool _shouldShowWorkspaceAlert(String? message) {
   final normalized = message.toLowerCase();
   return normalized.contains('no fue posible') ||
       normalized.contains('sin conexion') ||
-      normalized.contains('inicia sesion') ||
-      normalized.contains('sincronizada en');
-}
-
-bool _needsClientAttention(Map<String, dynamic> request) {
-  final meta = _statusMeta(request);
-  if (meta.isClosed) return false;
-  final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
-  return _contractActionEnabled(request, workflowId) ||
-      _paymentActionEnabled(request, workflowId) ||
-      meta.tone == _WorkflowTone.pending;
+      normalized.contains('inicia sesion');
 }
 
 void _showClientSnackBar(BuildContext context, String message) {
@@ -658,6 +621,1623 @@ void _showClientSnackBar(BuildContext context, String message) {
         ),
       ),
     );
+}
+
+class _LuxuryFlightDetailSheet extends StatelessWidget {
+  const _LuxuryFlightDetailSheet({
+    required this.request,
+    required this.meta,
+    required this.aircraft,
+    required this.aircraftFleet,
+    required this.airportNames,
+    required this.imageUrl,
+    required this.contractEnabled,
+    required this.paymentEnabled,
+    required this.conciergeEnabled,
+    required this.onClose,
+    required this.onConcierge,
+    required this.onAircraft,
+    required this.onContract,
+    required this.onPayment,
+    required this.onTracking,
+  });
+
+  final Map<String, dynamic> request;
+  final _WorkflowMeta meta;
+  final Aircraft? aircraft;
+  final List<Aircraft> aircraftFleet;
+  final Map<String, String> airportNames;
+  final String imageUrl;
+  final bool contractEnabled;
+  final bool paymentEnabled;
+  final bool conciergeEnabled;
+  final VoidCallback onClose;
+  final VoidCallback onConcierge;
+  final VoidCallback onAircraft;
+  final VoidCallback onContract;
+  final VoidCallback onPayment;
+  final VoidCallback? onTracking;
+
+  @override
+  Widget build(BuildContext context) {
+    final route = _routeParts(request, airportNames);
+    final departure = _departureCopy(request).split(',');
+    final date = departure.first.trim();
+    final time =
+        departure.length > 1 ? departure.sublist(1).join(',').trim() : '';
+
+    return FractionallySizedBox(
+      heightFactor: .9,
+      alignment: Alignment.bottomCenter,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutBack,
+        builder:
+            (_, value, child) => Transform.translate(
+              offset: Offset(0, 34 * (1 - value)),
+              child: Opacity(opacity: value.clamp(0, 1), child: child),
+            ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: ColoredBox(
+              color: const Color(0xFF07111D).withValues(alpha: .96),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FlightSheetHero(
+                      route: route,
+                      meta: meta,
+                      imageUrl: imageUrl,
+                      onClose: onClose,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FlightSummaryGrid(
+                            date: date,
+                            time: time,
+                            aircraft: _aircraftLabel(request),
+                            passengers: _passengerCount(request).toString(),
+                            reservation: _requestCode(request),
+                          ),
+                          const SizedBox(height: 20),
+                          _FlightReadyCard(meta: meta),
+                          const SizedBox(height: 24),
+                          const _SheetSectionTitle('Acciones'),
+                          const SizedBox(height: 14),
+                          _FlightActionsGrid(
+                            conciergeEnabled: conciergeEnabled,
+                            contractEnabled: contractEnabled,
+                            paymentEnabled: paymentEnabled,
+                            onConcierge: onConcierge,
+                            onAircraft: onAircraft,
+                            onContract: onContract,
+                            onPayment: onPayment,
+                          ),
+                          const SizedBox(height: 26),
+                          const _SheetSectionTitle('Vuelo'),
+                          const SizedBox(height: 15),
+                          _FlightTimeline(activeStep: meta.activeStep),
+                          const SizedBox(height: 26),
+                          _AircraftDetailCard(
+                            request: request,
+                            aircraft: aircraft,
+                            aircraftFleet: aircraftFleet,
+                            imageUrl: imageUrl,
+                            onTap: onAircraft,
+                          ),
+                          const SizedBox(height: 16),
+                          _ConciergeDetailCard(
+                            enabled: conciergeEnabled,
+                            onTap: onConcierge,
+                          ),
+                          const SizedBox(height: 26),
+                          const _SheetSectionTitle('Documentos'),
+                          const SizedBox(height: 8),
+                          _FlightDocuments(
+                            contractEnabled: contractEnabled,
+                            paymentEnabled: paymentEnabled,
+                            onContract: onContract,
+                            onPayment: onPayment,
+                          ),
+                          const SizedBox(height: 28),
+                          if (onTracking != null) ...[
+                            _SheetScaleButton(
+                              onTap: onTracking,
+                              child: Container(
+                                height: 56,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD8B25D),
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: const Text(
+                                  'Ver seguimiento',
+                                  style: TextStyle(
+                                    color: Color(0xFF111820),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          _SheetScaleButton(
+                            onTap: onClose,
+                            child: Container(
+                              height: 56,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: const Color(0xFFD8B25D),
+                                ),
+                              ),
+                              child: const Text(
+                                'Cerrar',
+                                style: TextStyle(
+                                  color: Color(0xFFD8B25D),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlightSheetHero extends StatelessWidget {
+  const _FlightSheetHero({
+    required this.route,
+    required this.meta,
+    required this.imageUrl,
+    required this.onClose,
+  });
+
+  final (String, String) route;
+  final _WorkflowMeta meta;
+  final String imageUrl;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 220,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _PremiumJetImage(imageUrl: imageUrl),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: [0, .58, 1],
+                colors: [
+                  Color(0xF807111D),
+                  Color(0xC807111D),
+                  Color(0x3307111D),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 18, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _PremiumStatusPill(meta: meta),
+                    const Spacer(),
+                    ClipOval(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                        child: IconButton(
+                          tooltip: 'Cerrar',
+                          onPressed: onClose,
+                          style: IconButton.styleFrom(
+                            fixedSize: const Size(46, 46),
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.white.withValues(
+                              alpha: .08,
+                            ),
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: .12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  route.$1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -.9,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 3),
+                  child: Icon(
+                    Icons.arrow_downward_rounded,
+                    color: Color(0xFFD8B25D),
+                    size: 22,
+                  ),
+                ),
+                Text(
+                  route.$2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -.9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightSummaryGrid extends StatelessWidget {
+  const _FlightSummaryGrid({
+    required this.date,
+    required this.time,
+    required this.aircraft,
+    required this.passengers,
+    required this.reservation,
+  });
+
+  final String date;
+  final String time;
+  final String aircraft;
+  final String passengers;
+  final String reservation;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (Icons.calendar_month_outlined, 'Fecha', date, time),
+      (Icons.flight_rounded, 'Aeronave', aircraft, ''),
+      (Icons.person_outline_rounded, 'Pasajeros', passengers, ''),
+      (Icons.confirmation_number_outlined, 'Reserva', reservation, ''),
+    ];
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        mainAxisExtent: 104,
+      ),
+      itemBuilder: (_, index) {
+        final item = items[index];
+        return _AnimatedSheetCard(
+          index: index,
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101C2D),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(item.$1, color: const Color(0xFFD8B25D), size: 19),
+                    const SizedBox(width: 7),
+                    Text(
+                      item.$2,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  item.$3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (item.$4.isNotEmpty)
+                  Text(
+                    item.$4,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .58),
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FlightReadyCard extends StatelessWidget {
+  const _FlightReadyCard({required this.meta});
+
+  final _WorkflowMeta meta;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready =
+        meta.tone == _WorkflowTone.confirmed ||
+        meta.tone == _WorkflowTone.completed;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1624),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFD8B25D).withValues(alpha: .22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFD8B25D).withValues(alpha: .06),
+            blurRadius: 22,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFD8B25D).withValues(alpha: .1),
+            ),
+            child: Icon(
+              ready ? Icons.auto_awesome_rounded : Icons.schedule_rounded,
+              color: const Color(0xFFD8B25D),
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ready ? 'Todo listo para volar.' : meta.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ready
+                      ? 'La aeronave y la tripulación han sido confirmadas.'
+                      : meta.nextAction,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .62),
+                    fontSize: 13,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightActionsGrid extends StatelessWidget {
+  const _FlightActionsGrid({
+    required this.conciergeEnabled,
+    required this.contractEnabled,
+    required this.paymentEnabled,
+    required this.onConcierge,
+    required this.onAircraft,
+    required this.onContract,
+    required this.onPayment,
+  });
+
+  final bool conciergeEnabled;
+  final bool contractEnabled;
+  final bool paymentEnabled;
+  final VoidCallback onConcierge;
+  final VoidCallback onAircraft;
+  final VoidCallback onContract;
+  final VoidCallback onPayment;
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = [
+      (
+        Icons.support_agent_rounded,
+        'Concierge',
+        conciergeEnabled ? onConcierge : null,
+      ),
+      (Icons.flight_rounded, 'Aeronave', onAircraft),
+      (
+        Icons.description_outlined,
+        'Contrato',
+        contractEnabled ? onContract : null,
+      ),
+      (Icons.credit_card_outlined, 'Pago', paymentEnabled ? onPayment : null),
+    ];
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: actions.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        mainAxisExtent: 78,
+      ),
+      itemBuilder: (_, index) {
+        final action = actions[index];
+        final enabled = action.$3 != null;
+        return _SheetScaleButton(
+          onTap: action.$3,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101C2D),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  action.$1,
+                  color:
+                      enabled
+                          ? const Color(0xFFD8B25D)
+                          : Colors.white.withValues(alpha: .28),
+                  size: 24,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    action.$2,
+                    style: TextStyle(
+                      color:
+                          enabled
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: .35),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withValues(alpha: enabled ? .5 : .2),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FlightTimeline extends StatelessWidget {
+  const _FlightTimeline({required this.activeStep});
+
+  final int activeStep;
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      'Reserva creada',
+      'Pago confirmado',
+      'Operación confirmada',
+      'Tripulación asignada',
+      'Vuelo realizado',
+    ];
+    return Column(
+      children: List.generate(steps.length, (index) {
+        final done = index < activeStep;
+        final last = index == steps.length - 1;
+        return IntrinsicHeight(
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            done ? const Color(0xFFD8B25D) : Colors.transparent,
+                        border: Border.all(color: const Color(0xFFD8B25D)),
+                      ),
+                      child:
+                          done
+                              ? const Icon(
+                                Icons.check_rounded,
+                                color: Color(0xFF07111D),
+                                size: 13,
+                              )
+                              : null,
+                    ),
+                    if (!last)
+                      Expanded(
+                        child: Container(
+                          width: 1,
+                          margin: const EdgeInsets.symmetric(vertical: 3),
+                          color: const Color(0xFFD8B25D).withValues(alpha: .38),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: last ? 0 : 17),
+                  child: Text(
+                    steps[index],
+                    style: TextStyle(
+                      color:
+                          done
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: .52),
+                      fontSize: 14,
+                      fontWeight: done ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _AircraftDetailCard extends StatelessWidget {
+  const _AircraftDetailCard({
+    required this.request,
+    required this.aircraft,
+    required this.aircraftFleet,
+    required this.imageUrl,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> request;
+  final Aircraft? aircraft;
+  final List<Aircraft> aircraftFleet;
+  final String imageUrl;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final category = _aircraftCategoryLabel(request);
+    final capacity =
+        aircraft?.capacityPassengers ??
+        int.tryParse(request['aircraft_capacity']?.toString() ?? '') ??
+        0;
+    final range = _firstText([
+      request['aircraft_range'],
+      request['range'],
+      request['autonomy'],
+    ]);
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: SizedBox(
+              width: 104,
+              height: 112,
+              child: _PremiumJetImage(imageUrl: imageUrl),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _aircraftLabel(request),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  category,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .58),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  capacity > 0
+                      ? '$capacity pasajeros'
+                      : 'Capacidad por confirmar',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .7),
+                    fontSize: 12,
+                  ),
+                ),
+                if (range.isNotEmpty)
+                  Text(
+                    'Autonomía $range',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .7),
+                      fontSize: 12,
+                    ),
+                  ),
+                const SizedBox(height: 9),
+                GestureDetector(
+                  onTap: onTap,
+                  child: const Text(
+                    'Ver ficha  →',
+                    style: TextStyle(
+                      color: Color(0xFFD8B25D),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConciergeDetailCard extends StatelessWidget {
+  const _ConciergeDetailCard({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.support_agent_rounded,
+            color: Color(0xFFD8B25D),
+            size: 27,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'Tu concierge está listo para ayudarte.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .82),
+                fontSize: 14,
+                height: 1.3,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton(
+            onPressed: enabled ? onTap : null,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFD8B25D),
+            ),
+            child: const Text('Contactar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightDocuments extends StatelessWidget {
+  const _FlightDocuments({
+    required this.contractEnabled,
+    required this.paymentEnabled,
+    required this.onContract,
+    required this.onPayment,
+  });
+
+  final bool contractEnabled;
+  final bool paymentEnabled;
+  final VoidCallback onContract;
+  final VoidCallback onPayment;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      ('Contrato', contractEnabled ? onContract : null),
+      ('Pago', paymentEnabled ? onPayment : null),
+    ];
+    return Column(
+      children: List.generate(items.length, (index) {
+        final item = items[index];
+        return Column(
+          children: [
+            InkWell(
+              onTap: item.$2,
+              child: SizedBox(
+                height: 56,
+                child: Row(
+                  children: [
+                    Icon(
+                      index == 0
+                          ? Icons.description_outlined
+                          : Icons.receipt_long_outlined,
+                      color: const Color(0xFFD8B25D),
+                      size: 21,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        item.$1,
+                        style: TextStyle(
+                          color:
+                              item.$2 == null
+                                  ? Colors.white.withValues(alpha: .35)
+                                  : Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white.withValues(alpha: .42),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (index != items.length - 1)
+              Divider(height: 1, color: Colors.white.withValues(alpha: .08)),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _SheetSectionTitle extends StatelessWidget {
+  const _SheetSectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 21,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -.3,
+      ),
+    );
+  }
+}
+
+class _AnimatedSheetCard extends StatelessWidget {
+  const _AnimatedSheetCard({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 320 + index * 65),
+      curve: Curves.easeOutCubic,
+      builder:
+          (_, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 16 * (1 - value)),
+              child: child,
+            ),
+          ),
+      child: child,
+    );
+  }
+}
+
+class _SheetScaleButton extends StatefulWidget {
+  const _SheetScaleButton({required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  State<_SheetScaleButton> createState() => _SheetScaleButtonState();
+}
+
+class _SheetScaleButtonState extends State<_SheetScaleButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 140),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _PremiumFlightsHeader extends StatelessWidget {
+  const _PremiumFlightsHeader({
+    required this.flightCount,
+    required this.showBackButton,
+    required this.onBack,
+    required this.onNotifications,
+  });
+
+  final int flightCount;
+  final bool showBackButton;
+  final VoidCallback onBack;
+  final VoidCallback onNotifications;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (showBackButton) ...[
+              IconButton(
+                onPressed: onBack,
+                style: IconButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF101C2D),
+                ),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Image.asset(
+              'assets/LOGOINTERNO.png',
+              width: 48,
+              height: 48,
+              color: const Color(0xFFD7B15D),
+              colorBlendMode: BlendMode.srcIn,
+              filterQuality: FilterQuality.high,
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C2D),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFFD7B15D).withValues(alpha: .28),
+                ),
+              ),
+              child: Text(
+                '$flightCount ${flightCount == 1 ? 'vuelo' : 'vuelos'}',
+                style: const TextStyle(
+                  color: Color(0xFFD7B15D),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Notificaciones',
+              onPressed: onNotifications,
+              style: IconButton.styleFrom(
+                foregroundColor: const Color(0xFFD7B15D),
+                backgroundColor: const Color(0xFF101C2D),
+                minimumSize: const Size(44, 44),
+              ),
+              icon: const Icon(Icons.notifications_none_rounded, size: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Tus vuelos',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 36,
+            height: 1,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Todo listo para tu próximo destino.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .65),
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NextFlightHero extends StatelessWidget {
+  const _NextFlightHero({
+    required this.request,
+    required this.aircraftFleet,
+    required this.airportNames,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic>? request;
+  final List<Aircraft> aircraftFleet;
+  final Map<String, String> airportNames;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final flight = request;
+    final route =
+        flight == null
+            ? const ('Tu próximo destino', 'Por descubrir')
+            : _routeParts(flight, airportNames);
+    final imageUrl =
+        flight == null ? '' : _aircraftImageUrl(flight, aircraftFleet);
+    final status = flight == null ? null : _statusMeta(flight);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder:
+          (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(0, 18 * (1 - value)),
+              child: child,
+            ),
+          ),
+      child: SizedBox(
+        height: 230,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Color(0xFF101C2D)),
+              Positioned(
+                top: 0,
+                bottom: 0,
+                right: 0,
+                width: MediaQuery.sizeOf(context).width * .48,
+                child: _PremiumJetImage(imageUrl: imageUrl),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: [0, .55, 1],
+                    colors: [
+                      Color(0xFF101C2D),
+                      Color(0xEE101C2D),
+                      Color(0x55101C2D),
+                    ],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: .08),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 18, 17),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'PRÓXIMO VUELO',
+                          style: TextStyle(
+                            color: Color(0xFFD7B15D),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.35,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (status != null)
+                          _PremiumStatusPill(meta: status, compact: true),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 245),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            route.$1,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              height: 1.05,
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 2),
+                            child: Icon(
+                              Icons.arrow_downward_rounded,
+                              color: Color(0xFFD7B15D),
+                              size: 18,
+                            ),
+                          ),
+                          Text(
+                            route.$2,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              height: 1.05,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (flight != null)
+                      Row(
+                        children: [
+                          _HeroMeta(
+                            icon: Icons.calendar_month_outlined,
+                            label: _departureCopy(flight),
+                          ),
+                          const SizedBox(width: 11),
+                          _HeroMeta(
+                            icon: Icons.people_outline_rounded,
+                            label: '${_passengerCount(flight)} pax',
+                          ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: _HeroMeta(
+                              icon: Icons.flight_rounded,
+                              label: _aircraftLabel(flight),
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 10),
+                    _ScaleTap(
+                      onTap: onTap,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            flight == null ? 'Nuevo vuelo' : 'Ver detalles',
+                            style: const TextStyle(
+                              color: Color(0xFFD7B15D),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Color(0xFFD7B15D),
+                            size: 17,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroMeta extends StatelessWidget {
+  const _HeroMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: const Color(0xFFD7B15D), size: 15),
+        const SizedBox(width: 5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 100),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .68),
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PremiumTripTabs extends StatelessWidget {
+  const _PremiumTripTabs({
+    required this.tabs,
+    required this.activeTab,
+    required this.onChanged,
+  });
+
+  final List<_TripTab> tabs;
+  final _TripTab activeTab;
+  final ValueChanged<_TripTab> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children:
+            tabs.map((tab) {
+              final active = tab == activeTab;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onChanged(tab),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    decoration: BoxDecoration(
+                      color:
+                          active ? const Color(0xFF16253B) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border(
+                        bottom: BorderSide(
+                          color:
+                              active
+                                  ? const Color(0xFFD7B15D)
+                                  : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _tabLabel(tab),
+                      style: TextStyle(
+                        color:
+                            active
+                                ? const Color(0xFFD7B15D)
+                                : Colors.white.withValues(alpha: .55),
+                        fontSize: 13,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+}
+
+class _PremiumFlightCard extends StatefulWidget {
+  const _PremiumFlightCard({
+    required this.request,
+    required this.aircraftFleet,
+    required this.airportNames,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  final Map<String, dynamic> request;
+  final List<Aircraft> aircraftFleet;
+  final Map<String, String> airportNames;
+  final VoidCallback onTap;
+  final VoidCallback onMenu;
+
+  @override
+  State<_PremiumFlightCard> createState() => _PremiumFlightCardState();
+}
+
+class _PremiumFlightCardState extends State<_PremiumFlightCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = _statusMeta(widget.request);
+    final route = _routeParts(widget.request, widget.airportNames);
+    final imageUrl = _aircraftImageUrl(widget.request, widget.aircraftFleet);
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 150),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 150,
+          decoration: BoxDecoration(
+            color: _pressed ? const Color(0xFF16253B) : const Color(0xFF101C2D),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _pressed ? .34 : .20),
+                blurRadius: _pressed ? 28 : 18,
+                offset: Offset(0, _pressed ? 14 : 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(27),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: MediaQuery.sizeOf(context).width * .31,
+                  height: double.infinity,
+                  child: _PremiumJetImage(imageUrl: imageUrl),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 12, 10, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _PremiumStatusPill(meta: meta),
+                            const Spacer(),
+                            IconButton(
+                              tooltip: 'Más opciones',
+                              onPressed: widget.onMenu,
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 30,
+                              ),
+                              icon: Icon(
+                                Icons.more_horiz_rounded,
+                                color: Colors.white.withValues(alpha: .55),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${route.$1}\n→ ${route.$2}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  height: 1.22,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Color(0xFFD7B15D),
+                              size: 25,
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CardMeta(
+                                icon: Icons.calendar_month_outlined,
+                                value: _departureCopy(widget.request),
+                              ),
+                            ),
+                            _CardMeta(
+                              icon: Icons.people_outline_rounded,
+                              value: '${_passengerCount(widget.request)} pax',
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _CardMeta(
+                                icon: Icons.flight_rounded,
+                                value: _aircraftLabel(widget.request),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CardMeta extends StatelessWidget {
+  const _CardMeta({required this.icon, required this.value});
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: const Color(0xFFD7B15D), size: 14),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .62),
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PremiumStatusPill extends StatelessWidget {
+  const _PremiumStatusPill({required this.meta, this.compact = false});
+
+  final _WorkflowMeta meta;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final confirmed =
+        meta.tone == _WorkflowTone.confirmed ||
+        meta.tone == _WorkflowTone.completed;
+    final color = confirmed ? const Color(0xFF31D158) : const Color(0xFFD7B15D);
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 9,
+        vertical: compact ? 4 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            meta.label.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontSize: compact ? 8.5 : 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumJetImage extends StatelessWidget {
+  const _PremiumJetImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget fallback() => Image.asset(
+      'assets/login/image.png',
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.high,
+    );
+
+    if (imageUrl.trim().isEmpty || !imageUrl.startsWith('http')) {
+      return fallback();
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback(),
+      loadingBuilder:
+          (_, child, progress) => progress == null ? child : fallback(),
+    );
+  }
+}
+
+class _NewFlightButton extends StatelessWidget {
+  const _NewFlightButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ScaleTap(
+      onTap: onTap,
+      child: Container(
+        height: 58,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFD7B15D), width: 1.2),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_rounded, color: Color(0xFFD7B15D), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Nuevo vuelo',
+              style: TextStyle(
+                color: Color(0xFFD7B15D),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScaleTap extends StatefulWidget {
+  const _ScaleTap({required this.child, required this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<_ScaleTap> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 1.02 : 1,
+        duration: const Duration(milliseconds: 140),
+        child: widget.child,
+      ),
+    );
+  }
 }
 
 class _WorkspaceAlert extends StatelessWidget {
@@ -745,6 +2325,8 @@ class _WorkspaceAlert extends StatelessWidget {
   }
 }
 
+// Componentes históricos conservados para no alterar flujos de detalle.
+// ignore: unused_element
 class _FlightsOverviewPanel extends StatelessWidget {
   const _FlightsOverviewPanel({
     required this.totalFlights,
@@ -969,63 +2551,7 @@ class _OverviewChip extends StatelessWidget {
   }
 }
 
-class _AttentionFilterBar extends StatelessWidget {
-  const _AttentionFilterBar({
-    required this.active,
-    required this.count,
-    required this.onChanged,
-  });
-
-  final bool active;
-  final int count;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            count > 0
-                ? Icons.notification_important_outlined
-                : Icons.check_circle_outline_rounded,
-            color: count > 0 ? palette.accent : const Color(0xFF1B8F4D),
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              count > 0
-                  ? 'Mostrar solo vuelos que necesitan accion'
-                  : 'Sin acciones pendientes por ahora',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontSize: 13,
-                height: 1.25,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          Switch.adaptive(
-            value: active,
-            onChanged: count == 0 ? null : onChanged,
-            activeThumbColor: palette.accent,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+// ignore: unused_element
 class _FlightExperienceStrip extends StatelessWidget {
   const _FlightExperienceStrip({
     required this.attentionCount,
@@ -1228,6 +2754,7 @@ class _ItinerarySegment {
   final String departure;
 }
 
+// ignore: unused_element
 class _TripTabButton extends StatelessWidget {
   const _TripTabButton({
     required this.label,
@@ -1284,6 +2811,7 @@ class _TripTabButton extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MinimalFlightCard extends StatelessWidget {
   const _MinimalFlightCard({
     required this.request,
@@ -1951,139 +3479,6 @@ class _CardActionButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _MinimalStatusPill extends StatelessWidget {
-  const _MinimalStatusPill({required this.meta});
-
-  final _WorkflowMeta meta;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isConfirmed =
-        meta.tone == _WorkflowTone.confirmed ||
-        meta.tone == _WorkflowTone.completed;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color:
-            isConfirmed
-                ? palette.primary
-                : (context.isDarkMode ? palette.surfaceSoft : palette.surface),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isConfirmed ? palette.primary : palette.border,
-        ),
-      ),
-      child: Text(
-        meta.label,
-        style: TextStyle(
-          color: isConfirmed ? palette.heroTextPrimary : palette.textPrimary,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 86,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: palette.textPrimary,
-                fontWeight: FontWeight.w900,
-                fontSize: 14,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetButton extends StatelessWidget {
-  const _SheetButton({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.visualState = _ActionVisualState.inactive,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-  final _ActionVisualState visualState;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.clientPalette;
-    final isActive = visualState == _ActionVisualState.active;
-    final isAvailable = visualState == _ActionVisualState.available;
-    final background =
-        isActive
-            ? palette.primary
-            : isAvailable
-            ? palette.accentSoft
-            : (context.isDarkMode ? palette.surfaceSoft : palette.surface);
-    final foreground =
-        isActive
-            ? palette.heroTextPrimary
-            : isAvailable
-            ? palette.textOnAccent
-            : (onTap != null ? palette.textPrimary : palette.textSecondary);
-
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: background,
-        foregroundColor: foreground,
-        disabledForegroundColor: palette.textSecondary,
-        minimumSize: const Size.fromHeight(52),
-        side: BorderSide(
-          color:
-              isActive
-                  ? palette.primary
-                  : isAvailable
-                  ? palette.accentBorder
-                  : palette.border,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      ),
-      icon: Icon(icon, size: 18),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
     );
   }
 }
@@ -2876,6 +4271,21 @@ String _routeLabel(
   return 'Ruta por confirmar';
 }
 
+(String, String) _routeParts(
+  Map<String, dynamic> request,
+  Map<String, String> airportNames,
+) {
+  final label = _routeLabel(request, airportNames: airportNames);
+  final points =
+      label
+          .split(RegExp(r'\s*→\s*'))
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toList();
+  if (points.length >= 2) return (points.first, points.last);
+  return (label, 'Destino por confirmar');
+}
+
 String _departureCopy(Map<String, dynamic> request) {
   final raw =
       request['departure_datetime']?.toString() ??
@@ -3312,4 +4722,482 @@ String _normalizeLookup(dynamic value) {
         ' ',
       ) ??
       '';
+}
+
+class _FlightsFirstVisitGuide extends StatefulWidget {
+  const _FlightsFirstVisitGuide({required this.onComplete});
+
+  final Future<void> Function() onComplete;
+
+  @override
+  State<_FlightsFirstVisitGuide> createState() =>
+      _FlightsFirstVisitGuideState();
+}
+
+class _FlightsFirstVisitGuideState extends State<_FlightsFirstVisitGuide> {
+  final PageController _controller = PageController();
+  int _page = 0;
+  bool _closing = false;
+
+  static const _steps = <_FlightsGuideStep>[
+    _FlightsGuideStep(
+      eyebrow: 'TU CENTRO DE VUELO',
+      title: 'Todo tu viaje,\nen un solo lugar.',
+      description:
+          'Aquí verás cuál es tu próximo vuelo, cuándo sale y qué aeronave tiene asignada.',
+      icon: Icons.flight_takeoff_rounded,
+      bullets: [
+        (Icons.route_rounded, 'Ruta y horario'),
+        (Icons.airline_seat_recline_extra_rounded, 'Pasajeros'),
+        (Icons.flight_rounded, 'Aeronave asignada'),
+      ],
+    ),
+    _FlightsGuideStep(
+      eyebrow: 'FLUJO DE TU RESERVA',
+      title: 'Siempre sabrás\nqué sigue.',
+      description:
+          'El estado cambia automáticamente conforme avanzan el operador y nuestro equipo.',
+      icon: Icons.timeline_rounded,
+      bullets: [
+        (Icons.send_rounded, 'Solicitud'),
+        (Icons.verified_outlined, 'Confirmación'),
+        (Icons.description_outlined, 'Contrato'),
+        (Icons.credit_card_rounded, 'Pago'),
+        (Icons.check_circle_outline_rounded, 'Vuelo listo'),
+      ],
+      isFlow: true,
+    ),
+    _FlightsGuideStep(
+      eyebrow: 'DETALLE DEL VUELO',
+      title: 'Toca una tarjeta\npara abrirla.',
+      description:
+          'El detalle concentra únicamente la información y las acciones disponibles para esa etapa.',
+      icon: Icons.touch_app_rounded,
+      bullets: [
+        (Icons.support_agent_rounded, 'Concierge'),
+        (Icons.flight_outlined, 'Aeronave'),
+        (Icons.description_outlined, 'Contrato'),
+        (Icons.payment_rounded, 'Pago'),
+      ],
+    ),
+    _FlightsGuideStep(
+      eyebrow: 'NAVEGACIÓN',
+      title: 'Muévete con\nfacilidad.',
+      description:
+          'Busca un nuevo vuelo, revisa tus reservas o administra tu perfil desde la barra inferior.',
+      icon: Icons.explore_outlined,
+      bullets: [
+        (Icons.search_rounded, 'Buscar'),
+        (Icons.flight_takeoff_rounded, 'Reservas'),
+        (Icons.person_outline_rounded, 'Perfil'),
+      ],
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _finish() async {
+    if (_closing) return;
+    setState(() => _closing = true);
+    await widget.onComplete();
+  }
+
+  void _next() {
+    if (_page == _steps.length - 1) {
+      unawaited(_finish());
+      return;
+    }
+    _controller.nextPage(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLast = _page == _steps.length - 1;
+
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430, maxHeight: 690),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B1726).withValues(alpha: .96),
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .1),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: .42),
+                          blurRadius: 38,
+                          offset: const Offset(0, 18),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 18, 15, 4),
+                          child: Row(
+                            children: [
+                              ColorFiltered(
+                                colorFilter: const ColorFilter.mode(
+                                  Colors.white,
+                                  BlendMode.srcIn,
+                                ),
+                                child: Image.asset(
+                                  'assets/LOGOINTERNO.png',
+                                  width: 38,
+                                  height: 30,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'RED SKY',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.4,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed:
+                                    _closing
+                                        ? null
+                                        : () => unawaited(_finish()),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white.withValues(
+                                    alpha: .62,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Omitir',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: PageView.builder(
+                            controller: _controller,
+                            itemCount: _steps.length,
+                            onPageChanged: (value) {
+                              setState(() => _page = value);
+                            },
+                            itemBuilder:
+                                (_, index) =>
+                                    _FlightsGuidePage(step: _steps[index]),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 8, 22, 22),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(
+                                  _steps.length,
+                                  (index) => AnimatedContainer(
+                                    duration: const Duration(milliseconds: 220),
+                                    width: index == _page ? 24 : 6,
+                                    height: 6,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          index == _page
+                                              ? const Color(0xFFD7B15D)
+                                              : Colors.white.withValues(
+                                                alpha: .2,
+                                              ),
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              GestureDetector(
+                                onTap: _closing ? null : _next,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFF0D184),
+                                        Color(0xFFD7A944),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (_closing)
+                                        const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Color(0xFF07111D),
+                                          ),
+                                        )
+                                      else ...[
+                                        Text(
+                                          isLast ? 'Entendido' : 'Continuar',
+                                          style: const TextStyle(
+                                            color: Color(0xFF07111D),
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          isLast
+                                              ? Icons.check_rounded
+                                              : Icons.arrow_forward_rounded,
+                                          color: const Color(0xFF07111D),
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlightsGuidePage extends StatelessWidget {
+  const _FlightsGuidePage({required this.step});
+
+  final _FlightsGuideStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFD7B15D).withValues(alpha: .1),
+              border: Border.all(
+                color: const Color(0xFFD7B15D).withValues(alpha: .42),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFD7B15D).withValues(alpha: .12),
+                  blurRadius: 24,
+                ),
+              ],
+            ),
+            child: Icon(step.icon, color: const Color(0xFFD7B15D), size: 31),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            step.eyebrow,
+            style: const TextStyle(
+              color: Color(0xFFD7B15D),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 9),
+          Text(
+            step.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 31,
+              height: 1.02,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -.8,
+            ),
+          ),
+          const SizedBox(height: 13),
+          Text(
+            step.description,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .68),
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 22),
+          if (step.isFlow)
+            _GuideFlow(items: step.bullets)
+          else
+            Wrap(
+              spacing: 9,
+              runSpacing: 9,
+              children:
+                  step.bullets
+                      .map(
+                        (item) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .04),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .08),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                item.$1,
+                                color: const Color(0xFFD7B15D),
+                                size: 17,
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                item.$2,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuideFlow extends StatelessWidget {
+  const _GuideFlow({required this.items});
+
+  final List<(IconData, String)> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var index = 0; index < items.length; index++)
+          Row(
+            children: [
+              SizedBox(
+                width: 28,
+                height: 37,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            index < 2
+                                ? const Color(0xFF31D158).withValues(alpha: .16)
+                                : Colors.transparent,
+                        border: Border.all(
+                          color:
+                              index < 2
+                                  ? const Color(0xFF31D158)
+                                  : Colors.white.withValues(alpha: .24),
+                        ),
+                      ),
+                      child: Icon(
+                        index < 2 ? Icons.check_rounded : items[index].$1,
+                        color:
+                            index < 2
+                                ? const Color(0xFF31D158)
+                                : Colors.white.withValues(alpha: .48),
+                        size: 12,
+                      ),
+                    ),
+                    if (index != items.length - 1)
+                      Expanded(
+                        child: Container(
+                          width: 1,
+                          color: const Color(0xFFD7B15D).withValues(alpha: .35),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 17),
+                child: Text(
+                  items[index].$2,
+                  style: TextStyle(
+                    color:
+                        index < 2
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: .55),
+                    fontSize: 13,
+                    fontWeight: index < 2 ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _FlightsGuideStep {
+  const _FlightsGuideStep({
+    required this.eyebrow,
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.bullets,
+    this.isFlow = false,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String description;
+  final IconData icon;
+  final List<(IconData, String)> bullets;
+  final bool isFlow;
 }
