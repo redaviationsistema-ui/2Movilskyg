@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/proveedor_autenticacion.dart';
 import 'pantalla_recuperar_contrasena.dart';
+import 'pantalla_seleccion_registro.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -147,8 +148,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                                   (_) => PasswordRecoveryScreen(
                                                     email:
                                                         _emailController.text
-                                                            .trim(),
+                                                    .trim(),
                                                   ),
+                                            ),
+                                          ),
+                                  onCreateAccount:
+                                      isBusy
+                                          ? null
+                                          : () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (_) =>
+                                                      const RegisterRoleSelectionScreen(),
                                             ),
                                           ),
                                   onSubmit: isBusy ? null : _submit,
@@ -288,6 +299,7 @@ class _LoginCard extends StatelessWidget {
     required this.errorMessage,
     required this.onTogglePassword,
     required this.onForgotPassword,
+    required this.onCreateAccount,
     required this.onSubmit,
     required this.emailValidator,
     required this.passwordValidator,
@@ -301,6 +313,7 @@ class _LoginCard extends StatelessWidget {
   final String? errorMessage;
   final VoidCallback onTogglePassword;
   final VoidCallback? onForgotPassword;
+  final VoidCallback? onCreateAccount;
   final VoidCallback? onSubmit;
   final String? Function(String?) emailValidator;
   final String? Function(String?) passwordValidator;
@@ -438,6 +451,21 @@ class _LoginCard extends StatelessWidget {
                             ),
                           ),
                         ),
+              ),
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: onCreateAccount,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white.withValues(alpha: .92),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Crear usuario',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
               ),
               Align(
                 alignment: Alignment.centerRight,

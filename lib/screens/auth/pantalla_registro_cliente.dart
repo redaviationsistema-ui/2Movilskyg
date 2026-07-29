@@ -1,3 +1,6 @@
+// ignore_for_file: unused_element, unused_element_parameter
+
+import 'dart:ui';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -121,6 +124,22 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _documentScanMessage = 'Escaneando datos de la INE en el dispositivo...';
     });
     await _scanIneLocally();
+  }
+
+  Future<void> _pickDocumentPdf() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    final selectedPath = result?.files.single.path;
+    if (selectedPath == null || !mounted) return;
+    setState(() {
+      _ineFront = File(selectedPath);
+      _documentTypeController.text = 'PDF';
+      _ineScanStatus = 'uploaded_pdf';
+      _documentScanMessage =
+          'Documento PDF cargado. Completa o revisa manualmente los datos antes de continuar.';
+    });
   }
 
   Future<void> _recoverLostPickerData() async {
@@ -706,26 +725,26 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final colors = context.appColors;
-    final theme = Theme.of(context);
-    final palette = context.clientPalette;
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    final checklist = _registrationChecklist();
+    final isIdentityStep = _currentStep == 0;
+    final progressValue = isIdentityStep ? .25 : 1.0;
+    final progressLabel = isIdentityStep ? 'Paso 1 de 4' : 'Paso 4 de 4';
+    final progressSubtitle =
+        isIdentityStep ? '25% completado' : '100% completado';
 
     return Scaffold(
-      backgroundColor: colors.background,
+      backgroundColor: const Color(0xFF030813),
+      extendBody: true,
       body: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: [
-              colors.background,
-              Color.lerp(colors.background, colors.primary, 0.18) ??
-                  colors.background,
-              Color.lerp(colors.surfaceCard, Colors.white, 0.10) ??
-                  colors.surfaceCard,
+              Color(0xFF04101D),
+              Color(0xFF06111B),
+              Color(0xFF03070D),
             ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
           ),
         ),
         child: Stack(
@@ -737,169 +756,290 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                     (context, _) => CustomPaint(
                       painter: _RegisterRoutePainter(
                         progress: _entryController.value,
-                        primary: colors.primary,
-                        accent: colors.secondary,
-                        isDark: context.isDarkMode,
+                        primary: const Color(0xFF0D2135),
+                        accent: const Color(0xFFD8B15D),
+                        isDark: true,
                       ),
                     ),
               ),
             ),
+            Positioned(
+              top: 120,
+              right: -20,
+              child: _PremiumGlow(
+                size: 220,
+                color: const Color(0x22D8B15D),
+              ),
+            ),
+            Positioned(
+              top: 320,
+              left: -50,
+              child: _PremiumGlow(
+                size: 220,
+                color: const Color(0x143E6DAA),
+              ),
+            ),
             SafeArea(
+              bottom: false,
               child: Form(
                 key: _formKey,
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(20, 14, 20, 24 + bottomInset),
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Volver',
-                          onPressed: () => Navigator.maybePop(context),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          style: IconButton.styleFrom(
-                            backgroundColor: palette.surface,
-                            foregroundColor: palette.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Crear cuenta cliente',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: palette.textPrimary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _ClientRegisterHeroV2(
-                      currentStep: _currentStep,
-                      checklist: checklist,
-                    ),
-                    const SizedBox(height: 14),
-                    _RegistrationProgressV2(
-                      currentStep: _currentStep,
-                      checklist: checklist,
-                    ),
-                    const SizedBox(height: 14),
-                    _RegisterTrustStrip(
-                      ineReady: _ineFront != null,
-                      selfieReady: _selfieHasFace,
-                      accessReady:
-                          _emailController.text.trim().isNotEmpty &&
-                          _passwordController.text.length >= 8,
-                    ),
-                    const SizedBox(height: 16),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder:
-                          (child, animation) => FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0.04, 0),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          ),
-                      child: _RegisterStepSurface(
-                        key: ValueKey(_currentStep),
-                        title:
-                            _currentStep == 0
-                                ? 'Identidad sin vueltas'
-                                : 'Acceso seguro',
-                        subtitle:
-                            _currentStep == 0
-                                ? 'INE, datos personales y selfie en un flujo guiado.'
-                                : 'Crea tus credenciales para entrar a tu cabina privada.',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_currentStep == 0) ..._profileStep(),
-                            if (_currentStep == 1) ..._accessStep(),
-                          ],
-                        ),
+                child: CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        14,
+                        20,
+                        172 + bottomInset,
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        if (_currentStep > 0) ...[
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed:
-                                  auth.isLoading
-                                      ? null
-                                      : () => setState(() => _currentStep = 0),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(56),
-                                foregroundColor: palette.textPrimary,
-                                side: BorderSide(color: palette.border),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          Row(
+                            children: [
+                              _PremiumCircleButton(
+                                onTap: () => Navigator.maybePop(context),
                               ),
-                              icon: const Icon(Icons.arrow_back_rounded),
-                              label: const Text('Regresar'),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            isIdentityStep ? 'Crear cuenta' : 'Acceso',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 38,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.2,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed:
-                                auth.isLoading
-                                    ? null
-                                    : (_currentStep == 0
-                                        ? _continueToAccess
-                                        : () {
-                                          if (_formKey.currentState!
-                                              .validate()) {
-                                            _submit();
-                                          }
-                                        }),
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size.fromHeight(56),
-                              backgroundColor: colors.primary,
-                              foregroundColor: theme.colorScheme.onPrimary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
+                          const SizedBox(height: 12),
+                          Text(
+                            isIdentityStep
+                                ? 'Valida tu identidad para comenzar a reservar vuelos privados.'
+                                : 'Crea tus credenciales para terminar tu acceso privado.',
+                            style: const TextStyle(
+                              color: Color(0xFFC0C8D2),
+                              fontSize: 18,
+                              height: 1.45,
                             ),
-                            icon:
-                                auth.isLoading
-                                    ? SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: theme.colorScheme.onPrimary,
+                          ),
+                          const SizedBox(height: 20),
+                          _ClientRegisterPremiumHero(
+                            showIdentityBadge: isIdentityStep,
+                          ),
+                          const SizedBox(height: 18),
+                          _PremiumStepper(activeStep: isIdentityStep ? 0 : 3),
+                          const SizedBox(height: 18),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder:
+                                (child, animation) => FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(.04, 0),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
+                            child:
+                                isIdentityStep
+                                    ? _PremiumGlassSection(
+                                      key: const ValueKey('identity'),
+                                      title: 'Datos personales',
+                                      icon: Icons.person_outline_rounded,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _field(_nameController, 'Nombre completo'),
+                                          _field(
+                                            _emailController,
+                                            'Correo',
+                                            keyboard: TextInputType.emailAddress,
+                                          ),
+                                          _field(
+                                            _phoneController,
+                                            'Telefono',
+                                            keyboard: TextInputType.phone,
+                                          ),
+                                          _field(
+                                            _birthDateController,
+                                            'Fecha de nacimiento',
+                                            hint: 'DD / MM / AAAA',
+                                          ),
+                                          _field(
+                                            _nationalityController,
+                                            'Nacionalidad',
+                                          ),
+                                          _field(
+                                            _baseController,
+                                            'Ciudad base',
+                                            requiredField: false,
+                                          ),
+                                          const SizedBox(height: 18),
+                                          const _PremiumSubsectionTitle(
+                                            title: 'Documento oficial',
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _UploadOptionCard(
+                                                  title: 'Escanear INE',
+                                                  icon: Icons.credit_card_rounded,
+                                                  buttonLabel: 'Escanear',
+                                                  accent: const Color(0xFFD8B15D),
+                                                  loaded: _ineFront != null &&
+                                                      _documentTypeController.text !=
+                                                          'PDF',
+                                                  onTap: _pickIneFront,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _UploadOptionCard(
+                                                  title: 'Subir PDF',
+                                                  icon: Icons.picture_as_pdf_rounded,
+                                                  buttonLabel:
+                                                      'Seleccionar archivo',
+                                                  accent: const Color(0xFF3D6EA9),
+                                                  loaded: _ineFront != null &&
+                                                      _documentTypeController.text ==
+                                                          'PDF',
+                                                  onTap: _pickDocumentPdf,
+                                                  secondary: true,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          if (_documentScanMessage.isNotEmpty) ...[
+                                            const SizedBox(height: 10),
+                                            _PremiumInlineNote(
+                                              message: _documentScanMessage,
+                                            ),
+                                          ],
+                                          const SizedBox(height: 16),
+                                          _field(
+                                            _documentNumberController,
+                                            'Numero de documento',
+                                            requiredField: false,
+                                          ),
+                                          _field(
+                                            _documentExpirationController,
+                                            'Fecha de vencimiento',
+                                            hint: 'AAAA-MM-DD',
+                                            requiredField: false,
+                                            onChanged:
+                                                () => _documentStatusController.text =
+                                                    _documentStatus(
+                                                      _documentExpirationController
+                                                          .text,
+                                                    ),
+                                          ),
+                                          _field(
+                                            _documentStatusController,
+                                            'Estado del documento',
+                                            requiredField: false,
+                                          ),
+                                          const SizedBox(height: 14),
+                                          _BiometricValidationCard(
+                                            ready: _selfieHasFace,
+                                            loading: _validatingSelfie,
+                                            message: _selfieMessage,
+                                            onTap: _captureSelfie,
+                                          ),
+                                          const SizedBox(height: 18),
+                                          const _PremiumSecurityGrid(),
+                                        ],
                                       ),
                                     )
-                                    : Icon(
-                                      _currentStep == 0
-                                          ? Icons.arrow_forward_rounded
-                                          : Icons.rocket_launch_rounded,
+                                    : _PremiumGlassSection(
+                                      key: const ValueKey('access'),
+                                      title: 'Acceso',
+                                      icon: Icons.lock_outline_rounded,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _field(
+                                            _emailController,
+                                            'Correo',
+                                            keyboard: TextInputType.emailAddress,
+                                          ),
+                                          Align(
+                                            alignment: Alignment.centerRight,
+                                            child: TextButton.icon(
+                                              onPressed: _generatePassword,
+                                              icon: const Icon(
+                                                Icons.auto_fix_high_rounded,
+                                              ),
+                                              label: const Text(
+                                                'Generar contrasena',
+                                              ),
+                                            ),
+                                          ),
+                                          _field(
+                                            _passwordController,
+                                            'Contrasena',
+                                            obscure: !_passwordVisible,
+                                            minLength: 8,
+                                          ),
+                                          SwitchListTile.adaptive(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: const Text(
+                                              'Mostrar contrasena',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            activeThumbColor: const Color(0xFFD8B15D),
+                                            value: _passwordVisible,
+                                            onChanged:
+                                                (value) => setState(
+                                                  () => _passwordVisible = value,
+                                                ),
+                                          ),
+                                          _field(
+                                            _passwordConfirmationController,
+                                            'Confirmar contrasena',
+                                            obscure:
+                                                !_passwordConfirmationVisible,
+                                            minLength: 8,
+                                          ),
+                                          SwitchListTile.adaptive(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: const Text(
+                                              'Mostrar confirmacion',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            activeThumbColor: const Color(0xFFD8B15D),
+                                            value:
+                                                _passwordConfirmationVisible,
+                                            onChanged:
+                                                (value) => setState(
+                                                  () =>
+                                                      _passwordConfirmationVisible =
+                                                          value,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          const _PremiumInlineNote(
+                                            message:
+                                                'Al terminar tendras acceso inmediato a una cotizacion gratis y despues podras activar la membresia Executive.',
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                            label: Text(
-                              _currentStep == 0
-                                  ? 'Continuar'
-                                  : 'Entrar a la app',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
                           ),
-                        ),
-                      ],
+                        ]),
+                      ),
                     ),
                   ],
                 ),
@@ -907,6 +1047,23 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
             ),
           ],
         ),
+      ),
+      bottomNavigationBar: _ClientRegisterFooter(
+        progressLabel: progressLabel,
+        progressSubtitle: progressSubtitle,
+        progress: progressValue,
+        loading: auth.isLoading,
+        buttonLabel: isIdentityStep ? 'Continuar' : 'Completar acceso',
+        onPressed:
+            auth.isLoading
+                ? null
+                : () {
+                  if (isIdentityStep) {
+                    _continueToAccess();
+                  } else if (_formKey.currentState!.validate()) {
+                    _submit();
+                  }
+                },
       ),
     );
   }
@@ -1141,15 +1298,35 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         obscureText: obscure,
         keyboardType: keyboard,
         onChanged: (_) => onChanged?.call(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           prefixIcon: _iconForLabel(label),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 17,
           ),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
         ),
         validator: (value) {
           final text = value?.trim() ?? '';
@@ -1163,11 +1340,21 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
   Widget? _iconForLabel(String label) {
     final normalized = label.toLowerCase();
-    if (normalized.contains('correo')) return const Icon(Icons.alternate_email);
-    if (normalized.contains('telefono')) return const Icon(Icons.phone_rounded);
-    if (normalized.contains('fecha')) return const Icon(Icons.event_rounded);
+    const active = Color(0xFFD8B15D);
+    if (normalized.contains('correo')) {
+      return const Icon(Icons.alternate_email_rounded, color: active);
+    }
+    if (normalized.contains('telefono')) {
+      return const Icon(Icons.phone_rounded, color: active);
+    }
+    if (normalized.contains('fecha')) {
+      return const Icon(Icons.event_rounded, color: active);
+    }
     if (normalized.contains('base') || normalized.contains('ciudad')) {
-      return const Icon(Icons.flight_land_rounded);
+      return const Icon(Icons.location_on_outlined, color: active);
+    }
+    if (normalized.contains('nacionalidad')) {
+      return const Icon(Icons.public_rounded, color: active);
     }
     if (normalized.contains('documento') ||
         normalized.contains('ine') ||
@@ -1175,12 +1362,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         normalized.contains('cic') ||
         normalized.contains('ocr') ||
         normalized.contains('identificacion')) {
-      return const Icon(Icons.badge_rounded);
+      return const Icon(Icons.badge_rounded, color: active);
     }
     if (normalized.contains('contrasena')) {
-      return const Icon(Icons.lock_rounded);
+      return const Icon(Icons.lock_rounded, color: active);
     }
-    return const Icon(Icons.person_outline_rounded);
+    return const Icon(Icons.person_outline_rounded, color: active);
   }
 
   void _showMessage(String message) {
@@ -1640,6 +1827,763 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 }
 
 enum _DocumentImageSource { camera, files }
+
+class _PremiumGlow extends StatelessWidget {
+  const _PremiumGlow({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0)],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumCircleButton extends StatelessWidget {
+  const _PremiumCircleButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: Colors.white.withValues(alpha: .05),
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0x30FFFFFF)),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientRegisterPremiumHero extends StatelessWidget {
+  const _ClientRegisterPremiumHero({required this.showIdentityBadge});
+
+  final bool showIdentityBadge;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: Container(
+        height: 220,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0x24FFFFFF)),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/login/image.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Color(0xEF030B16),
+                    Color(0xD605101C),
+                    Color(0x70040D17),
+                  ],
+                  stops: [0, .48, 1],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD8B15D).withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0x66D8B15D)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Registro',
+                      style: TextStyle(
+                        color: Color(0xFFF5D89A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '25%',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 18,
+              right: 18,
+              bottom: 18,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'RED SKY GROUP',
+                    style: TextStyle(
+                      color: Color(0xFFF4D38B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Cabina Privada',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.6,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Registro seguro para clientes.',
+                    style: TextStyle(
+                      color: Color(0xFFD0D7E0),
+                      fontSize: 14.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumStepper extends StatelessWidget {
+  const _PremiumStepper({required this.activeStep});
+
+  final int activeStep;
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      ('Datos', Icons.person_outline_rounded),
+      ('Identidad', Icons.badge_outlined),
+      ('Selfie', Icons.face_retouching_natural_outlined),
+      ('Acceso', Icons.lock_outline_rounded),
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: const Color(0x99111924),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: Row(
+        children: List.generate(steps.length * 2 - 1, (index) {
+          if (index.isOdd) {
+            final connectorActive = index ~/ 2 < activeStep;
+            return Expanded(
+              child: Container(
+                height: 1.5,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color:
+                    connectorActive
+                        ? const Color(0xFFD8B15D)
+                        : const Color(0x28FFFFFF),
+              ),
+            );
+          }
+          final stepIndex = index ~/ 2;
+          final isActive = stepIndex == activeStep;
+          final isDone = stepIndex < activeStep;
+          final step = steps[stepIndex];
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      isActive
+                          ? const Color(0x1AD8B15D)
+                          : Colors.white.withValues(alpha: .02),
+                  border: Border.all(
+                    color:
+                        isActive || isDone
+                            ? const Color(0xFFD8B15D)
+                            : const Color(0x2CFFFFFF),
+                  ),
+                ),
+                child: Icon(
+                  isDone ? Icons.check_rounded : step.$2,
+                  color:
+                      isActive || isDone
+                          ? const Color(0xFFD8B15D)
+                          : const Color(0x7DFFFFFF),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                step.$1,
+                style: TextStyle(
+                  color:
+                      isActive
+                          ? const Color(0xFFF3D38A)
+                          : const Color(0x95FFFFFF),
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _PremiumGlassSection extends StatelessWidget {
+  const _PremiumGlassSection({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+          decoration: BoxDecoration(
+            color: const Color(0x80101925),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: const Color(0x24FFFFFF)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: const Color(0xFFD8B15D), size: 24),
+                  const SizedBox(width: 10),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFFD8B15D),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumSubsectionTitle extends StatelessWidget {
+  const _PremiumSubsectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+class _UploadOptionCard extends StatelessWidget {
+  const _UploadOptionCard({
+    required this.title,
+    required this.icon,
+    required this.buttonLabel,
+    required this.accent,
+    required this.loaded,
+    required this.onTap,
+    this.secondary = false,
+  });
+
+  final String title;
+  final IconData icon;
+  final String buttonLabel;
+  final Color accent;
+  final bool loaded;
+  final VoidCallback onTap;
+  final bool secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: accent, size: 30),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (loaded)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0x185FD07D),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0x455FD07D)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF89E39A), size: 15),
+                  SizedBox(width: 6),
+                  Text(
+                    'Documento cargado',
+                    style: TextStyle(
+                      color: Color(0xFF89E39A),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onTap,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(42),
+                  backgroundColor:
+                      secondary ? Colors.transparent : accent.withValues(alpha: .92),
+                  foregroundColor:
+                      secondary ? accent : const Color(0xFF0D1218),
+                  side:
+                      secondary
+                          ? BorderSide(color: accent.withValues(alpha: .55))
+                          : null,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text(
+                  buttonLabel,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumInlineNote extends StatelessWidget {
+  const _PremiumInlineNote({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: Color(0xFFC3CBD7),
+          fontSize: 13,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _BiometricValidationCard extends StatelessWidget {
+  const _BiometricValidationCard({
+    required this.ready,
+    required this.loading,
+    required this.message,
+    required this.onTap,
+  });
+
+  final bool ready;
+  final bool loading;
+  final String message;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: ready ? const Color(0x445FD07D) : const Color(0x24FFFFFF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      ready
+                          ? const Color(0x185FD07D)
+                          : const Color(0x14D8B15D),
+                ),
+                child: Icon(
+                  ready ? Icons.verified_user_rounded : Icons.face_rounded,
+                  color: ready ? const Color(0xFF89E39A) : const Color(0xFFD8B15D),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Validacion biometrica',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Verificaremos que eres el propietario del documento.',
+                      style: TextStyle(
+                        color: Color(0xFFB7C0CB),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: loading ? null : onTap,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                backgroundColor: const Color(0xFFD8B15D),
+                foregroundColor: const Color(0xFF0E131A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Text(
+                ready ? 'Selfie validada' : 'Tomar selfie',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          if (message.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              message,
+              style: TextStyle(
+                color: ready ? const Color(0xFF89E39A) : const Color(0xFFC8D0DA),
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumSecurityGrid extends StatelessWidget {
+  const _PremiumSecurityGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+          child: _MiniSecurityCard(
+            icon: Icons.shield_outlined,
+            title: 'Datos cifrados',
+          ),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _MiniSecurityCard(
+            icon: Icons.lock_outline_rounded,
+            title: 'Informacion privada',
+          ),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _MiniSecurityCard(
+            icon: Icons.verified_rounded,
+            title: 'Plataforma certificada',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniSecurityCard extends StatelessWidget {
+  const _MiniSecurityCard({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFFD8B15D), size: 22),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12.5,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientRegisterFooter extends StatelessWidget {
+  const _ClientRegisterFooter({
+    required this.progressLabel,
+    required this.progressSubtitle,
+    required this.progress,
+    required this.loading,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final String progressLabel;
+  final String progressSubtitle;
+  final double progress;
+  final bool loading;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(18, 16, 18, 14 + bottomInset),
+          decoration: BoxDecoration(
+            color: const Color(0xE6101925),
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: .06)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      progressLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      progressSubtitle,
+                      style: const TextStyle(
+                        color: Color(0xFFAEB8C4),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: Colors.white.withValues(alpha: .08),
+                        color: const Color(0xFFD8B15D),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 186,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF4DA96), Color(0xFFD8B15D)],
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: FilledButton(
+                    onPressed: onPressed,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(58),
+                      backgroundColor: Colors.transparent,
+                      disabledBackgroundColor: Colors.transparent,
+                      foregroundColor: const Color(0xFF12161D),
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                    ),
+                    child:
+                        loading
+                            ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Color(0xFF12161D),
+                              ),
+                            )
+                            : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  buttonLabel,
+                                  style: const TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.arrow_forward_rounded),
+                              ],
+                            ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _RegisterChecklistItem {
   const _RegisterChecklistItem({

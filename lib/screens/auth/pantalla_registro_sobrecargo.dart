@@ -1,3 +1,6 @@
+// ignore_for_file: unused_element
+
+import 'dart:ui';
 import 'dart:io';
 import 'dart:math';
 
@@ -283,7 +286,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       return picked == null ? null : File(picked.path);
     }
 
-    final result = await FilePicker.pickFiles(type: FileType.image);
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+    );
     final path = result?.files.single.path;
     return path == null ? null : File(path);
   }
@@ -547,87 +553,347 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final isProfileStep = _currentStep == 0;
+    final progressLabel = isProfileStep ? 'Paso 1 de 4' : 'Paso 2 de 4';
+    final progressSubtitle = isProfileStep ? '25% completado' : '50% completado';
+    final progressValue = isProfileStep ? .25 : .50;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F4F7),
-      appBar: AppBar(
-        title: const Text('Registro sobrecargo'),
-        backgroundColor: const Color(0xFF07121D),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const _CrewRegisterHero(),
-              const SizedBox(height: 18),
-              _RegistrationProgress(currentStep: _currentStep),
-              const SizedBox(height: 22),
-              if (_currentStep == 0) ..._profileStep(),
-              if (_currentStep == 1) ..._accessStep(),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  if (_currentStep > 0) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed:
-                            auth.isLoading
-                                ? null
-                                : () => setState(() => _currentStep = 0),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(56),
-                        ),
-                        child: const Text('Regresar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: FilledButton(
-                      onPressed:
-                          auth.isLoading
-                              ? null
-                              : (_currentStep == 0
-                                  ? _continueToAccess
-                                  : () {
-                                    if (_formKey.currentState!.validate()) {
-                                      _submit();
-                                    }
-                                  }),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
-                        backgroundColor: const Color(0xFF0E2338),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      child:
-                          auth.isLoading
-                              ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                              : Text(
-                                _currentStep == 0
-                                    ? 'Continuar'
-                                    : 'Crear cuenta',
-                              ),
-                    ),
-                  ),
-                ],
-              ),
+      backgroundColor: const Color(0xFF030913),
+      extendBody: true,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF04101D),
+              Color(0xFF06111B),
+              Color(0xFF03070D),
             ],
           ),
         ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 120,
+              right: -30,
+              child: _CrewGlow(
+                size: 220,
+                color: const Color(0x1FD9A84F),
+              ),
+            ),
+            Positioned(
+              top: 320,
+              left: -50,
+              child: _CrewGlow(
+                size: 220,
+                color: const Color(0x143E6DAA),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Form(
+                key: _formKey,
+                child: CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        14,
+                        20,
+                        172 + bottomInset,
+                      ),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          Row(
+                            children: [
+                              _CrewCircleBackButton(
+                                onTap: () => Navigator.maybePop(context),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            isProfileStep
+                                ? 'Registro sobrecargo'
+                                : 'Cuenta operativa',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            isProfileStep
+                                ? 'Crea tu acceso operativo y valida tu licencia profesional.'
+                                : 'Define tu correo y credenciales para entrar al panel operativo.',
+                            style: const TextStyle(
+                              color: Color(0xFFC0C8D2),
+                              fontSize: 17,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          _CrewPremiumHero(
+                            progress: progressValue,
+                            progressText: 'Registro',
+                          ),
+                          const SizedBox(height: 18),
+                          _CrewPremiumStepper(activeStep: isProfileStep ? 0 : 1),
+                          const SizedBox(height: 18),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder:
+                                (child, animation) => FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(.04, 0),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
+                            child:
+                                isProfileStep
+                                    ? _CrewGlassCard(
+                                      key: const ValueKey('crew-profile'),
+                                      title: 'Datos del tripulante',
+                                      subtitle:
+                                          'Informacion personal para generar tu acceso operativo.',
+                                      icon: Icons.person_outline_rounded,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _field(_nameController, 'Nombre completo'),
+                                          _field(
+                                            _phoneController,
+                                            'Telefono',
+                                            keyboard: TextInputType.phone,
+                                          ),
+                                          _baseField(),
+                                          _field(
+                                            _birthDateController,
+                                            'Fecha de nacimiento',
+                                            hint: 'DD / MM / AAAA',
+                                          ),
+                                          _field(
+                                            _nationalityController,
+                                            'Nacionalidad',
+                                          ),
+                                          const SizedBox(height: 18),
+                                          const _CrewSubsectionTitle(
+                                            title: 'Licencia de sobrecargo',
+                                          ),
+                                          const SizedBox(height: 12),
+                                          _CrewUploadZone(
+                                            loaded: _document != null,
+                                            loading: _readingDocument,
+                                            fileName:
+                                                _document?.path
+                                                    .split(
+                                                      Platform.pathSeparator,
+                                                    )
+                                                    .last,
+                                            onTap: _pickDocument,
+                                          ),
+                                          if (_documentMessage.isNotEmpty) ...[
+                                            const SizedBox(height: 10),
+                                            _CrewInlineNote(_documentMessage),
+                                          ],
+                                          const SizedBox(height: 16),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseTypeController,
+                                                  'Tipo de licencia',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseController,
+                                                  'Numero',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseCategoryController,
+                                                  'Categoria',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseIssueDateController,
+                                                  'Fecha emision',
+                                                  hint: 'AAAA-MM-DD',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseExpirationController,
+                                                  'Vigencia',
+                                                  hint: 'AAAA-MM-DD',
+                                                  onChanged:
+                                                      () => _licenseStatusController
+                                                          .text = _documentStatus(
+                                                            _licenseExpirationController
+                                                                .text,
+                                                          ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: _field(
+                                                  _issuingCountryController,
+                                                  'Pais emisor',
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _field(
+                                                  _licenseStatusController,
+                                                  'Estado',
+                                                  requiredField: false,
+                                                ),
+                                              ),
+                                              const Expanded(child: SizedBox()),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const _CrewValidationCard(),
+                                          const SizedBox(height: 16),
+                                          const _CrewBenefitsRow(),
+                                        ],
+                                      ),
+                                    )
+                                    : _CrewGlassCard(
+                                      key: const ValueKey('crew-access'),
+                                      title: 'Cuenta',
+                                      subtitle:
+                                          'Correo y contrasena para tu acceso privado.',
+                                      icon: Icons.lock_outline_rounded,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _field(
+                                            _emailController,
+                                            'Correo',
+                                            keyboard: TextInputType.emailAddress,
+                                          ),
+                                          Align(
+                                            alignment: Alignment.centerRight,
+                                            child: TextButton.icon(
+                                              onPressed: _generatePassword,
+                                              icon: const Icon(
+                                                Icons.auto_fix_high_rounded,
+                                              ),
+                                              label: const Text(
+                                                'Generar contrasena',
+                                              ),
+                                            ),
+                                          ),
+                                          _field(
+                                            _passwordController,
+                                            'Contrasena',
+                                            obscure: !_passwordVisible,
+                                            minLength: 8,
+                                          ),
+                                          SwitchListTile.adaptive(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: const Text(
+                                              'Mostrar contrasena',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            activeThumbColor:
+                                                const Color(0xFFD8B15D),
+                                            value: _passwordVisible,
+                                            onChanged:
+                                                (value) => setState(
+                                                  () => _passwordVisible = value,
+                                                ),
+                                          ),
+                                          _field(
+                                            _passwordConfirmationController,
+                                            'Confirmar contrasena',
+                                            obscure:
+                                                !_passwordConfirmationVisible,
+                                            minLength: 8,
+                                          ),
+                                          SwitchListTile.adaptive(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: const Text(
+                                              'Mostrar confirmacion',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            activeThumbColor:
+                                                const Color(0xFFD8B15D),
+                                            value:
+                                                _passwordConfirmationVisible,
+                                            onChanged:
+                                                (value) => setState(
+                                                  () =>
+                                                      _passwordConfirmationVisible =
+                                                          value,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _CrewFooterBar(
+        progressLabel: progressLabel,
+        progressSubtitle: progressSubtitle,
+        progress: progressValue,
+        loading: auth.isLoading,
+        buttonLabel: isProfileStep ? 'Continuar' : 'Crear cuenta',
+        onPressed:
+            auth.isLoading
+                ? null
+                : () {
+                  if (isProfileStep) {
+                    _continueToAccess();
+                  } else if (_formKey.currentState!.validate()) {
+                    _submit();
+                  }
+                },
       ),
     );
   }
@@ -749,24 +1015,34 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
         obscureText: obscure,
         keyboardType: keyboard,
         onChanged: (_) => onChanged?.call(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0x70101925),
           prefixIcon: _iconForLabel(label),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 17,
           ),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFDDE6EE)),
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE0B86E), width: 1.4),
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D), width: 1.4),
           ),
         ),
         validator: (value) {
@@ -834,8 +1110,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
               labelText: 'Base operativa',
               hintText: 'Buscar aeropuerto, ciudad o codigo',
               filled: true,
-              fillColor: Colors.white,
+              fillColor: const Color(0x70101925),
               prefixIcon: _iconForLabel('Base operativa'),
+              labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+              hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
               suffixIcon:
                   _loadingAirports
                       ? const Padding(
@@ -852,16 +1130,17 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                 vertical: 17,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(22),
+                borderSide: BorderSide.none,
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFDDE6EE)),
+                borderRadius: BorderRadius.circular(22),
+                borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: Color(0xFFE0B86E),
+                  color: Color(0xFFD8B15D),
                   width: 1.4,
                 ),
               ),
@@ -877,8 +1156,8 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
           return Align(
             alignment: Alignment.topLeft,
             child: Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(16),
+              color: const Color(0xF4101925),
+              borderRadius: BorderRadius.circular(20),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   maxHeight: 280,
@@ -897,7 +1176,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                             : airport.icao?.trim().toUpperCase() ?? '';
                     return ListTile(
                       leading: const Icon(Icons.flight_rounded),
-                      title: Text(airport.city),
+                      title: Text(
+                        airport.city,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                       subtitle: Text(
                         [
                           airport.name,
@@ -907,6 +1189,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                         ].join(' • '),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFFB7C0CB)),
                       ),
                       onTap: () => onSelected(airport),
                     );
@@ -922,18 +1205,29 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
 
   Widget? _iconForLabel(String label) {
     final normalized = label.toLowerCase();
-    if (normalized.contains('correo')) return const Icon(Icons.alternate_email);
-    if (normalized.contains('telefono')) return const Icon(Icons.phone_rounded);
+    const active = Color(0xFFD8B15D);
+    if (normalized.contains('correo')) {
+      return const Icon(Icons.alternate_email_rounded, color: active);
+    }
+    if (normalized.contains('telefono')) {
+      return const Icon(Icons.phone_rounded, color: active);
+    }
     if (normalized.contains('base')) {
-      return const Icon(Icons.flight_land_rounded);
+      return const Icon(Icons.flight_land_rounded, color: active);
     }
-    if (normalized.contains('fecha')) return const Icon(Icons.event_rounded);
-    if (normalized.contains('licencia')) return const Icon(Icons.badge_rounded);
-    if (normalized.contains('pais')) return const Icon(Icons.public_rounded);
+    if (normalized.contains('fecha')) {
+      return const Icon(Icons.event_rounded, color: active);
+    }
+    if (normalized.contains('licencia') || normalized.contains('numero')) {
+      return const Icon(Icons.badge_rounded, color: active);
+    }
+    if (normalized.contains('pais') || normalized.contains('nacionalidad')) {
+      return const Icon(Icons.public_rounded, color: active);
+    }
     if (normalized.contains('contrasena')) {
-      return const Icon(Icons.lock_rounded);
+      return const Icon(Icons.lock_rounded, color: active);
     }
-    return const Icon(Icons.person_outline_rounded);
+    return const Icon(Icons.person_outline_rounded, color: active);
   }
 
   String _airportDisplayLabel(Airport airport) {
@@ -1008,9 +1302,32 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final lower = message.toLowerCase();
+    final isError =
+        lower.contains('no ') ||
+        lower.contains('sube') ||
+        lower.contains('completa') ||
+        lower.contains('coinciden');
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+          backgroundColor:
+              isError ? const Color(0xFFC55252) : const Color(0xFF101925),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
   }
 
   String _normalizeDate(String value) {
@@ -1244,6 +1561,732 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
 }
 
 enum _DocumentImageSource { camera, files }
+
+class _CrewGlow extends StatelessWidget {
+  const _CrewGlow({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0)],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewCircleBackButton extends StatelessWidget {
+  const _CrewCircleBackButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: Colors.white.withValues(alpha: .05),
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0x30FFFFFF)),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewPremiumHero extends StatelessWidget {
+  const _CrewPremiumHero({
+    required this.progress,
+    this.progressText = 'Registro',
+  });
+
+  final double progress;
+  final String progressText;
+
+  @override
+  Widget build(BuildContext context) {
+    final progressPercent = (progress * 100).round().clamp(0, 100);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: Container(
+        height: 220,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0x24FFFFFF)),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/login/image.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Color(0xEF030B16),
+                    Color(0xD4050F1A),
+                    Color(0x6A040E18),
+                  ],
+                  stops: [0, .48, 1],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: .24),
+                  border: Border.all(color: const Color(0x44D8B15D), width: 5),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '$progressPercent%',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      progressText,
+                      style: TextStyle(
+                        color: Color(0xFFD8E2EA),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 18,
+              right: 130,
+              bottom: 18,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ALTA OPERACIONAL',
+                    style: TextStyle(
+                      color: Color(0xFFF4D38B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Sobrecargo',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -.7,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Registro profesional para operaciones privadas.',
+                    style: TextStyle(
+                      color: Color(0xFFD0D7E0),
+                      fontSize: 14.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewPremiumStepper extends StatelessWidget {
+  const _CrewPremiumStepper({required this.activeStep});
+
+  final int activeStep;
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = ['Perfil', 'Cuenta', 'Verificacion', 'Listo'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: const Color(0x99101924),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: Row(
+        children: List.generate(steps.length * 2 - 1, (index) {
+          if (index.isOdd) {
+            final connectorActive = index ~/ 2 < activeStep;
+            return Expanded(
+              child: Container(
+                height: 1.5,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color:
+                    connectorActive
+                        ? const Color(0xFFD8B15D)
+                        : const Color(0x28FFFFFF),
+              ),
+            );
+          }
+          final stepIndex = index ~/ 2;
+          final isActive = stepIndex == activeStep;
+          final isDone = stepIndex < activeStep;
+          return Column(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      isActive
+                          ? const Color(0x1AD8B15D)
+                          : Colors.white.withValues(alpha: .03),
+                  border: Border.all(
+                    color:
+                        isActive || isDone
+                            ? const Color(0xFFD8B15D)
+                            : const Color(0x28FFFFFF),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    '${stepIndex + 1}',
+                    style: TextStyle(
+                      color:
+                          isActive || isDone
+                              ? const Color(0xFFD8B15D)
+                              : const Color(0x88FFFFFF),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                steps[stepIndex],
+                style: TextStyle(
+                  color:
+                      isActive
+                          ? const Color(0xFFF4D38B)
+                          : const Color(0x95FFFFFF),
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _CrewGlassCard extends StatelessWidget {
+  const _CrewGlassCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+          decoration: BoxDecoration(
+            color: const Color(0x80101925),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: const Color(0x24FFFFFF)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: const Color(0xFFD8B15D), size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: Color(0xFFC0C8D2),
+                            fontSize: 13.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewSubsectionTitle extends StatelessWidget {
+  const _CrewSubsectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+class _CrewUploadZone extends StatelessWidget {
+  const _CrewUploadZone({
+    required this.loaded,
+    required this.loading,
+    required this.fileName,
+    required this.onTap,
+  });
+
+  final bool loaded;
+  final bool loading;
+  final String? fileName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0x66D8B15D),
+          style: BorderStyle.solid,
+        ),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.upload_file_rounded,
+            color: Color(0xFFD8B15D),
+            size: 38,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            loaded ? 'Licencia cargada' : 'Subir licencia',
+            style: const TextStyle(
+              color: Color(0xFFD8B15D),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            loaded
+                ? (fileName ?? 'Archivo listo')
+                : 'Acepta JPG, PNG o PDF\nMaximo 10 MB.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFC0C8D2),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: loading ? null : onTap,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+              backgroundColor: const Color(0xFFD8B15D),
+              foregroundColor: const Color(0xFF10141B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child:
+                loading
+                    ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF10141B),
+                      ),
+                    )
+                    : Text(
+                      loaded ? 'Cambiar archivo' : 'Subir licencia',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrewInlineNote extends StatelessWidget {
+  const _CrewInlineNote(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: Color(0xFFC3CBD7),
+          fontSize: 13,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewValidationCard extends StatelessWidget {
+  const _CrewValidationCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(
+                Icons.verified_user_outlined,
+                color: Color(0xFFD8B15D),
+                size: 22,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'La informacion sera validada automaticamente.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _CrewBadge(label: 'OCR'),
+              _CrewBadge(label: 'Validacion'),
+              _CrewBadge(label: 'Seguridad'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrewBadge extends StatelessWidget {
+  const _CrewBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0x14D8B15D),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x45D8B15D)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFF4D38B),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewBenefitsRow extends StatelessWidget {
+  const _CrewBenefitsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+          child: _CrewBenefitCard(title: 'Acceso operativo'),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _CrewBenefitCard(title: 'Misiones privadas'),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _CrewBenefitCard(title: 'Disponibilidad de vuelos'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CrewBenefitCard extends StatelessWidget {
+  const _CrewBenefitCard({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .03),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_rounded, color: Color(0xFFD8B15D), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrewFooterBar extends StatelessWidget {
+  const _CrewFooterBar({
+    required this.progressLabel,
+    required this.progressSubtitle,
+    required this.progress,
+    required this.loading,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final String progressLabel;
+  final String progressSubtitle;
+  final double progress;
+  final bool loading;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(18, 16, 18, 14 + bottomInset),
+          decoration: BoxDecoration(
+            color: const Color(0xE6101925),
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: .06)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      progressLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      progressSubtitle,
+                      style: const TextStyle(
+                        color: Color(0xFFAEB8C4),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: Colors.white.withValues(alpha: .08),
+                        color: const Color(0xFFD8B15D),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 186,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF4DA96), Color(0xFFD8B15D)],
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: FilledButton(
+                    onPressed: onPressed,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(58),
+                      backgroundColor: Colors.transparent,
+                      disabledBackgroundColor: Colors.transparent,
+                      foregroundColor: const Color(0xFF12161D),
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                    ),
+                    child:
+                        loading
+                            ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Color(0xFF12161D),
+                              ),
+                            )
+                            : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  buttonLabel,
+                                  style: const TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.arrow_forward_rounded),
+                              ],
+                            ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _RegistrationProgress extends StatelessWidget {
   const _RegistrationProgress({required this.currentStep});

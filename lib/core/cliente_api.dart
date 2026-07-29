@@ -822,6 +822,15 @@ class ApiClient {
       if (returnUrl.trim().isNotEmpty) 'return_url': returnUrl.trim(),
       ...paymentPayload,
     };
+    final checkoutScope = [
+      paymentPayload['reservation_id']?.toString().trim() ?? '',
+      flightRequestId.trim(),
+      paymentPayload['contact_email']?.toString().trim().toLowerCase() ?? '',
+      paymentPayload['payment_method']?.toString().trim().toLowerCase() ?? '',
+      successUrl.trim(),
+      cancelUrl.trim(),
+      returnUrl.trim(),
+    ].join('|');
 
     return postFirstAvailable(
       const [
@@ -832,11 +841,12 @@ class ApiClient {
       authenticated: true,
       body: body,
       headers: {
-        'Idempotency-Key': IdempotencyKey.forOperation(
+        'Idempotency-Key': IdempotencyKey.forOperationWithScope(
           'create-checkout',
           paymentPayload['reservation_id']?.toString().trim().isNotEmpty == true
               ? paymentPayload['reservation_id'].toString()
               : flightRequestId,
+          scope: checkoutScope,
         ),
       },
     );

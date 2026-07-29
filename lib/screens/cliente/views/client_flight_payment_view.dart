@@ -694,8 +694,7 @@ class _ContactInformationRow extends StatelessWidget {
   final VoidCallback onOpenTrips;
 
   Future<void> _editEmail(BuildContext context) async {
-    final temporary = TextEditingController(text: controller.text);
-    await showModalBottomSheet<void>(
+    final updatedEmail = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -710,83 +709,13 @@ class _ContactInformationRow extends StatelessWidget {
                 color: Color(0xFF101C2D),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 38,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Correo de contacto',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: temporary,
-                      autofocus: true,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: const Color(0xFF07111D),
-                        hintText: 'correo@empresa.com',
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: Colors.white12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFD8B15D),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: () {
-                          controller.text = temporary.text.trim();
-                          Navigator.pop(sheetContext);
-                        },
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(52),
-                          backgroundColor: const Color(0xFFD8B15D),
-                          foregroundColor: const Color(0xFF07111D),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: const Text(
-                          'Guardar',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: _EditEmailSheet(initialValue: controller.text),
             ),
           ),
     );
-    temporary.dispose();
+    if (updatedEmail != null) {
+      controller.text = updatedEmail;
+    }
   }
 
   @override
@@ -846,6 +775,105 @@ class _ContactInformationRow extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditEmailSheet extends StatefulWidget {
+  const _EditEmailSheet({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_EditEmailSheet> createState() => _EditEmailSheetState();
+}
+
+class _EditEmailSheetState extends State<_EditEmailSheet> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Correo de contacto',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFF07111D),
+              hintText: 'correo@empresa.com',
+              hintStyle: const TextStyle(color: Colors.white38),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Colors.white12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () {
+                Navigator.pop(context, _controller.text.trim());
+              },
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                backgroundColor: const Color(0xFFD8B15D),
+                foregroundColor: const Color(0xFF07111D),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text(
+                'Guardar',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
         ],
       ),
     );

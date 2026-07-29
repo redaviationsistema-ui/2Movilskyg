@@ -2,8 +2,17 @@ class IdempotencyKey {
   const IdempotencyKey._();
 
   static String forOperation(String operation, String entityId) {
+    return forOperationWithScope(operation, entityId, scope: '');
+  }
+
+  static String forOperationWithScope(
+    String operation,
+    String entityId, {
+    required String scope,
+  }) {
     final normalizedOperation = _normalize(operation);
     final normalizedEntity = entityId.trim().toLowerCase();
+    final normalizedScope = scope.trim().toLowerCase();
     if (normalizedOperation.isEmpty || normalizedEntity.isEmpty) {
       throw ArgumentError('operation y entityId son obligatorios.');
     }
@@ -11,7 +20,8 @@ class IdempotencyKey {
     // FNV-1a de 64 bits: estable entre procesos y plataformas. La clave no
     // contiene datos personales ni depende de hashCode de Dart.
     var hash = 0xcbf29ce484222325;
-    for (final byte in '$normalizedOperation:$normalizedEntity'.codeUnits) {
+    for (final byte
+        in '$normalizedOperation:$normalizedEntity:$normalizedScope'.codeUnits) {
       hash ^= byte;
       hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
     }
