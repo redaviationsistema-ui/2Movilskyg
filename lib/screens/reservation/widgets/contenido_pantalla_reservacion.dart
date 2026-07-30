@@ -1615,6 +1615,7 @@ class MultiLegCard extends StatelessWidget {
     final palette = context.clientPalette;
     return ConciergeCard(
       padding: const EdgeInsets.all(12),
+      dark: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1624,7 +1625,7 @@ class MultiLegCard extends StatelessWidget {
                 'Tramo ${index + 1}',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  color: palette.textPrimary,
+                  color: Colors.white,
                 ),
               ),
               const Spacer(),
@@ -1642,6 +1643,7 @@ class MultiLegCard extends StatelessWidget {
             leadingIcon: Icons.location_on_outlined,
             secondaryValue: _airportSecondary(route.fromAirport),
             placeholder: 'Seleccionar aeropuerto',
+            dark: true,
             onTap: onPickOrigin,
           ),
           const SizedBox(height: 10),
@@ -1652,6 +1654,7 @@ class MultiLegCard extends StatelessWidget {
             leadingIcon: Icons.place_outlined,
             secondaryValue: _airportSecondary(route.toAirport),
             placeholder: 'Seleccionar aeropuerto',
+            dark: true,
             onTap: onPickDestination,
           ),
           const SizedBox(height: 10),
@@ -1663,6 +1666,7 @@ class MultiLegCard extends StatelessWidget {
                     : formatDate.format(route.startDate!),
             helperText: 'Programa la salida de este tramo',
             leadingIcon: Icons.calendar_month_outlined,
+            dark: true,
             onTap: onPickDate,
             trailing: Icon(
               Icons.calendar_today_outlined,

@@ -392,10 +392,12 @@ class ConciergeCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.fromLTRB(18, 18, 18, 18),
+    this.dark = false,
   });
 
   final Widget child;
   final EdgeInsets padding;
+  final bool dark;
 
   @override
   Widget build(BuildContext context) {
@@ -403,9 +405,11 @@ class ConciergeCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: palette.surface,
+        color: dark ? const Color(0xFF0D1C2C) : palette.surface,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: palette.border),
+        border: Border.all(
+          color: dark ? Colors.white.withValues(alpha: 0.08) : palette.border,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.10),
@@ -430,6 +434,7 @@ class ConciergeField extends StatelessWidget {
     this.secondaryValue,
     this.placeholder = 'Seleccionar',
     this.helperText,
+    this.dark = false,
   });
 
   final String label;
@@ -440,13 +445,17 @@ class ConciergeField extends StatelessWidget {
   final String? secondaryValue;
   final String placeholder;
   final String? helperText;
+  final bool dark;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isPlaceholder = value == placeholder;
-    final fieldIconColor = palette.primary;
-    final fieldChevronColor = palette.textPrimary.withValues(alpha: 0.70);
+    final fieldIconColor = dark ? const Color(0xFFD9B25F) : palette.primary;
+    final primaryTextColor = dark ? Colors.white : palette.textPrimary;
+    final secondaryTextColor =
+        dark ? Colors.white.withValues(alpha: 0.62) : palette.textSecondary;
+    final fieldChevronColor = primaryTextColor.withValues(alpha: 0.70);
 
     return InkWell(
       onTap: onTap,
@@ -457,8 +466,16 @@ class ConciergeField extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5EBF2)),
-          color: Colors.white,
+          border: Border.all(
+            color:
+                dark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : const Color(0xFFE5EBF2),
+          ),
+          color:
+              dark
+                  ? const Color(0xFF07111D).withValues(alpha: 0.50)
+                  : Colors.white,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -474,7 +491,10 @@ class ConciergeField extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF4F7FB),
+                  color:
+                      dark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : const Color(0xFFF4F7FB),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 alignment: Alignment.center,
@@ -491,7 +511,7 @@ class ConciergeField extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: palette.textPrimary,
+                      color: primaryTextColor,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w900,
                     ),
@@ -507,9 +527,7 @@ class ConciergeField extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color:
-                          isPlaceholder
-                              ? palette.textSecondary
-                              : palette.textPrimary,
+                          isPlaceholder ? secondaryTextColor : primaryTextColor,
                       fontWeight:
                           isPlaceholder ? FontWeight.w600 : FontWeight.w800,
                       fontSize: 15,
@@ -523,7 +541,7 @@ class ConciergeField extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: palette.textSecondary,
+                        color: secondaryTextColor,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                       ),

@@ -92,7 +92,6 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
         unawaited(_handlePaymentReturnLink(initialUri));
       }
     } catch (_) {
-      // El flujo tambien se cubre con el stream cuando la app ya esta viva.
     }
 
     _paymentLinkSubscription = _appLinks.uriLinkStream.listen((uri) {

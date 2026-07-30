@@ -831,10 +831,11 @@ class ReservationProvider extends ChangeNotifier {
       if (route.passengers <= 0) {
         return 'Indica pasajeros validos en el tramo ${index + 1}.';
       }
-      if (previousDate != null && date.isBefore(previousDate)) {
+      final calendarDate = DateTime(date.year, date.month, date.day);
+      if (previousDate != null && calendarDate.isBefore(previousDate)) {
         return 'Ordena las fechas de los tramos antes de cotizar.';
       }
-      previousDate = date;
+      previousDate = calendarDate;
     }
 
     return null;

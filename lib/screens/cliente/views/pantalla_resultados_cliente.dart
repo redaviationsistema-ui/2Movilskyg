@@ -423,13 +423,7 @@ class _ResultsSummaryBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryRoute = routes.isEmpty ? null : routes.first;
-    final origin = _airportCode(primaryRoute?.fromAirport);
-    final destination = _airportCode(primaryRoute?.toAirport);
-    final routeLabel =
-        origin.isNotEmpty && destination.isNotEmpty
-            ? '$origin -> $destination'
-            : 'Ruta por confirmar';
+    final segmentLabels = _segmentLabels();
     final completeSegments =
         routes
             .where(
@@ -447,66 +441,100 @@ class _ResultsSummaryBand extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: .08)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD8B15D).withValues(alpha: .1),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
-              color: const Color(0xFFD8B15D),
-              size: 19,
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  routeLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD8B15D).withValues(alpha: .1),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
+                  color: const Color(0xFFD8B15D),
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Text(
+                  'Tu itinerario',
+                  style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}  •  $completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: .62),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: onModify,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD8B15D),
+                  side: BorderSide(
+                    color: const Color(0xFFD8B15D).withValues(alpha: .5),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-              ],
+                child: const Text(
+                  'Modificar',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          ...segmentLabels.indexed.map(
+            (entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 58,
+                    child: Text(
+                      'Tramo ${entry.$1 + 1}',
+                      style: const TextStyle(
+                        color: Color(0xFFD8B15D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      entry.$2,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: onModify,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFD8B15D),
-              side: BorderSide(
-                color: const Color(0xFFD8B15D).withValues(alpha: .5),
+          Padding(
+            padding: const EdgeInsets.only(left: 58, top: 1),
+            child: Text(
+              '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}  •  $completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .62),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Modificar',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -514,13 +542,33 @@ class _ResultsSummaryBand extends StatelessWidget {
     );
   }
 
-  String _airportCode(dynamic airport) {
+  String _airportDisplayName(dynamic airport) {
     if (airport == null) return '';
-    final icao = airport.icao?.toString().trim().toUpperCase() ?? '';
-    if (icao.isNotEmpty) return icao;
+
+    final city = airport.city?.toString().trim() ?? '';
+    if (city.isNotEmpty) return city;
+
+    final name = airport.name?.toString().trim() ?? '';
+    if (name.isNotEmpty) return name;
+
     final iata = airport.iata?.toString().trim().toUpperCase() ?? '';
     if (iata.isNotEmpty) return iata;
-    return airport.city?.toString().trim() ?? '';
+
+    return airport.icao?.toString().trim().toUpperCase() ?? '';
+  }
+
+  List<String> _segmentLabels() {
+    final labels = <String>[];
+    for (final route in routes) {
+      final origin = _airportDisplayName(route.fromAirport);
+      final destination = _airportDisplayName(route.toAirport);
+
+      if (origin.isNotEmpty && destination.isNotEmpty) {
+        labels.add('$origin → $destination');
+      }
+    }
+
+    return labels.isEmpty ? const ['Ruta por confirmar'] : labels;
   }
 }
 
