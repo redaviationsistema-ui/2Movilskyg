@@ -544,8 +544,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final accessData = context.watch<AuthProvider>().accessData;
     final commercialState = resolveCommercialAccessState(accessData);
     final commercialAccessActive =
-        widget.commercialAccessMode &&
-        (commercialState.hasPaidAccess || commercialState.canReserve);
+        widget.commercialAccessMode && commercialState.isConfirmedActive;
     final paymentBreakdown =
         commercialAccessActive
             ? const <PaymentBreakdownItem>[]
@@ -590,7 +589,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             : 'Listo para abrir enlace seguro';
     final checkoutDescription =
         commercialAccessActive
-            ? 'Tu membresia comercial ya esta activa. Puedes continuar sin volver a pagar.'
+            ? 'El backend ya confirmo tu acceso comercial. Ya puedes volver a cotizar o regresar al inicio.'
+            : widget.commercialAccessMode && _waitingForCommercialAccessReturn
+            ? 'Stripe ya regreso a la app. Estamos verificando el pago con el backend antes de habilitar tu acceso.'
             : reservationPaymentConfirmed
             ? 'El backend ya reflejo el pago. Tu reserva puede avanzar al siguiente paso operativo.'
             : reservationCheckoutNeedsRegeneration
@@ -598,6 +599,37 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             : reservationPaymentPending
             ? 'Stripe recibio el checkout, pero el backend aun esta validando el pago. Actualizaremos la reserva al confirmarse.'
             : 'El cobro se completa fuera de la app en Stripe. Al terminar, volveras automaticamente para validar tu reserva.';
+    final commercialHeadline =
+        commercialAccessActive
+            ? 'Acceso comercial activo'
+            : commercialState.isExpired || commercialState.isSuspended
+            ? 'Reactiva tu acceso comercial'
+            : commercialState.isPastDue
+            ? 'Actualiza tu pago'
+            : 'Configura tu pago';
+    final commercialSubheadline =
+        commercialAccessActive
+            ? (commercialState.expiresAtLabel.isNotEmpty
+                ? 'Vigente hasta ${commercialState.expiresAtLabel}'
+                : 'Tu pago fue confirmado')
+            : commercialState.isExpired || commercialState.isSuspended
+            ? (commercialState.expiresAtLabel.isNotEmpty
+                ? 'Tu acceso vencio el ${commercialState.expiresAtLabel}'
+                : 'Tu acceso comercial esta vencido')
+            : commercialState.isPastDue
+            ? 'Tu cuenta sigue operativa temporalmente mientras corriges el cobro.'
+            : 'Acceso comercial premium';
+    final commercialStatusCaption =
+        commercialAccessActive
+            ? 'Tu pago fue confirmado'
+            : _waitingForCommercialAccessReturn ||
+                _commercialAccessNeedsValidation
+            ? 'Verificando pago con Stripe y backend'
+            : commercialState.isExpired || commercialState.isSuspended
+            ? 'Completa el pago mediante Stripe para volver a cotizar y reservar vuelos.'
+            : commercialState.isPastDue
+            ? 'Actualiza el metodo de pago en Stripe para mantener el acceso sin interrupciones.'
+            : 'Renovacion mensual protegida con Stripe Checkout.';
 
     final ctaLabel =
         _openingReservationCheckout
@@ -614,8 +646,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Abrir Stripe Checkout'
             : _reservationRequiresValidation
             ? 'Validando pago...'
+            : widget.commercialAccessMode && commercialAccessActive
+            ? 'Continuar a cotizar'
+            : widget.commercialAccessMode && _commercialAccessNeedsValidation
+            ? 'Verificar pago'
             : widget.commercialAccessMode
-            ? 'Activar acceso comercial'
+            ? 'Continuar con Stripe'
             : 'Abrir Stripe Checkout';
 
     if (widget.commercialAccessMode) {
@@ -624,6 +660,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         hasCustomBack: widget.onBack != null,
         onBack: _handleBack,
         commercialAccessActive: commercialAccessActive,
+        headline: commercialHeadline,
+        subheadline: commercialSubheadline,
+        statusCaption: commercialStatusCaption,
         amount: amount,
         paymentBreakdown: paymentBreakdown,
         checkoutDescription: checkoutDescription,
@@ -1112,6 +1151,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
   bool _resolvePrimaryAction() {
     if (_submitting) return false;
+    if (widget.commercialAccessMode && _commercialAccessAlreadyActive) {
+      return true;
+    }
     if (widget.commercialAccessMode) return _canSubmit;
     if (_showTripsShortcut) return true;
     if (_reservationCheckoutNeedsRegeneration) return _canSubmit;
@@ -1165,7 +1207,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     final state = resolveCommercialAccessState(
       context.read<AuthProvider>().accessData,
     );
-    return state.hasPaidAccess || state.canReserve;
+    return state.isConfirmedActive;
   }
 
   bool get _commercialAccessNeedsValidation {
@@ -1397,9 +1439,10 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         returnUrl: backendSuccessUrl,
       );
 
+      auth.syncAccessState(payload);
+
       if (_accessIsActive(payload) ||
           _isTruthyValue(payload['already_active'])) {
-        auth.syncAccessState(_commercialAccessActivationPayload(payload));
         if (!mounted) return;
         setState(() {
           _waitingForCommercialAccessReturn = false;
@@ -2105,11 +2148,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             )
             .catchError((_) => <String, dynamic>{});
 
+        if (successPayload.isNotEmpty) {
+          auth.syncAccessState(successPayload);
+        }
+
         if (_accessIsActive(successPayload)) {
           successIndicatesActive = true;
-          auth.syncAccessState(
-            _commercialAccessActivationPayload(successPayload),
-          );
           break;
         }
 
@@ -2121,25 +2165,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
 
       if (!mounted) return;
       if (successPayload != null && successPayload.isNotEmpty) {
-        auth.syncAccessState(
-          successIndicatesActive
-              ? _commercialAccessActivationPayload(successPayload)
-              : successPayload,
-        );
+        auth.syncAccessState(successPayload);
       }
       await auth.refreshCommercialAccessStatus();
       final accessState = resolveCommercialAccessState(auth.accessData);
 
       if (!mounted) return;
 
-      if (successIndicatesActive ||
-          accessState.canReserve ||
-          accessState.hasPaidAccess) {
-        if (successIndicatesActive) {
-          auth.syncAccessState(
-            _commercialAccessActivationPayload(successPayload),
-          );
-        }
+      if (successIndicatesActive || accessState.isConfirmedActive) {
         setState(() {
           _waitingForCommercialAccessReturn = false;
           _inlineMessage = 'Acceso comercial activado.';
@@ -2469,23 +2502,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
       }
 
       if (successPayload != null && successPayload.isNotEmpty) {
-        auth.syncAccessState(
-          _accessIsActive(successPayload)
-              ? _commercialAccessActivationPayload(successPayload)
-              : successPayload,
-        );
+        auth.syncAccessState(successPayload);
       }
 
       await auth.refreshCommercialAccessStatus();
       final accessState = resolveCommercialAccessState(auth.accessData);
-      if (_accessIsActive(successPayload) ||
-          accessState.canReserve ||
-          accessState.hasPaidAccess) {
-        if (_accessIsActive(successPayload)) {
-          auth.syncAccessState(
-            _commercialAccessActivationPayload(successPayload),
-          );
-        }
+      if (_accessIsActive(successPayload) || accessState.isConfirmedActive) {
         return true;
       }
 
@@ -3753,7 +3775,9 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
   bool _accessIsActive(Map<String, dynamic>? payload) {
     if (payload == null || payload.isEmpty) return false;
     final state = resolveCommercialAccessState(payload);
-    if (state.hasPaidAccess || state.canReserve) return true;
+    if (state.isConfirmedActive) {
+      return true;
+    }
 
     final data = _asStringKeyMap(payload['data']);
     final access = _asStringKeyMap(
@@ -3765,149 +3789,12 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     for (final candidate in [data, access, dataAccess]) {
       if (candidate.isEmpty) continue;
       final nestedState = resolveCommercialAccessState(candidate);
-      if (nestedState.hasPaidAccess || nestedState.canReserve) return true;
-    }
-
-    final commercial = _asStringKeyMap(
-      payload['commercial_access'] ?? payload['commercialAccess'],
-    );
-    final dataCommercial = _asStringKeyMap(
-      data['commercial_access'] ?? data['commercialAccess'],
-    );
-    final subscription = _asStringKeyMap(
-      payload['subscription'] ?? payload['membership'],
-    );
-    final dataSubscription = _asStringKeyMap(
-      data['subscription'] ?? data['membership'],
-    );
-    final payment = _asStringKeyMap(payload['payment']);
-    final dataPayment = _asStringKeyMap(data['payment']);
-    final checkoutSession = {
-      ..._asStringKeyMap(payload['checkout_session']),
-      ..._asStringKeyMap(payload['session']),
-    };
-    final dataCheckoutSession = {
-      ..._asStringKeyMap(data['checkout_session']),
-      ..._asStringKeyMap(data['session']),
-    };
-    final latestPayment = _asStringKeyMap(
-      payload['latest_payment'] ?? commercial['latest_payment'],
-    );
-    final dataLatestPayment = _asStringKeyMap(
-      data['latest_payment'] ?? dataCommercial['latest_payment'],
-    );
-    final sources = [
-      payload,
-      data,
-      access,
-      dataAccess,
-      commercial,
-      dataCommercial,
-      subscription,
-      dataSubscription,
-      payment,
-      dataPayment,
-      checkoutSession,
-      dataCheckoutSession,
-      latestPayment,
-      dataLatestPayment,
-    ];
-
-    final status =
-        _firstTextFromMaps(const [
-          'status',
-          'access_status',
-          'subscription_status',
-          'payment_status',
-          'checkout_status',
-          'stripe_payment_status',
-        ], sources).toLowerCase();
-    if (const {
-      'active',
-      'activa',
-      'vigente',
-      'approved',
-      'paid',
-      'pagado',
-      'pagada',
-      'succeeded',
-      'success',
-      'complete',
-      'completed',
-      'payment_confirmed',
-      'subscription_active',
-      'access_active',
-    }.contains(status)) {
-      return true;
-    }
-
-    for (final source in sources) {
-      if (_isTruthyValue(source['has_paid_access']) ||
-          _isTruthyValue(source['paid']) ||
-          _isTruthyValue(source['is_paid']) ||
-          _isTruthyValue(source['active']) ||
-          _isTruthyValue(source['payment_completed']) ||
-          _isTruthyValue(source['can_reserve']) ||
-          _isTruthyValue(source['canReserve'])) {
-        return true;
-      }
-
-      final nestedStatus =
-          source['status']?.toString().trim().toLowerCase() ?? '';
-      if (const {
-        'paid',
-        'succeeded',
-        'success',
-        'complete',
-        'completed',
-        'pagado',
-        'payment_confirmed',
-      }.contains(nestedStatus)) {
+      if (nestedState.isConfirmedActive) {
         return true;
       }
     }
 
     return false;
-  }
-
-  Map<String, dynamic> _commercialAccessActivationPayload(
-    Map<String, dynamic>? payload,
-  ) {
-    final source = Map<String, dynamic>.from(payload ?? const {});
-    final data = _asStringKeyMap(source['data']);
-    final commercial = _asStringKeyMap(
-      source['commercial_access'] ??
-          source['commercialAccess'] ??
-          source['access'] ??
-          data['commercial_access'] ??
-          data['commercialAccess'] ??
-          data['access'],
-    );
-
-    return {
-      ...source,
-      'status': 'active',
-      'access_status': 'active',
-      'subscription_status': 'active',
-      'has_paid_access': true,
-      'commercial_access': {
-        ...commercial,
-        'status': 'active',
-        'has_paid_access': true,
-        'remaining_free_quotes': commercial['remaining_free_quotes'] ?? 999,
-      },
-      if (data.isNotEmpty)
-        'data': {
-          ...data,
-          'status': 'active',
-          'has_paid_access': true,
-          'commercial_access': {
-            ...commercial,
-            'status': 'active',
-            'has_paid_access': true,
-          },
-        },
-    };
   }
 
   List<PaymentBreakdownItem> _commercialAccessBreakdown(

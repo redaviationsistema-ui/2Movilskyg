@@ -10,6 +10,9 @@ class ClientAccessPaymentView extends StatelessWidget {
     required this.hasCustomBack,
     required this.onBack,
     required this.commercialAccessActive,
+    required this.headline,
+    required this.subheadline,
+    required this.statusCaption,
     required this.amount,
     required this.paymentBreakdown,
     required this.checkoutDescription,
@@ -34,6 +37,9 @@ class ClientAccessPaymentView extends StatelessWidget {
   final bool hasCustomBack;
   final VoidCallback onBack;
   final bool commercialAccessActive;
+  final String headline;
+  final String subheadline;
+  final String statusCaption;
   final String amount;
   final List<PaymentBreakdownItem> paymentBreakdown;
   final String checkoutDescription;
@@ -88,11 +94,11 @@ class ClientAccessPaymentView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Configura tu pago',
-                style: TextStyle(
+                headline,
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF111111),
@@ -101,24 +107,24 @@ class ClientAccessPaymentView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Acceso comercial premium',
-                    style: TextStyle(
+                    subheadline,
+                    style: const TextStyle(
                       color: Color(0xFF1E1E1E),
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'Renovacion mensual protegida',
-                    style: TextStyle(
+                    statusCaption,
+                    style: const TextStyle(
                       color: Color(0xFF625D55),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

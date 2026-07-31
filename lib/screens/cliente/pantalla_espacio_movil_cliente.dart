@@ -45,6 +45,10 @@ class _ClientMobileWorkspaceScreenState
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.isAuthenticated) {
+        unawaited(auth.refreshCommercialAccessStatus());
+      }
       unawaited(_restorePersistedFlow());
     });
     _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
@@ -106,7 +110,10 @@ class _ClientMobileWorkspaceScreenState
         },
       ),
       _buildTripsScreen(activeRequest),
-      const ClientLiveProfileScreen(showBackButton: false),
+      ClientLiveProfileScreen(
+        showBackButton: false,
+        onCommercialAccessTap: _openCommercialAccessPayment,
+      ),
     ];
 
     return Scaffold(
@@ -300,7 +307,7 @@ class _ClientMobileWorkspaceScreenState
                 if (!mounted) return;
                 if (openMembershipAfter) {
                   setState(() {
-                    _selectedIndex = 3;
+                    _selectedIndex = 2;
                   });
                 }
               },

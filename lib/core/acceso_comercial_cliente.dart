@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 class CommercialAccessState {
   const CommercialAccessState({
     required this.status,
@@ -8,8 +10,14 @@ class CommercialAccessState {
     required this.isPastDue,
     required this.isSuspended,
     required this.isExpired,
+    required this.expiresAt,
     required this.expiresAtLabel,
     required this.graceEndsAtLabel,
+    this.backendIsActive,
+    this.backendCanQuote,
+    this.backendCanReserve,
+    this.backendCanRenew,
+    this.backendMessage = '',
   });
 
   final String status;
@@ -20,26 +28,46 @@ class CommercialAccessState {
   final bool isPastDue;
   final bool isSuspended;
   final bool isExpired;
+  final DateTime? expiresAt;
   final String expiresAtLabel;
   final String graceEndsAtLabel;
+  final bool? backendIsActive;
+  final bool? backendCanQuote;
+  final bool? backendCanReserve;
+  final bool? backendCanRenew;
+  final String backendMessage;
+
+  bool get isConfirmedActive {
+    if (backendIsActive is bool) {
+      return backendIsActive == true && !isExpired && !isSuspended;
+    }
+    return !isExpired &&
+        !isSuspended &&
+        !isPastDue &&
+        canReserve &&
+        _activeStatuses.contains(status);
+  }
 
   bool get canQuote =>
-      !isExpired &&
-      (hasPaidAccess ||
-          isPastDue ||
-          _activeStatuses.contains(status) ||
-          _demoStatuses.contains(status) ||
-          remainingFreeQuotes > 0);
+      backendCanQuote ??
+      (!isExpired &&
+          (hasPaidAccess ||
+              isPastDue ||
+              _activeStatuses.contains(status) ||
+              _demoStatuses.contains(status) ||
+              remainingFreeQuotes > 0));
 
   bool get canReserve =>
-      !isExpired &&
-      (hasPaidAccess || isPastDue || _activeStatuses.contains(status));
+      backendCanReserve ??
+      (!isExpired &&
+          (hasPaidAccess || isPastDue || _activeStatuses.contains(status)));
 
   bool get requiresPayment =>
+      backendCanRenew ??
       isSuspended ||
-      isPastDue ||
-      isExpired ||
-      (!hasPaidAccess && remainingFreeQuotes <= 0);
+          isPastDue ||
+          isExpired ||
+          (!hasPaidAccess && remainingFreeQuotes <= 0);
 
   String get statusLabel {
     if (isSuspended) {
@@ -63,12 +91,16 @@ class CommercialAccessState {
     if (remainingFreeQuotes > 0) {
       return '$remainingFreeQuotes cotizacion gratis';
     }
-    if (status == 'payment_pending') return 'Pago en validacion';
+    if (status == 'checkout_pending') return 'Checkout pendiente';
+    if (status == 'payment_processing') return 'Verificando pago';
     if (status == 'payment_failed') return 'Pago rechazado';
+    if (status == 'cancelled') return 'Pago cancelado';
+    if (status == 'inactive') return 'Acceso inactivo';
     return 'Prueba consumida';
   }
 
   String get quoteBlockedMessage {
+    if (backendMessage.isNotEmpty) return backendMessage;
     if (isSuspended) {
       return graceEndsAtLabel.isNotEmpty
           ? 'Tu periodo de gracia termino el $graceEndsAtLabel. Actualiza el metodo de pago para reactivar cotizaciones.'
@@ -88,16 +120,105 @@ class CommercialAccessState {
     if (remainingFreeQuotes > 0) {
       return 'Tienes $remainingFreeQuotes cotizacion${remainingFreeQuotes == 1 ? '' : 'es'} de prueba disponible${remainingFreeQuotes == 1 ? '' : 's'}.';
     }
-    if (status == 'payment_pending') {
-      return 'Tu pago de acceso esta en validacion. En cuanto se confirme podras continuar.';
+    if (status == 'checkout_pending') {
+      return 'Tu checkout sigue abierto. Completa el pago en Stripe para reactivar el acceso comercial.';
+    }
+    if (status == 'payment_processing') {
+      return 'Stripe ya recibio tu intento de pago. Estamos verificando la confirmacion final con el backend.';
     }
     if (status == 'payment_failed') {
       return 'No pudimos validar el pago anterior. Intenta de nuevo para reactivar tu acceso comercial.';
     }
+    if (status == 'cancelled') {
+      return 'El pago fue cancelado antes de confirmarse. Puedes intentarlo de nuevo cuando quieras.';
+    }
     return 'Tu cotizacion de prueba ya fue utilizada. Activa el acceso comercial para continuar.';
   }
 
+  bool get shouldShowAccessBanner =>
+      isSuspended ||
+      isPastDue ||
+      isExpired ||
+      ((hasPaidAccess || _activeStatuses.contains(status))
+          ? _isWithinExpiryWarningWindow(expiresAt)
+          : (!hasPaidAccess || remainingFreeQuotes <= 0));
+
+  String get accessBannerTitle {
+    if (isSuspended) {
+      return graceEndsAtLabel.isNotEmpty
+          ? 'Acceso comercial suspendido desde $graceEndsAtLabel'
+          : 'Acceso comercial suspendido';
+    }
+    if (isExpired) {
+      return expiresAtLabel.isNotEmpty
+          ? 'Acceso comercial vencido $expiresAtLabel'
+          : 'Acceso comercial vencido';
+    }
+    if (isPastDue) {
+      return graceEndsAtLabel.isNotEmpty
+          ? 'Pago pendiente, gracia hasta $graceEndsAtLabel'
+          : 'Pago pendiente por actualizar';
+    }
+    if (hasPaidAccess || _activeStatuses.contains(status)) {
+      return expiresAtLabel.isNotEmpty
+          ? 'Acceso comercial activo hasta $expiresAtLabel'
+          : 'Acceso comercial activo';
+    }
+    if (remainingFreeQuotes > 0) {
+      return 'Te quedan $remainingFreeQuotes cotizacion${remainingFreeQuotes == 1 ? '' : 'es'} de prueba';
+    }
+    if (status == 'checkout_pending') {
+      return 'Tu checkout de acceso sigue pendiente';
+    }
+    if (status == 'payment_processing') {
+      return 'Estamos verificando tu pago';
+    }
+    if (status == 'payment_failed') {
+      return 'No pudimos renovar tu acceso comercial';
+    }
+    if (status == 'cancelled') {
+      return 'Tu pago fue cancelado';
+    }
+    return 'Activa tu acceso comercial';
+  }
+
+  String get accessBannerMessage {
+    if (backendMessage.isNotEmpty && (isExpired || isSuspended || !canQuote)) {
+      return backendMessage;
+    }
+    if (isExpired || isSuspended || !canQuote) return quoteBlockedMessage;
+    if (isPastDue) {
+      return reservationBlockedMessage;
+    }
+    if (hasPaidAccess || _activeStatuses.contains(status)) {
+      return 'Tu cuenta puede cotizar, reservar, firmar contrato y pagar vuelos.';
+    }
+    if (remainingFreeQuotes > 0) {
+      return 'Todavia puedes cotizar con tu prueba, pero necesitaras activar el acceso comercial para reservar.';
+    }
+    return reservationBlockedMessage;
+  }
+
+  String get paymentActionLabel {
+    if (isPastDue || isSuspended) return 'Actualizar metodo de pago';
+    if (isExpired || status == 'payment_failed') {
+      return 'Reactivar acceso comercial';
+    }
+    if (hasPaidAccess || _activeStatuses.contains(status)) {
+      return 'Administrar acceso comercial';
+    }
+    return 'Activar acceso comercial';
+  }
+
+  String get quoteActionLabel {
+    if (!canQuote) return paymentActionLabel;
+    return 'Solicitar cotizacion';
+  }
+
   String get reservationBlockedMessage {
+    if (backendMessage.isNotEmpty && (isExpired || isSuspended || isPastDue)) {
+      return backendMessage;
+    }
     if (isSuspended) {
       return graceEndsAtLabel.isNotEmpty
           ? 'Tu periodo de gracia termino el $graceEndsAtLabel. Actualiza el metodo de pago para volver a reservar y pagar vuelos.'
@@ -117,11 +238,17 @@ class CommercialAccessState {
     if (remainingFreeQuotes > 0) {
       return 'Tu prueba gratis cubre la cotizacion inicial. Para reservar este vuelo primero activa el acceso comercial de USD 115.';
     }
-    if (status == 'payment_pending') {
-      return 'Tu pago de acceso esta en validacion. En cuanto se confirme, podras reservar.';
+    if (status == 'checkout_pending') {
+      return 'Tu checkout de acceso sigue abierto. Completa el pago en Stripe para poder reservar.';
+    }
+    if (status == 'payment_processing') {
+      return 'Tu pago de acceso esta en verificacion. En cuanto se confirme, podras reservar.';
     }
     if (status == 'payment_failed') {
       return 'No pudimos validar el pago anterior. Intenta de nuevo para activar tu acceso comercial.';
+    }
+    if (status == 'cancelled') {
+      return 'El pago fue cancelado antes de confirmarse. Puedes reintentar la activacion para reservar.';
     }
     return 'Necesitas activar el acceso comercial para reservar, firmar contrato y pagar el vuelo.';
   }
@@ -167,31 +294,25 @@ const Set<String> _suspendedStatuses = {
   'canceled',
 };
 
-const Set<String> _paidPaymentStatuses = {
-  'active',
-  'approved',
-  'paid',
-  'pagado',
-  'pagada',
-  'succeeded',
-  'success',
-  'complete',
-  'completed',
-  'payment_confirmed',
-  'subscription_active',
-  'access_active',
+const Set<String> _checkoutPendingStatuses = {
+  'checkout_pending',
+  'payment_pending',
+  'pending',
+  'open',
 };
 
-const Set<String> _inactivePaymentStatuses = {
-  'failed',
+const Set<String> _paymentProcessingStatuses = {
+  'payment_processing',
+  'processing',
+  'complete',
+  'completed',
+};
+
+const Set<String> _paymentFailureStatuses = {
   'payment_failed',
-  'cancelled',
-  'canceled',
+  'failed',
+  'past_due',
   'unpaid',
-  'expired',
-  'void',
-  'refunded',
-  'requires_payment_method',
 };
 
 CommercialAccessState resolveCommercialAccessState(
@@ -236,12 +357,31 @@ CommercialAccessState resolveCommercialAccessState(
     commercial['checkout_session'],
     commercial['session'],
   ]);
-  final hasPaidPaymentRecord =
-      _paymentRecordIsPaid(latestPayment) ||
-      _paymentRecordIsPaid(checkoutSession);
+  final backendMarkedActive =
+      _asBool(
+        commercial['access_is_active'] ??
+            dataAccess['access_is_active'] ??
+            access['access_is_active'] ??
+            data['access_is_active'],
+      ) ||
+      _activeStatuses.contains(
+        _normalized(
+          commercial['status'] ??
+              commercial['access_status'] ??
+              dataAccess['status'] ??
+              access['access_status'],
+        ),
+      );
+  final availableActions = _firstMap([
+    commercial['available_actions'],
+    dataAccess['available_actions'],
+    access['available_actions'],
+    data['available_actions'],
+  ]);
 
   final statusCandidate = _normalized(
-    commercial['status'] ??
+    commercial['access_status'] ??
+        commercial['status'] ??
         dataAccess['status'] ??
         access['access_status'] ??
         data['access_status'] ??
@@ -254,26 +394,31 @@ CommercialAccessState resolveCommercialAccessState(
         checkoutSession['status'],
   );
   final status =
-      hasPaidPaymentRecord &&
-              !_inactivePaymentStatuses.contains(statusCandidate)
+      backendMarkedActive
           ? 'active'
+          : _checkoutPendingStatuses.contains(statusCandidate)
+          ? 'checkout_pending'
+          : _paymentProcessingStatuses.contains(statusCandidate)
+          ? 'payment_processing'
+          : _paymentFailureStatuses.contains(statusCandidate)
+          ? 'payment_failed'
+          : statusCandidate == 'trial_used'
+          ? 'inactive'
           : statusCandidate;
-  final hasPaidAccess =
-      _asBool(
-        commercial['has_paid_access'] ??
-            dataAccess['has_paid_access'] ??
-            access['has_paid_access'] ??
-            data['has_paid_access'] ??
-            commercial['is_paid'] ??
-            dataAccess['is_paid'] ??
-            access['is_paid'] ??
-            data['is_paid'] ??
-            commercial['payment_completed'] ??
-            dataAccess['payment_completed'] ??
-            access['payment_completed'] ??
-            data['payment_completed'],
-      ) ||
-      hasPaidPaymentRecord;
+  final hasPaidAccess = _asBool(
+    commercial['has_paid_access'] ??
+        dataAccess['has_paid_access'] ??
+        access['has_paid_access'] ??
+        data['has_paid_access'] ??
+        commercial['is_paid'] ??
+        dataAccess['is_paid'] ??
+        access['is_paid'] ??
+        data['is_paid'] ??
+        commercial['payment_completed'] ??
+        dataAccess['payment_completed'] ??
+        access['payment_completed'] ??
+        data['payment_completed'],
+  );
   final freeQuoteLimit = _asInt(
     commercial['free_quote_limit'] ??
         dataAccess['free_quote_limit'] ??
@@ -295,37 +440,73 @@ CommercialAccessState resolveCommercialAccessState(
         (freeQuoteLimit - freeQuotesUsed),
   ).clamp(0, 999);
 
-  final graceEndsAtLabel = _formatDate(
-    commercial['grace_period_ends_at'] ??
-        commercial['grace_ends_at'] ??
-        dataAccess['grace_period_ends_at'] ??
-        dataAccess['grace_ends_at'] ??
-        access['grace_period_ends_at'] ??
-        access['grace_ends_at'] ??
-        data['grace_period_ends_at'] ??
-        data['grace_ends_at'],
-  );
-  final expiresAtLabel = _formatDate(
-    commercial['access_expires_at'] ??
-        commercial['billing_period_end'] ??
-        dataAccess['access_expires_at'] ??
-        dataAccess['billing_period_end'] ??
-        access['access_expires_at'] ??
-        access['billing_period_end'] ??
-        data['access_expires_at'] ??
-        data['billing_period_end'] ??
-        latestPayment['access_expires_at'] ??
-        latestPayment['billing_period_end'] ??
-        latestPayment['period_end'] ??
-        latestPayment['current_period_end'],
+  final backendIsInGrace =
+      commercial['access_is_in_grace_period'] ??
+      dataAccess['access_is_in_grace_period'] ??
+      access['access_is_in_grace_period'] ??
+      data['access_is_in_grace_period'];
+  final backendIsActive =
+      commercial['access_is_active'] ??
+      dataAccess['access_is_active'] ??
+      access['access_is_active'] ??
+      data['access_is_active'];
+  final backendIsExpired =
+      commercial['access_is_expired'] ??
+      dataAccess['access_is_expired'] ??
+      access['access_is_expired'] ??
+      data['access_is_expired'];
+  final graceEndsAtValue =
+      backendIsInGrace == true
+          ? (commercial['grace_period_ends_at'] ??
+              commercial['grace_period_ends_date'] ??
+              dataAccess['grace_period_ends_at'] ??
+              dataAccess['grace_period_ends_date'] ??
+              access['grace_period_ends_at'] ??
+              data['grace_period_ends_at'])
+          : (commercial['grace_period_ends_at'] ??
+              commercial['grace_ends_at'] ??
+              dataAccess['grace_period_ends_at'] ??
+              dataAccess['grace_ends_at'] ??
+              access['grace_period_ends_at'] ??
+              access['grace_ends_at'] ??
+              data['grace_period_ends_at'] ??
+              data['grace_ends_at']);
+  final expiresAt = _firstAvailableDate([
+    commercial['access_expires_date'],
+    commercial['access_expires_at'],
+    commercial['expires_at'],
+    dataAccess['access_expires_date'],
+    dataAccess['access_expires_at'],
+    dataAccess['expires_at'],
+    access['access_expires_date'],
+    access['access_expires_at'],
+    access['expires_at'],
+    data['access_expires_date'],
+    data['access_expires_at'],
+    data['expires_at'],
+  ]);
+  final graceEndsAtLabel = _formatDate(graceEndsAtValue);
+  final expiresAtLabel = _resolveDateLabel(
+    commercial['access_expires_formatted'] ??
+        dataAccess['access_expires_formatted'] ??
+        access['access_expires_formatted'] ??
+        data['access_expires_formatted'],
+    fallback: expiresAt,
   );
 
-  final isPastDue = _pastDueStatuses.contains(status);
+  final isPastDue =
+      backendIsInGrace is bool
+          ? backendIsInGrace
+          : _pastDueStatuses.contains(status);
   final isSuspended = !hasPaidAccess && _suspendedStatuses.contains(status);
   final isExpired =
-      !hasPaidAccess &&
-      !isPastDue &&
-      (isSuspended || _isDateExpired(expiresAtLabel));
+      backendIsExpired is bool
+          ? backendIsExpired
+          : (!hasPaidAccess &&
+              !isPastDue &&
+              (status == 'expired' ||
+                  isSuspended ||
+                  _isDateExpired(expiresAt)));
 
   return CommercialAccessState(
     status: status,
@@ -336,9 +517,42 @@ CommercialAccessState resolveCommercialAccessState(
     isPastDue: isPastDue,
     isSuspended: isSuspended,
     isExpired: isExpired,
+    expiresAt: expiresAt,
     expiresAtLabel: expiresAtLabel,
     graceEndsAtLabel: graceEndsAtLabel,
+    backendIsActive: backendIsActive is bool ? backendIsActive : null,
+    backendCanQuote:
+        availableActions['can_quote'] is bool
+            ? availableActions['can_quote'] as bool
+            : null,
+    backendCanReserve:
+        availableActions['can_reserve'] is bool
+            ? availableActions['can_reserve'] as bool
+            : null,
+    backendCanRenew:
+        availableActions['can_renew'] is bool
+            ? availableActions['can_renew'] as bool
+            : null,
+    backendMessage:
+        (commercial['access_message'] ??
+                dataAccess['access_message'] ??
+                access['access_message'] ??
+                data['access_message'] ??
+                '')
+            .toString(),
   );
+}
+
+String _resolveDateLabel(dynamic value, {DateTime? fallback}) {
+  final normalized = value?.toString().trim() ?? '';
+  if (normalized.isNotEmpty) {
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed != null) {
+      return _formatDate(parsed);
+    }
+    return normalized;
+  }
+  return _formatDate(fallback);
 }
 
 Map<String, dynamic> syncCommercialAccessPayload(
@@ -481,40 +695,43 @@ int _asInt(dynamic value, {int fallback = 0}) {
 String _normalized(dynamic value) =>
     value?.toString().trim().toLowerCase() ?? '';
 
-bool _paymentRecordIsPaid(Map<String, dynamic> record) {
-  if (record.isEmpty) return false;
-  final status = _normalized(
-    record['status'] ??
-        record['payment_status'] ??
-        record['checkout_status'] ??
-        record['stripe_payment_status'] ??
-        record['subscription_status'],
-  );
-  if (_paidPaymentStatuses.contains(status)) return true;
-  if (_inactivePaymentStatuses.contains(status)) return false;
-  return _asBool(record['paid']) ||
-      _asBool(record['is_paid']) ||
-      _asBool(record['payment_completed']) ||
-      _asBool(record['has_paid_access']);
-}
-
 String _formatDate(dynamic value) {
-  final raw = value?.toString().trim() ?? '';
-  if (raw.isEmpty) return '';
-  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw)) return raw;
-  final parsed = DateTime.tryParse(raw.replaceFirst(' ', 'T'));
-  if (parsed == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
-  final month = parsed.month.toString().padLeft(2, '0');
-  final day = parsed.day.toString().padLeft(2, '0');
-  return '${parsed.year}-$month-$day';
+  final parsed = _parseDate(value);
+  if (parsed == null) {
+    final raw = value?.toString().trim() ?? '';
+    return raw.length >= 10 ? raw.substring(0, 10) : raw;
+  }
+  return DateFormat('d MMMM y', 'es_MX').format(parsed);
 }
 
-bool _isDateExpired(String value) {
-  if (value.isEmpty) return false;
-  final parsed = DateTime.tryParse(value);
+DateTime? _parseDate(dynamic value) {
+  final raw = value?.toString().trim() ?? '';
+  if (raw.isEmpty) return null;
+  final parsed = DateTime.tryParse(raw.replaceFirst(' ', 'T'));
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
+
+bool _isDateExpired(DateTime? value) {
+  final parsed = value;
   if (parsed == null) return false;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
-  final expiry = DateTime(parsed.year, parsed.month, parsed.day);
-  return expiry.isBefore(today);
+  return parsed.isBefore(today);
+}
+
+DateTime? _firstAvailableDate(List<dynamic> candidates) {
+  for (final candidate in candidates) {
+    final parsed = _parseDate(candidate);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+bool _isWithinExpiryWarningWindow(DateTime? expiresAt) {
+  if (expiresAt == null) return false;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final daysUntilExpiry = expiresAt.difference(today).inDays;
+  return daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
 }

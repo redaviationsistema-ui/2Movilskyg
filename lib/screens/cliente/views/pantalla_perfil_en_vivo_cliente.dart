@@ -14,10 +14,12 @@ class ClientLiveProfileScreen extends StatefulWidget {
     super.key,
     this.showBackButton = true,
     this.hasExternalTopBanner = false,
+    this.onCommercialAccessTap,
   });
 
   final bool showBackButton;
   final bool hasExternalTopBanner;
+  final VoidCallback? onCommercialAccessTap;
 
   @override
   State<ClientLiveProfileScreen> createState() =>
@@ -55,9 +57,12 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
             : 'Sin teléfono';
     final membership = _planLabel(access);
     final active =
-        commercialState.hasPaidAccess ||
-        commercialState.canReserve ||
-        _hasMembership(access);
+        !commercialState.isExpired &&
+        !commercialState.isSuspended &&
+        (commercialState.canReserve || commercialState.isPastDue);
+    final membershipStatusLabel = _commercialStatusLabel(commercialState);
+    final membershipRenewalTitle = _commercialRenewalTitle(commercialState);
+    final membershipActionLabel = commercialState.paymentActionLabel;
     final requests = reservation.flightRequests;
     final requestsCount =
         (metrics['solicitudes'] ?? metrics['requests'] ?? requests.length)
@@ -126,8 +131,12 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
               _MembershipCard(
                 membership: _memberTitle(membership),
                 active: active,
+                statusLabel: membershipStatusLabel,
+                renewalTitle: membershipRenewalTitle,
                 renewal: _renewalLabel(access, commercialState),
-                onManage: _showMembershipMessage,
+                actionLabel: membershipActionLabel,
+                onManage:
+                    widget.onCommercialAccessTap ?? _showMembershipMessage,
               ),
               const SizedBox(height: 28),
               const _SectionTitle('Preferencias'),
@@ -185,7 +194,7 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
 
   Future<void> _refreshProfile() async {
     await Future.wait([
-      context.read<AuthProvider>().loadUserRole(),
+      context.read<AuthProvider>().refreshCommercialAccessStatus(),
       context.read<ReservationProvider>().loadClientWorkspaceData(force: true),
     ]);
   }
@@ -195,7 +204,9 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
   }
 
   void _showMembershipMessage() {
-    _showMessage('Administración de membresía disponible próximamente.');
+    final access = context.read<AuthProvider>().accessData ?? const {};
+    final state = resolveCommercialAccessState(access);
+    _showMessage(state.accessBannerMessage);
   }
 
   void _showPreferenceMessage(String label) {
@@ -290,6 +301,21 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     Map<String, dynamic> access,
     CommercialAccessState state,
   ) {
+    if (state.isExpired) {
+      return state.expiresAtLabel.trim().isNotEmpty
+          ? 'Vencido ${state.expiresAtLabel}'
+          : 'Vencido';
+    }
+    if (state.isSuspended) {
+      return state.graceEndsAtLabel.trim().isNotEmpty
+          ? 'Suspendido ${state.graceEndsAtLabel}'
+          : 'Suspendido';
+    }
+    if (state.isPastDue) {
+      return state.graceEndsAtLabel.trim().isNotEmpty
+          ? 'Gracia hasta ${state.graceEndsAtLabel}'
+          : 'Pago pendiente';
+    }
     if (state.expiresAtLabel.trim().isNotEmpty) return state.expiresAtLabel;
     final subscription = access['subscription'];
     final raw =
@@ -301,6 +327,21 @@ class _ClientLiveProfileScreenState extends State<ClientLiveProfileScreen> {
     final parsed = raw == null ? null : DateTime.tryParse(raw.toString());
     if (parsed == null) return 'Por confirmar';
     return DateFormat('dd MMM yyyy', 'es_MX').format(parsed);
+  }
+
+  String _commercialStatusLabel(CommercialAccessState state) {
+    if (state.isExpired) return 'Vencido';
+    if (state.isSuspended) return 'Suspendido';
+    if (state.isPastDue) return 'Pago pendiente';
+    if (state.canReserve) return 'Activo';
+    return 'Pendiente';
+  }
+
+  String _commercialRenewalTitle(CommercialAccessState state) {
+    if (state.isExpired) return 'Venció';
+    if (state.isSuspended) return 'Gracia';
+    if (state.isPastDue) return 'Límite';
+    return 'Renueva';
   }
 
   List<_ValidationData> _validationItems({
@@ -1017,13 +1058,19 @@ class _MembershipCard extends StatelessWidget {
   const _MembershipCard({
     required this.membership,
     required this.active,
+    required this.statusLabel,
+    required this.renewalTitle,
     required this.renewal,
+    required this.actionLabel,
     required this.onManage,
   });
 
   final String membership;
   final bool active;
+  final String statusLabel;
+  final String renewalTitle;
   final String renewal;
+  final String actionLabel;
   final VoidCallback onManage;
 
   @override
@@ -1082,7 +1129,7 @@ class _MembershipCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        active ? 'Activo' : 'Pendiente',
+                        statusLabel,
                         style: TextStyle(
                           color:
                               active
@@ -1104,7 +1151,7 @@ class _MembershipCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Renueva',
+                              renewalTitle,
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: .58),
                                 fontSize: 12,
@@ -1136,8 +1183,8 @@ class _MembershipCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: const Color(0xFFD8B25D)),
                           ),
-                          child: const Text(
-                            'Administrar',
+                          child: Text(
+                            actionLabel,
                             style: TextStyle(
                               color: Color(0xFFD8B25D),
                               fontSize: 13,

@@ -1995,8 +1995,8 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
                       children: [
                         Row(
                           children: [
-                            _PremiumStatusPill(meta: meta),
-                            const Spacer(),
+                            Expanded(child: _PremiumStatusPill(meta: meta)),
+                            const SizedBox(width: 6),
                             IconButton(
                               tooltip: 'Más opciones',
                               onPressed: widget.onMenu,
@@ -2132,13 +2132,17 @@ class _PremiumStatusPill extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
-          Text(
-            meta.label.toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontSize: compact ? 8.5 : 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: .35,
+          Flexible(
+            child: Text(
+              meta.label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: compact ? 8.5 : 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .35,
+              ),
             ),
           ),
         ],

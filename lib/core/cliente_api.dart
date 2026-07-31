@@ -159,6 +159,8 @@ class ApiClient {
     String biometricCapturedAt = '',
     String biometricProvider = 'aws_rekognition',
     String biometricTemplateType = 'selfie-photo',
+    bool identityValidationRequired = true,
+    String identificationDocumentId = '',
     File? ineFront,
     File? ineBack,
     File? selfieBiometric,
@@ -182,7 +184,8 @@ class ApiClient {
         'document_issue_date': documentIssueDate,
         'document_expiration': documentExpiration,
         'document_status': documentStatus,
-        'identity_validation_required': '1',
+        'identity_validation_required': identityValidationRequired ? '1' : '0',
+        'identification_document_id': identificationDocumentId,
         'ine_curp': ineCurp,
         'ine_cic': ineCic,
         'ine_ocr': ineOcr,
@@ -219,6 +222,43 @@ class ApiClient {
         if (ineBack != null) 'ine_back': ineBack,
         if (selfieBiometric != null) 'selfie_biometric': selfieBiometric,
       },
+    );
+  }
+
+  Future<Map<String, dynamic>> storeRegistrationIdentification({
+    required File file,
+    required String fullName,
+    required String phone,
+    required String birthDate,
+    required String documentNumber,
+    required String nationality,
+    required String curp,
+    String documentName = 'Identificación oficial',
+    String documentType = 'ine',
+    String documentCategory = 'user_identification',
+    String documentSlot = 'official_identification',
+    bool requiresIdentityValidation = true,
+    String expiresAt = '',
+    String replaceDocumentId = '',
+  }) {
+    return postMultipartFirstAvailable(
+      const ['/auth/registration/identification'],
+      fields: {
+        'document_name': documentName,
+        'document_type': documentType,
+        'document_category': documentCategory,
+        'document_slot': documentSlot,
+        'full_name': fullName,
+        'phone': phone,
+        'birth_date': birthDate,
+        'document_number': documentNumber,
+        'nationality': nationality,
+        'curp': curp,
+        'requires_identity_validation': requiresIdentityValidation ? '1' : '0',
+        'expires_at': expiresAt,
+        'replace_document_id': replaceDocumentId,
+      },
+      files: {'file': file},
     );
   }
 

@@ -19,6 +19,10 @@ void main() {
             hasCustomBack: false,
             onBack: () {},
             commercialAccessActive: false,
+            headline: 'Reactiva tu acceso comercial',
+            subheadline: 'Tu acceso vencio el 29 julio 2026',
+            statusCaption:
+                'Completa el pago mediante Stripe para volver a cotizar y reservar vuelos.',
             amount: 'USD \$299.00',
             paymentBreakdown: const [
               PaymentBreakdownItem(
@@ -38,7 +42,7 @@ void main() {
             inlineMessage: '',
             messageColor: Colors.green,
             emailController: emailController,
-            ctaLabel: 'Activar acceso comercial',
+            ctaLabel: 'Continuar con Stripe',
             onPrimaryAction: () {
               primaryTapped = true;
             },
@@ -48,11 +52,17 @@ void main() {
         ),
       );
 
-      expect(find.text('Configura tu pago'), findsOneWidget);
-      expect(find.text('Acceso comercial premium'), findsAtLeastNWidgets(1));
-      expect(find.text('ACTIVAR ACCESO COMERCIAL'), findsOneWidget);
+      expect(find.text('Reactiva tu acceso comercial'), findsOneWidget);
+      expect(find.text('Tu acceso vencio el 29 julio 2026'), findsOneWidget);
+      expect(
+        find.text(
+          'Completa el pago mediante Stripe para volver a cotizar y reservar vuelos.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('CONTINUAR CON STRIPE'), findsOneWidget);
 
-      await tester.tap(find.text('ACTIVAR ACCESO COMERCIAL'));
+      await tester.tap(find.text('CONTINUAR CON STRIPE'));
       await tester.pump();
 
       expect(primaryTapped, isTrue);
@@ -73,6 +83,8 @@ void main() {
             amount: 'USD \$15990.00',
             route: 'Toluca -> Monterrey',
             passengerCount: '1',
+            aircraftLabel: 'Learjet 45',
+            departureLabel: '30/07/2026 10:00',
             paymentBreakdown: const [
               PaymentBreakdownItem(
                 label: 'Total reserva',
@@ -106,14 +118,12 @@ void main() {
         ),
       );
 
-      expect(find.text('Pago de vuelo'), findsOneWidget);
-      expect(find.text('Toluca -> Monterrey'), findsAtLeastNWidgets(1));
-      expect(find.text('IR A TUS VUELOS'), findsOneWidget);
-
+      expect(find.text('Pago seguro'), findsOneWidget);
+      expect(find.text('Toluca → Monterrey'), findsAtLeastNWidgets(1));
       final tripsShortcut = find.text('Ir a Tus vuelos', skipOffstage: false);
       await tester.scrollUntilVisible(tripsShortcut, 200);
 
-      await tester.tap(find.text('IR A TUS VUELOS'));
+      await tester.tap(tripsShortcut);
       await tester.pump();
 
       expect(primaryTapped, isTrue);

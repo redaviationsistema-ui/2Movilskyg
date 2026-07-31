@@ -85,9 +85,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
         departureTime: _departureTime,
         returnDate: _returnDate,
         returnTime: _returnTime,
-        hasActiveMembership:
-            commercialState.hasPaidAccess || commercialState.canReserve,
-        remainingFreeQuotes: commercialState.remainingFreeQuotes,
+        commercialState: commercialState,
         onTodayTrip: () => _applyTodayPreset(reservation),
         onRoundTrip: () => _applyRoundTripPreset(reservation),
         onMultiCity: () => _applyMultiCityPreset(reservation),
@@ -167,12 +165,33 @@ class _ReservationScreenState extends State<ReservationScreen> {
     );
   }
 
-  Future<void> _handlePreview(ReservationProvider reservation) async {
+  Future<CommercialAccessState> _refreshCommercialAccessState() async {
     final auth = context.read<AuthProvider>();
     await auth.refreshCommercialAccessStatus();
-    final accessState = resolveCommercialAccessState(auth.accessData);
-    if (!accessState.canQuote) {
-      _showMessage(accessState.quoteBlockedMessage);
+    return resolveCommercialAccessState(auth.accessData);
+  }
+
+  bool _blockQuoteIfAccessExpired(
+    CommercialAccessState accessState, {
+    required String source,
+  }) {
+    if (accessState.canQuote) return false;
+
+    final auth = context.read<AuthProvider>();
+    final access = auth.accessData ?? const <String, dynamic>{};
+    final user = auth.user;
+    debugPrint(
+      '[bloqueo-cotizador-cliente-movil] {source: $source, reason: canQuote=false, blockedMessage: "${accessState.quoteBlockedMessage}", accessStatus: "${accessState.status}", userId: "${user?.id ?? ''}", email: "${user?.email ?? ''}", access: $access}',
+    );
+
+    _showMessage(accessState.quoteBlockedMessage);
+    _openMembershipCenter();
+    return true;
+  }
+
+  Future<void> _handlePreview(ReservationProvider reservation) async {
+    final accessState = await _refreshCommercialAccessState();
+    if (_blockQuoteIfAccessExpired(accessState, source: 'submitSearch')) {
       return;
     }
 
@@ -194,6 +213,13 @@ class _ReservationScreenState extends State<ReservationScreen> {
     if (!mounted) return;
 
     if (!success) {
+      final refreshedAccessState = await _refreshCommercialAccessState();
+      if (_blockQuoteIfAccessExpired(
+        refreshedAccessState,
+        source: 'previewCurrentSelection',
+      )) {
+        return;
+      }
       _showMessage(
         reservation.quoteError ?? 'No fue posible generar una cotizacion real.',
       );
@@ -201,8 +227,8 @@ class _ReservationScreenState extends State<ReservationScreen> {
     }
 
     final previousRemaining = accessState.remainingFreeQuotes;
-    await auth.refreshCommercialAccessStatus();
-    final refreshedState = resolveCommercialAccessState(auth.accessData);
+    final auth = context.read<AuthProvider>();
+    final refreshedState = await _refreshCommercialAccessState();
     if (!refreshedState.hasPaidAccess &&
         previousRemaining > 0 &&
         refreshedState.remainingFreeQuotes >= previousRemaining) {

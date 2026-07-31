@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/acceso_comercial_cliente.dart';
 import '../../../models/aeropuerto.dart';
 import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -20,8 +21,7 @@ class ReservationScreenContent extends StatelessWidget {
     required this.departureTime,
     required this.returnDate,
     required this.returnTime,
-    required this.hasActiveMembership,
-    required this.remainingFreeQuotes,
+    required this.commercialState,
     required this.onTodayTrip,
     required this.onRoundTrip,
     required this.onMultiCity,
@@ -51,8 +51,7 @@ class ReservationScreenContent extends StatelessWidget {
   final TimeOfDay? departureTime;
   final DateTime? returnDate;
   final TimeOfDay? returnTime;
-  final bool hasActiveMembership;
-  final int remainingFreeQuotes;
+  final CommercialAccessState commercialState;
   final VoidCallback onTodayTrip;
   final VoidCallback onRoundTrip;
   final VoidCallback onMultiCity;
@@ -75,8 +74,6 @@ class ReservationScreenContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final needsCommercialAccess =
-        !hasActiveMembership && remainingFreeQuotes <= 0;
     final isPrimaryFormReady =
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
@@ -90,46 +87,15 @@ class ReservationScreenContent extends StatelessWidget {
         children: [
           _FlightSearchHero(
             isReady: isPrimaryFormReady,
-            remainingFreeQuotes: remainingFreeQuotes,
-            hasActiveMembership: hasActiveMembership,
+            remainingFreeQuotes: commercialState.remainingFreeQuotes,
+            hasActiveMembership:
+                commercialState.hasPaidAccess || commercialState.canReserve,
           ),
           const SizedBox(height: 20),
-          if (needsCommercialAccess) ...[
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101C2D),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: const Color(0xFFD9B25F).withValues(alpha: .28),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.lock_outline_rounded,
-                    color: Color(0xFFD9B25F),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Activa tu acceso para seguir cotizando.',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: onOpenMembership,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFD9B25F),
-                    ),
-                    child: const Text('Activar'),
-                  ),
-                ],
-              ),
+          if (commercialState.shouldShowAccessBanner) ...[
+            _CommercialAccessBanner(
+              commercialState: commercialState,
+              onOpenMembership: onOpenMembership,
             ),
             const SizedBox(height: 20),
           ],
@@ -155,6 +121,7 @@ class ReservationScreenContent extends StatelessWidget {
             onPickRouteDate: onPickRouteDate,
             onRemoveRoute: onRemoveRoute,
             onAddRoute: onAddRoute,
+            commercialState: commercialState,
             onPreview: onPreview,
           ),
           const SizedBox(height: 26),
@@ -219,6 +186,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
     required this.onPickRouteDate,
     required this.onRemoveRoute,
     required this.onAddRoute,
+    required this.commercialState,
     required this.onPreview,
   });
 
@@ -243,6 +211,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
   final ValueChanged<int> onPickRouteDate;
   final ValueChanged<int> onRemoveRoute;
   final VoidCallback onAddRoute;
+  final CommercialAccessState commercialState;
   final VoidCallback onPreview;
 
   @override
@@ -431,7 +400,8 @@ class _LuxuryQuoteForm extends StatelessWidget {
             const SizedBox(height: 16),
             _QuoteScaleButton(
               onTap:
-                  reservation.isLoadingQuotePreview || !isReady
+                  reservation.isLoadingQuotePreview ||
+                          (!isReady && commercialState.canQuote)
                       ? null
                       : onPreview,
               child: Container(
@@ -440,7 +410,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   gradient:
-                      isReady
+                      commercialState.canQuote && isReady
                           ? const LinearGradient(
                             colors: [Color(0xFFF0D58F), Color(0xFFD9B25F)],
                           )
@@ -448,7 +418,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
                             colors: [Color(0xFF344052), Color(0xFF273344)],
                           ),
                   boxShadow:
-                      isReady
+                      commercialState.canQuote && isReady
                           ? [
                             BoxShadow(
                               color: const Color(
@@ -474,18 +444,20 @@ class _LuxuryQuoteForm extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.flight_takeoff_rounded,
+                              commercialState.canQuote
+                                  ? Icons.flight_takeoff_rounded
+                                  : Icons.lock_reset_rounded,
                               color:
-                                  isReady
+                                  commercialState.canQuote && isReady
                                       ? const Color(0xFF111820)
                                       : Colors.white.withValues(alpha: .45),
                             ),
                             const SizedBox(width: 9),
                             Text(
-                              'Solicitar cotización',
+                              commercialState.quoteActionLabel,
                               style: TextStyle(
                                 color:
-                                    isReady
+                                    commercialState.canQuote && isReady
                                         ? const Color(0xFF111820)
                                         : Colors.white.withValues(alpha: .45),
                                 fontSize: 16,
@@ -506,6 +478,126 @@ class _LuxuryQuoteForm extends StatelessWidget {
     if (airport == null) return '';
     final code = airport.iata?.trim().toUpperCase() ?? '';
     return code.isEmpty ? airport.city : '$code · ${airport.city}';
+  }
+}
+
+class _CommercialAccessBanner extends StatelessWidget {
+  const _CommercialAccessBanner({
+    required this.commercialState,
+    required this.onOpenMembership,
+  });
+
+  final CommercialAccessState commercialState;
+  final VoidCallback onOpenMembership;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isCritical =
+        commercialState.isExpired || commercialState.isSuspended;
+    final Color borderColor =
+        isCritical ? const Color(0xFFF1A9A0) : const Color(0xFFD9B25F);
+    final Color backgroundColor =
+        isCritical ? const Color(0xFF2B1720) : const Color(0xFF101C2D);
+    final Color accentColor =
+        isCritical ? const Color(0xFFFFD7D2) : const Color(0xFFD9B25F);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: borderColor.withValues(alpha: .6)),
+        boxShadow: [
+          BoxShadow(
+            color: borderColor.withValues(alpha: .12),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isCritical
+                      ? Icons.warning_amber_rounded
+                      : Icons.workspace_premium_outlined,
+                  color: accentColor,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      commercialState.accessBannerTitle,
+                      style: TextStyle(
+                        color: accentColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      commercialState.accessBannerMessage,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onOpenMembership,
+              style: FilledButton.styleFrom(
+                backgroundColor: accentColor,
+                foregroundColor: const Color(0xFF111820),
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              icon: const Icon(Icons.credit_card_rounded),
+              label: Text(
+                commercialState.paymentActionLabel,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+          if (commercialState.requiresPayment && !commercialState.canQuote)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text(
+                'La cotizacion permanecera bloqueada hasta completar la reactivacion del acceso comercial.',
+                style: TextStyle(
+                  color: Color(0xFFF8E9E6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

@@ -52,10 +52,14 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   late final AnimationController _entryController;
 
   File? _ineFront;
+  File? _registrationPdf;
   File? _selfie;
+  String? _registrationIdentificationId;
   int _currentStep = 0;
+  _IdentityDocumentMode? _documentMode;
   bool _scanningDocument = false;
   bool _validatingSelfie = false;
+  bool _uploadingRegistrationPdf = false;
   bool _passwordVisible = false;
   bool _passwordConfirmationVisible = false;
   bool _selfieHasFace = false;
@@ -111,6 +115,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   }
 
   Future<void> _pickIneFront() async {
+    _activateIdentityMode(_IdentityDocumentMode.ineScan);
     final selected = await _selectDocumentImage('INE');
     if (selected == null) return;
     await _logFileDiagnostics('INE selected', selected);
@@ -121,6 +126,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
     setState(() {
       _ineFront = optimized;
+      _registrationPdf = null;
+      _registrationIdentificationId = null;
+      _documentTypeController.text = 'INE';
       _documentScanMessage = 'Escaneando datos de la INE en el dispositivo...';
     });
     await _scanIneLocally();
@@ -134,11 +142,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     final selectedPath = result?.files.single.path;
     if (selectedPath == null || !mounted) return;
     setState(() {
-      _ineFront = File(selectedPath);
-      _documentTypeController.text = 'PDF';
+      _documentMode = _IdentityDocumentMode.pdf;
+      _registrationPdf = File(selectedPath);
+      _registrationIdentificationId = null;
+      _ineFront = null;
+      _documentTypeController.text = 'INE';
+      _ineScanRaw = '';
       _ineScanStatus = 'uploaded_pdf';
       _documentScanMessage =
-          'Documento PDF cargado. Completa o revisa manualmente los datos antes de continuar.';
+          'PDF seleccionado. Completa o revisa tus datos y al finalizar lo guardaremos antes del registro.';
     });
   }
 
@@ -172,7 +184,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     await _logFileDiagnostics('INE recovered optimized', optimized);
 
     setState(() {
+      _documentMode = _IdentityDocumentMode.ineScan;
       _ineFront = optimized;
+      _registrationPdf = null;
+      _registrationIdentificationId = null;
       _documentScanMessage =
           'Se recupero la foto de la INE despues de volver de la camara.';
     });
@@ -610,14 +625,122 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     }
   }
 
+  void _activateIdentityMode(_IdentityDocumentMode mode) {
+    if (!mounted) return;
+    setState(() {
+      _documentMode = mode;
+      _documentTypeController.text = 'INE';
+      if (mode == _IdentityDocumentMode.ineScan) {
+        _registrationPdf = null;
+        _registrationIdentificationId = null;
+      } else {
+        _ineFront = null;
+        _ineScanRaw = '';
+        _ineScanStatus = '';
+      }
+    });
+  }
+
+  bool get _usesScannedIdentity =>
+      _documentMode == _IdentityDocumentMode.ineScan;
+
+  bool get _usesPdfIdentity => _documentMode == _IdentityDocumentMode.pdf;
+
+  bool get _hasIdentityDocumentReady =>
+      _usesScannedIdentity
+          ? _ineFront != null
+          : _usesPdfIdentity && _registrationPdf != null;
+
+  String _identityPromptMessage() {
+    if (_documentMode == null) {
+      return 'Selecciona una opción: escanear INE o subir PDF.';
+    }
+    if (_usesScannedIdentity) {
+      return 'Escanea tu INE antes de continuar.';
+    }
+    return 'Selecciona el PDF de tu identificación antes de continuar.';
+  }
+
+  Future<String?> _ensureRegistrationIdentificationUploaded() async {
+    if (!_usesPdfIdentity) return null;
+    final pdf = _registrationPdf;
+    if (pdf == null) {
+      _showMessage('Selecciona el PDF de tu identificación.');
+      return null;
+    }
+    final existingId = _registrationIdentificationId?.trim() ?? '';
+    if (existingId.isNotEmpty) return existingId;
+
+    final missingFields = <String>[
+      if (_nameController.text.trim().isEmpty) 'nombre',
+      if (_phoneController.text.trim().isEmpty) 'teléfono',
+      if (_birthDateController.text.trim().isEmpty) 'fecha de nacimiento',
+      if (_nationalityController.text.trim().isEmpty) 'nacionalidad',
+      if (_documentNumberController.text.trim().isEmpty) 'número de documento',
+      if (_ineCurpController.text.trim().isEmpty) 'CURP',
+    ];
+    if (missingFields.isNotEmpty) {
+      _showMessage(
+        'Para usar PDF completa estos datos primero: ${missingFields.join(', ')}.',
+      );
+      return null;
+    }
+
+    setState(() {
+      _uploadingRegistrationPdf = true;
+      _documentScanMessage = 'Guardando identificación oficial en PDF...';
+    });
+
+    try {
+      final response = await _api.storeRegistrationIdentification(
+        file: pdf,
+        fullName: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        birthDate: _birthDateController.text.trim(),
+        documentNumber: _documentNumberController.text.trim(),
+        nationality: _nationalityController.text.trim(),
+        curp: _ineCurpController.text.trim(),
+        expiresAt: _documentExpirationController.text.trim(),
+        replaceDocumentId: existingId,
+      );
+      final document = _map(response['document']);
+      final documentId = (document['id'] ?? '').toString().trim();
+      if (documentId.isEmpty) {
+        throw const ApiException(
+          'No recibimos el identificador del PDF guardado.',
+        );
+      }
+      if (!mounted) return documentId;
+      setState(() {
+        _registrationIdentificationId = documentId;
+        _documentScanMessage =
+            'PDF guardado correctamente. Ya puedes completar el registro.';
+      });
+      return documentId;
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _documentScanMessage =
+              'No se pudo guardar el PDF. Revisa los datos e inténtalo de nuevo.';
+        });
+      }
+      _showMessage(error.message);
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _uploadingRegistrationPdf = false);
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (_passwordController.text != _passwordConfirmationController.text) {
       _showMessage('Las contraseñas no coinciden.');
       return;
     }
 
-    if (_ineFront == null) {
-      _showMessage('Sube la INE.');
+    if (!_hasIdentityDocumentReady) {
+      _showMessage(_identityPromptMessage());
       return;
     }
 
@@ -628,6 +751,16 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
     if (!_selfieHasFace) {
       _showMessage('La selfie debe tener un rostro detectado.');
+      return;
+    }
+
+    final identificationDocumentId =
+        _usesPdfIdentity
+            ? await _ensureRegistrationIdentificationUploaded()
+            : null;
+    if (_usesPdfIdentity &&
+        (identificationDocumentId == null ||
+            identificationDocumentId.isEmpty)) {
       return;
     }
 
@@ -664,9 +797,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       biometricCapturedAt: _biometricCapturedAt,
       biometricProvider: _biometricProvider,
       biometricTemplateType: _biometricTemplateType,
+      identityValidationRequired: true,
+      identificationDocumentId: identificationDocumentId ?? '',
       password: _passwordController.text,
       passwordConfirmation: _passwordConfirmationController.text,
-      ineFront: _ineFront,
+      ineFront: _usesScannedIdentity ? _ineFront : null,
       ineBack: null,
       selfieBiometric: _selfie,
     );
@@ -689,8 +824,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
   void _continueToAccess() {
     if (!_formKey.currentState!.validate()) return;
-    if (_ineFront == null) {
-      _showMessage('Sube la INE.');
+    if (!_hasIdentityDocumentReady) {
+      _showMessage(_identityPromptMessage());
       return;
     }
     if (_selfie == null || !_selfieHasFace) {
@@ -740,11 +875,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF04101D),
-              Color(0xFF06111B),
-              Color(0xFF03070D),
-            ],
+            colors: [Color(0xFF04101D), Color(0xFF06111B), Color(0xFF03070D)],
           ),
         ),
         child: Stack(
@@ -766,18 +897,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
             Positioned(
               top: 120,
               right: -20,
-              child: _PremiumGlow(
-                size: 220,
-                color: const Color(0x22D8B15D),
-              ),
+              child: _PremiumGlow(size: 220, color: const Color(0x22D8B15D)),
             ),
             Positioned(
               top: 320,
               left: -50,
-              child: _PremiumGlow(
-                size: 220,
-                color: const Color(0x143E6DAA),
-              ),
+              child: _PremiumGlow(size: 220, color: const Color(0x143E6DAA)),
             ),
             SafeArea(
               bottom: false,
@@ -856,11 +981,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _field(_nameController, 'Nombre completo'),
+                                          _field(
+                                            _nameController,
+                                            'Nombre completo',
+                                          ),
                                           _field(
                                             _emailController,
                                             'Correo',
-                                            keyboard: TextInputType.emailAddress,
+                                            keyboard:
+                                                TextInputType.emailAddress,
                                           ),
                                           _field(
                                             _phoneController,
@@ -891,12 +1020,18 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                               Expanded(
                                                 child: _UploadOptionCard(
                                                   title: 'Escanear INE',
-                                                  icon: Icons.credit_card_rounded,
+                                                  icon:
+                                                      Icons.credit_card_rounded,
                                                   buttonLabel: 'Escanear',
-                                                  accent: const Color(0xFFD8B15D),
-                                                  loaded: _ineFront != null &&
-                                                      _documentTypeController.text !=
-                                                          'PDF',
+                                                  accent: const Color(
+                                                    0xFFD8B15D,
+                                                  ),
+                                                  selected:
+                                                      _usesScannedIdentity,
+                                                  loaded:
+                                                      _usesScannedIdentity &&
+                                                      _ineFront != null,
+                                                  loadedLabel: _ineFileLabel(),
                                                   onTap: _pickIneFront,
                                                 ),
                                               ),
@@ -904,20 +1039,30 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                               Expanded(
                                                 child: _UploadOptionCard(
                                                   title: 'Subir PDF',
-                                                  icon: Icons.picture_as_pdf_rounded,
+                                                  icon:
+                                                      Icons
+                                                          .picture_as_pdf_rounded,
                                                   buttonLabel:
                                                       'Seleccionar archivo',
-                                                  accent: const Color(0xFF3D6EA9),
-                                                  loaded: _ineFront != null &&
-                                                      _documentTypeController.text ==
-                                                          'PDF',
+                                                  accent: const Color(
+                                                    0xFF3D6EA9,
+                                                  ),
+                                                  selected: _usesPdfIdentity,
+                                                  loaded:
+                                                      _usesPdfIdentity &&
+                                                      _registrationPdf != null,
+                                                  loadedLabel:
+                                                      _uploadingRegistrationPdf
+                                                          ? 'Guardando PDF...'
+                                                          : _pdfFileLabel(),
                                                   onTap: _pickDocumentPdf,
                                                   secondary: true,
                                                 ),
                                               ),
                                             ],
                                           ),
-                                          if (_documentScanMessage.isNotEmpty) ...[
+                                          if (_documentScanMessage
+                                              .isNotEmpty) ...[
                                             const SizedBox(height: 10),
                                             _PremiumInlineNote(
                                               message: _documentScanMessage,
@@ -935,8 +1080,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                             hint: 'AAAA-MM-DD',
                                             requiredField: false,
                                             onChanged:
-                                                () => _documentStatusController.text =
-                                                    _documentStatus(
+                                                () =>
+                                                    _documentStatusController
+                                                        .text = _documentStatus(
                                                       _documentExpirationController
                                                           .text,
                                                     ),
@@ -969,7 +1115,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                           _field(
                                             _emailController,
                                             'Correo',
-                                            keyboard: TextInputType.emailAddress,
+                                            keyboard:
+                                                TextInputType.emailAddress,
                                           ),
                                           Align(
                                             alignment: Alignment.centerRight,
@@ -997,11 +1144,14 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                                 color: Colors.white,
                                               ),
                                             ),
-                                            activeThumbColor: const Color(0xFFD8B15D),
+                                            activeThumbColor: const Color(
+                                              0xFFD8B15D,
+                                            ),
                                             value: _passwordVisible,
                                             onChanged:
                                                 (value) => setState(
-                                                  () => _passwordVisible = value,
+                                                  () =>
+                                                      _passwordVisible = value,
                                                 ),
                                           ),
                                           _field(
@@ -1019,9 +1169,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                                 color: Colors.white,
                                               ),
                                             ),
-                                            activeThumbColor: const Color(0xFFD8B15D),
-                                            value:
-                                                _passwordConfirmationVisible,
+                                            activeThumbColor: const Color(
+                                              0xFFD8B15D,
+                                            ),
+                                            value: _passwordConfirmationVisible,
                                             onChanged:
                                                 (value) => setState(
                                                   () =>
@@ -1072,8 +1223,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     return [
       _RegisterChecklistItem(
         icon: Icons.badge_rounded,
-        label: 'INE',
-        ready: _ineFront != null,
+        label: 'Identidad',
+        ready: _hasIdentityDocumentReady,
       ),
       _RegisterChecklistItem(
         icon: Icons.face_retouching_natural_rounded,
@@ -1824,9 +1975,21 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     if (_selfieHasFace) return 'Selfie validada';
     return 'Selfie cargada';
   }
+
+  String _pdfFileLabel() {
+    final pdf = _registrationPdf;
+    if (pdf == null) return '';
+    if (_uploadingRegistrationPdf) return 'Guardando PDF...';
+    if ((_registrationIdentificationId ?? '').isNotEmpty) {
+      return 'PDF guardado y vinculado';
+    }
+    return path.basename(pdf.path);
+  }
 }
 
 enum _DocumentImageSource { camera, files }
+
+enum _IdentityDocumentMode { ineScan, pdf }
 
 class _PremiumGlow extends StatelessWidget {
   const _PremiumGlow({required this.size, required this.color});
@@ -1842,9 +2005,7 @@ class _PremiumGlow extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0)],
-          ),
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
         ),
       ),
     );
@@ -2167,7 +2328,9 @@ class _UploadOptionCard extends StatelessWidget {
     required this.icon,
     required this.buttonLabel,
     required this.accent,
+    required this.selected,
     required this.loaded,
+    required this.loadedLabel,
     required this.onTap,
     this.secondary = false,
   });
@@ -2176,7 +2339,9 @@ class _UploadOptionCard extends StatelessWidget {
   final IconData icon;
   final String buttonLabel;
   final Color accent;
+  final bool selected;
   final bool loaded;
+  final String loadedLabel;
   final VoidCallback onTap;
   final bool secondary;
 
@@ -2185,9 +2350,18 @@ class _UploadOptionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .03),
+        color:
+            selected
+                ? accent.withValues(alpha: .08)
+                : Colors.white.withValues(alpha: .03),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0x24FFFFFF)),
+        border: Border.all(
+          color:
+              selected
+                  ? accent.withValues(alpha: .50)
+                  : const Color(0x24FFFFFF),
+          width: selected ? 1.4 : 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2211,17 +2385,25 @@ class _UploadOptionCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: const Color(0x455FD07D)),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Color(0xFF89E39A), size: 15),
-                  SizedBox(width: 6),
-                  Text(
-                    'Documento cargado',
-                    style: TextStyle(
-                      color: Color(0xFF89E39A),
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF89E39A),
+                    size: 15,
+                  ),
+                  const SizedBox(width: 6),
+                  const Flexible(
+                    child: Text(
+                      'Documento cargado',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFF89E39A),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -2235,9 +2417,10 @@ class _UploadOptionCard extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(42),
                   backgroundColor:
-                      secondary ? Colors.transparent : accent.withValues(alpha: .92),
-                  foregroundColor:
-                      secondary ? accent : const Color(0xFF0D1218),
+                      secondary
+                          ? Colors.transparent
+                          : accent.withValues(alpha: .92),
+                  foregroundColor: secondary ? accent : const Color(0xFF0D1218),
                   side:
                       secondary
                           ? BorderSide(color: accent.withValues(alpha: .55))
@@ -2252,6 +2435,19 @@ class _UploadOptionCard extends StatelessWidget {
                 ),
               ),
             ),
+          if (loadedLabel.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              loadedLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .68),
+                fontSize: 11.5,
+                height: 1.25,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2320,13 +2516,12 @@ class _BiometricValidationCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color:
-                      ready
-                          ? const Color(0x185FD07D)
-                          : const Color(0x14D8B15D),
+                      ready ? const Color(0x185FD07D) : const Color(0x14D8B15D),
                 ),
                 child: Icon(
                   ready ? Icons.verified_user_rounded : Icons.face_rounded,
-                  color: ready ? const Color(0xFF89E39A) : const Color(0xFFD8B15D),
+                  color:
+                      ready ? const Color(0xFF89E39A) : const Color(0xFFD8B15D),
                   size: 28,
                 ),
               ),
@@ -2381,7 +2576,8 @@ class _BiometricValidationCard extends StatelessWidget {
             Text(
               message,
               style: TextStyle(
-                color: ready ? const Color(0xFF89E39A) : const Color(0xFFC8D0DA),
+                color:
+                    ready ? const Color(0xFF89E39A) : const Color(0xFFC8D0DA),
                 fontSize: 12.5,
                 height: 1.4,
               ),
@@ -2563,11 +2759,16 @@ class _ClientRegisterFooter extends StatelessWidget {
                             : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  buttonLabel,
-                                  style: const TextStyle(
-                                    fontSize: 16.5,
-                                    fontWeight: FontWeight.w800,
+                                Flexible(
+                                  child: Text(
+                                    buttonLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 16.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
