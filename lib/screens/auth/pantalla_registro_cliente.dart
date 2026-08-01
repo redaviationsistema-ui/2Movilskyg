@@ -754,6 +754,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       return;
     }
 
+    final authProvider = context.read<AuthProvider>();
+
     final identificationDocumentId =
         _usesPdfIdentity
             ? await _ensureRegistrationIdentificationUploaded()
@@ -764,7 +766,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       return;
     }
 
-    final ok = await context.read<AuthProvider>().registerClient(
+    final ok = await authProvider.registerClient(
       name: _nameController.text,
       email: _emailController.text,
       phone: _phoneController.text,
@@ -809,8 +811,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     if (!mounted) return;
     if (!ok) {
       _showMessage(
-        context.read<AuthProvider>().errorMessage ??
-            'No fue posible crear la cuenta.',
+        authProvider.errorMessage ?? 'No fue posible crear la cuenta.',
       );
       return;
     }

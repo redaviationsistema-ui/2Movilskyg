@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,7 +13,9 @@ import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
 
 class ReservationProvider extends ChangeNotifier {
-  ReservationProvider() {
+  ReservationProvider({ApiClient? apiClient, LocalCacheService? cacheService})
+    : _api = apiClient ?? ApiClient.instance,
+      _cacheService = cacheService ?? LocalCacheService() {
     SessionCleanupRegistry.register(clearSessionData);
   }
   static const bool _enableClientQuoteLogs = false;
@@ -26,8 +29,8 @@ class ReservationProvider extends ChangeNotifier {
     'disponible',
   };
 
-  final ApiClient _api = ApiClient.instance;
-  final LocalCacheService _cacheService = LocalCacheService();
+  final ApiClient _api;
+  final LocalCacheService _cacheService;
   final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'es_MX',
     symbol: 'USD ',
@@ -379,6 +382,11 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   Future<bool> previewCurrentSelection() async {
+    final previousMatches = List<Map<String, dynamic>>.from(quoteMatches);
+    final previousSelectedQuote =
+        selectedQuoteMatch == null
+            ? null
+            : Map<String, dynamic>.from(selectedQuoteMatch!);
     quoteError = null;
     isLoadingQuotePreview = true;
     notifyListeners();
@@ -401,12 +409,11 @@ class ReservationProvider extends ChangeNotifier {
         quoteMatches,
         primaryRoute.fromAirport,
       );
-      quoteMatches = _sortMatchesByTotalDesc(quoteMatches);
 
       if (_enableClientQuoteLogs) {
         for (final match in quoteMatches) {
           debugPrint(
-            '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${match['total'] ?? match['final_price'] ?? match['price']} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
+            '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${_quoteOfficialTotalValue(match)} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
           );
         }
       }
@@ -415,12 +422,39 @@ class ReservationProvider extends ChangeNotifier {
 
       if (quoteMatches.isEmpty) {
         quoteError =
-            'No fue posible generar una cotizacion real para este itinerario.';
+            'No encontramos aeronaves disponibles en el aeropuerto de origen ni en bases cercanas dentro del radio operativo.';
         return false;
       }
 
       return true;
+    } on ApiException catch (error) {
+      if (previousMatches.isNotEmpty) {
+        quoteMatches = previousMatches;
+        selectedQuoteMatch = previousSelectedQuote;
+      }
+      quoteError = _quotePreviewErrorMessage(error);
+      return false;
+    } on TimeoutException {
+      if (previousMatches.isNotEmpty) {
+        quoteMatches = previousMatches;
+        selectedQuoteMatch = previousSelectedQuote;
+      }
+      quoteError =
+          'El servidor tardó demasiado en responder. Intenta nuevamente en unos momentos.';
+      return false;
+    } on SocketException {
+      if (previousMatches.isNotEmpty) {
+        quoteMatches = previousMatches;
+        selectedQuoteMatch = previousSelectedQuote;
+      }
+      quoteError =
+          'No fue posible conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+      return false;
     } catch (error) {
+      if (previousMatches.isNotEmpty) {
+        quoteMatches = previousMatches;
+        selectedQuoteMatch = previousSelectedQuote;
+      }
       quoteError = 'No fue posible obtener una cotizacion real: $error';
       return false;
     } finally {
@@ -631,13 +665,7 @@ class ReservationProvider extends ChangeNotifier {
           quote?['pricing_context'] ??
           quote?['pricing'],
     );
-    final total = _asNumber(
-      quote?['selected_card_price'] ??
-          quote?['total'] ??
-          quote?['final_price'] ??
-          pricingBreakdown['total'] ??
-          pricingBreakdown['final_price'],
-    );
+    final total = _resolveOfficialQuoteTotal(quote ?? const <String, dynamic>{});
     final basePrice = _asNumber(
       quote?['base_price'] ??
           quote?['flight_base'] ??
@@ -961,15 +989,16 @@ class ReservationProvider extends ChangeNotifier {
     final pricing =
         backendPricing ??
         (computedPricing['hasFormulaInputs'] == true ? computedPricing : null);
+    final aircraftBaseAirport = _nestedMap(match['aircraft_base_airport']);
+    final repositioning = _nestedMap(match['repositioning']);
+    final returnToBase = _nestedMap(match['return_to_base']);
     final resolvedTotal =
         pricing != null
-            ? _asNumber(pricing['total'])
-            : _asNumber(
-              match['final_price'] ??
-                  match['total'] ??
-                  match['price'] ??
-                  match['quoted_price'],
-            );
+            ? _resolveOfficialQuoteTotal({
+              ...match,
+              'pricing': pricing,
+            })
+            : _resolveOfficialQuoteTotal(match);
 
     return {
       ...match,
@@ -996,7 +1025,7 @@ class ReservationProvider extends ChangeNotifier {
       'time': _resolveMatchTime(match, pricing),
       'final_price':
           pricing != null
-              ? _asMoney(pricing['total'])
+              ? _asMoney(resolvedTotal)
               : match['final_price'] ??
                   match['price'] ??
                   match['quoted_price'] ??
@@ -1072,10 +1101,26 @@ class ReservationProvider extends ChangeNotifier {
       ),
       'image_url': _primaryImage(match) ?? _primaryImage(aircraftRecord) ?? '',
       'images': _extractImages(match, aircraftRecord),
+      'requires_repositioning':
+          match['requires_repositioning'] == true ||
+          _asNumber(
+                match['repositioning_distance_nm'] ??
+                    repositioning['distance_nm'] ??
+                    match['repositioning_hours'] ??
+                    repositioning['flight_hours'],
+                0,
+              ) >
+              0,
+      'selected_radius_nm': _asNumber(match['selected_radius_nm'], 0),
+      'aircraft_base_airport':
+          aircraftBaseAirport.isEmpty ? null : aircraftBaseAirport,
+      'repositioning': repositioning.isEmpty ? null : repositioning,
+      'return_to_base': returnToBase.isEmpty ? null : returnToBase,
       'pricing_context':
           match['pricing_context'] ?? match['pricingContext'] ?? pricing,
       'pricing_breakdown': pricing,
-      'total': pricing != null ? pricing['total'] : resolvedTotal,
+      'pricing': pricing,
+      'total': resolvedTotal,
       'subtotal':
           pricing != null ? pricing['subtotal'] : _asNumber(match['subtotal']),
       'utility':
@@ -1133,9 +1178,16 @@ class ReservationProvider extends ChangeNotifier {
       double.nan,
     );
     final total = _asNumber(
-      source['total'] ??
+      source['total_amount'] ??
+          source['amount_due'] ??
+          source['selected_card_price'] ??
+          source['estimated_total'] ??
+          source['total'] ??
           source['final_price'] ??
           source['finalPrice'] ??
+          match['amount_due'] ??
+          match['selected_card_price'] ??
+          match['estimated_total'] ??
           match['final_price'] ??
           match['total'] ??
           match['price'],
@@ -1156,6 +1208,7 @@ class ReservationProvider extends ChangeNotifier {
     }
 
     return {
+      ...Map<String, dynamic>.from(rawBreakdown.isNotEmpty ? rawBreakdown : source),
       'source': 'backend',
       'hasFormulaInputs': false,
       'billable_hours': billableHours.isNaN ? null : billableHours,
@@ -1166,6 +1219,30 @@ class ReservationProvider extends ChangeNotifier {
       'overnight': overnight.isNaN ? 0 : overnight,
       'utility': utility.isNaN ? 0 : utility,
       'total': total.isNaN ? 0 : total,
+      'total_amount': total.isNaN ? 0 : total,
+      'customer_flight_cost': _asNumber(
+        source['customer_flight_cost'] ?? source['client_flight_cost'],
+        0,
+      ),
+      'repositioning_cost': _asNumber(
+        source['repositioning_cost'] ??
+            source['initial_repositioning_cost'] ??
+            source['repositioning'],
+        0,
+      ),
+      'return_to_base_cost': _asNumber(source['return_to_base_cost'], 0),
+      'airport_expenses': _asNumber(source['airport_expenses'], 0),
+      'overnight_cost': _asNumber(source['overnight_cost'], 0),
+      'margin_amount': _asNumber(
+        source['margin_amount'] ?? source['utility'],
+        0,
+      ),
+      'payment_fees': _asNumber(
+        source['payment_fees'] ??
+            source['stripe_fee'] ??
+            source['administrative_fee'],
+        0,
+      ),
       'taxes': _asNumber(source['taxes'] ?? source['tax'], 0),
       'landing_fees': _asNumber(
         source['landing_fees'] ?? source['landing_fee'],
@@ -1182,10 +1259,12 @@ class ReservationProvider extends ChangeNotifier {
       ),
       'tax_rate': _asNumber(
         source['tax_rate'] ??
-            source['taxRate'] ??
-            source['iva_rate'] ??
-            source['ivaRate'],
-        double.nan,
+                source['taxRate'] ??
+                source['iva_rate'] ??
+                source['ivaRate']
+            ??
+            '',
+        0,
       ),
       'base_price': basePrice.isNaN ? 0 : basePrice,
       'hourly_rate': _asNumber(
@@ -1193,6 +1272,24 @@ class ReservationProvider extends ChangeNotifier {
         0,
       ),
     };
+  }
+
+  double _resolveOfficialQuoteTotal(Map<String, dynamic> match) {
+    final pricing = _nestedMap(
+      match['pricing'] ?? match['pricing_breakdown'] ?? match['pricing_context'],
+    );
+
+    return _asNumber(
+      pricing['total_amount'] ??
+          match['amount_due'] ??
+          match['selected_card_price'] ??
+          match['estimated_total'] ??
+          match['total_amount'] ??
+          match['final_price'] ??
+          match['total'] ??
+          match['price'],
+      0,
+    );
   }
 
   Map<String, dynamic> _buildPricingBreakdown(
@@ -1369,37 +1466,43 @@ class ReservationProvider extends ChangeNotifier {
             })
             .toList();
 
-    final exactBaseAirportMatches =
-        filtered.where((match) => match['base_airport_match'] == true).toList();
-
-    if (exactBaseAirportMatches.isNotEmpty) {
-      return exactBaseAirportMatches;
-    }
-
     return filtered;
   }
 
-  List<Map<String, dynamic>> _sortMatchesByTotalDesc(
-    List<Map<String, dynamic>> matches,
-  ) {
-    final sortedMatches = List<Map<String, dynamic>>.from(matches);
-    sortedMatches.sort((current, next) {
-      final currentTotal = _quoteTotalValue(current);
-      final nextTotal = _quoteTotalValue(next);
-      final totalDifference = nextTotal.compareTo(currentTotal);
-      if (totalDifference != 0) return totalDifference;
-      return 0;
-    });
-    return sortedMatches;
-  }
-
-  double _quoteTotalValue(Map<String, dynamic> match) {
+  double _quoteOfficialTotalValue(Map<String, dynamic> match) {
+    final pricing = _nestedMap(
+      match['pricing'] ??
+          match['pricing_breakdown'] ??
+          match['pricing_context'],
+    );
     final amount = _asNumber(
-      match['total'] ?? match['final_price'] ?? match['price'],
+      pricing['total_amount'] ??
+          match['amount_due'] ??
+          match['selected_card_price'] ??
+          match['estimated_total'] ??
+          match['total'] ??
+          match['final_price'] ??
+          match['price'],
       double.nan,
     );
     if (!amount.isNaN && amount > 0) return amount;
     return 0;
+  }
+
+  String _quotePreviewErrorMessage(ApiException error) {
+    final normalized = error.message.trim();
+    if (normalized.contains('tardo demasiado')) {
+      return 'El servidor tardó demasiado en responder. Intenta nuevamente en unos momentos.';
+    }
+    if (normalized.contains('No fue posible conectar')) {
+      return 'No fue posible conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+    }
+    if ((error.statusCode ?? 0) >= 500) {
+      return 'El servidor no pudo completar la cotización. Intenta nuevamente en unos momentos.';
+    }
+    return normalized.isEmpty
+        ? 'No fue posible obtener una cotización real.'
+        : normalized;
   }
 
   String _normalizeStatus(dynamic value) {
@@ -1424,6 +1527,14 @@ class ReservationProvider extends ChangeNotifier {
     Map<String, dynamic> match,
     Map<String, dynamic>? pricing,
   ) {
+    final directTime = [match['time'], match['flight_time'], match['duration']]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
+          orElse: () => '',
+        );
+    if (directTime.isNotEmpty) return directTime;
+
     final hours = _asNumber(
       pricing?['billable_hours'] ??
           pricing?['billableHours'] ??
@@ -1450,14 +1561,6 @@ class ReservationProvider extends ChangeNotifier {
           orElse: () => '',
         );
     if (billedTime.isNotEmpty) return billedTime;
-
-    final directTime = [match['time'], match['flight_time'], match['duration']]
-        .map((value) => value?.toString().trim() ?? '')
-        .firstWhere(
-          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
-          orElse: () => '',
-        );
-    if (directTime.isNotEmpty) return directTime;
 
     return 'Tiempo por confirmar';
   }

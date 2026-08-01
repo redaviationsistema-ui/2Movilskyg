@@ -130,7 +130,14 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                     const SizedBox(height: 16),
                   ],
                   if (matches.isEmpty)
-                    _EmptyResultsCard(onBackToSearch: widget.onBackToSearch)
+                    _EmptyResultsCard(
+                      onBackToSearch: widget.onBackToSearch,
+                      onRetry:
+                          reservation.isLoadingQuotePreview
+                              ? null
+                              : reservation.previewCurrentSelection,
+                      hasServerError: reservation.quoteError != null,
+                    )
                   else
                     ...matches.asMap().entries.map(
                       (entry) => Padding(
@@ -297,9 +304,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     indexed.sort((current, next) {
       final comparison = switch (_sortCriterion) {
-        _ResultsSortCriterion.advisor => _advisorScore(
-          next.match,
-        ).compareTo(_advisorScore(current.match)),
+        _ResultsSortCriterion.advisor => 0,
         _ResultsSortCriterion.investment => _quoteTotalValue(
           current.match,
         ).compareTo(_quoteTotalValue(next.match)),
@@ -318,16 +323,21 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     return indexed.map((entry) => entry.match).toList();
   }
 
-  double _advisorScore(Map<String, dynamic> match) {
-    final exclusivity = _exclusivityScore(match);
-    final time = _safeScoreDenominator(_quoteTimeValue(match));
-    final total = _safeScoreDenominator(_quoteTotalValue(match));
-    return exclusivity * 10 + (1 / time) * 1600 + (1 / total) * 220000;
-  }
-
   double _quoteTotalValue(Map<String, dynamic> match) {
+    final pricing = _nestedMap(
+      match['pricing'] ??
+          match['pricing_breakdown'] ??
+          match['pricing_context'],
+    );
     return _extractNumber(
-      match['total'] ?? match['final_price'] ?? match['price'],
+      pricing['total_amount'] ??
+          match['amount_due'] ??
+          match['selected_card_price'] ??
+          match['estimated_total'] ??
+          match['total_amount'] ??
+          match['final_price'] ??
+          match['total'] ??
+          match['price'],
     );
   }
 
@@ -376,11 +386,6 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     if (cabin.contains('vip') || cabin.contains('elite')) cabinScore += 20;
 
     return cabinScore + capacity + (amenities * 2) + (price / 1000);
-  }
-
-  double _safeScoreDenominator(double value) {
-    if (value.isNaN || value <= 0 || value == double.maxFinite) return 1;
-    return value;
   }
 
   double _extractNumber(dynamic value) {
@@ -684,9 +689,7 @@ class _QuoteMatchCard extends StatelessWidget {
     ]);
     final provider = _providerName(quote);
     final imageUrl = resolveMediaUrl(_aircraftImageUrl(quote));
-    final price = _moneyLabel(
-      quote['final_price'] ?? quote['total'] ?? quote['price'],
-    );
+    final price = _moneyLabel(_quoteTotalAmountValue(quote));
     final time = _firstText(quote, const ['time', 'flight_time', 'duration']);
     final autonomy = _firstText(quote, const [
       'range',
@@ -704,6 +707,16 @@ class _QuoteMatchCard extends StatelessWidget {
       'queried_base_airport',
       'origin',
     ]);
+    final repositioning = _nestedMap(quote['repositioning']);
+    final aircraftBaseAirport = _nestedMap(quote['aircraft_base_airport']);
+    final requiresRepositioning = quote['requires_repositioning'] == true;
+    final baseLabel = _repositioningBaseLabel(
+      aircraftBaseAirport,
+      fallback: base,
+    );
+    final repositioningRoute = _repositioningRouteLabel(quote, repositioning);
+    final repositioningMeta = _repositioningMetaLabel(quote, repositioning);
+    final showAutonomy = autonomy.isNotEmpty && !requiresRepositioning;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -722,7 +735,7 @@ class _QuoteMatchCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
-          height: 204,
+          height: 214,
           decoration: BoxDecoration(
             color: const Color(0xFF101C2D),
             borderRadius: BorderRadius.circular(28),
@@ -833,7 +846,7 @@ class _QuoteMatchCard extends StatelessWidget {
                       ),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(13, 13, 11, 10),
+                          padding: const EdgeInsets.fromLTRB(13, 10, 11, 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -842,7 +855,7 @@ class _QuoteMatchCard extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       aircraft,
-                                      maxLines: 2,
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         color: Colors.white,
@@ -864,7 +877,7 @@ class _QuoteMatchCard extends StatelessWidget {
                                     ),
                                 ],
                               ),
-                              const SizedBox(height: 5),
+                              const SizedBox(height: 4),
                               Text(
                                 [
                                   if (provider.isNotEmpty) provider,
@@ -880,8 +893,18 @@ class _QuoteMatchCard extends StatelessWidget {
                                   height: 1.25,
                                 ),
                               ),
-                              if (base.isNotEmpty) ...[
-                                const SizedBox(height: 5),
+                              if (requiresRepositioning &&
+                                  (baseLabel.isNotEmpty ||
+                                      repositioningRoute.isNotEmpty ||
+                                      repositioningMeta.isNotEmpty)) ...[
+                                const SizedBox(height: 4),
+                                _RepositioningPill(
+                                  baseLabel: baseLabel,
+                                  routeLabel: repositioningRoute,
+                                  metaLabel: repositioningMeta,
+                                ),
+                              ] else if (base.isNotEmpty) ...[
+                                const SizedBox(height: 4),
                                 Row(
                                   children: [
                                     const Icon(
@@ -892,7 +915,7 @@ class _QuoteMatchCard extends StatelessWidget {
                                     const SizedBox(width: 3),
                                     Expanded(
                                       child: Text(
-                                        'Base operativa en ${base.toUpperCase()}',
+                                        'Base en origen',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -929,7 +952,7 @@ class _QuoteMatchCard extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                              if (autonomy.isNotEmpty) ...[
+                              if (showAutonomy) ...[
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
@@ -1054,7 +1077,7 @@ class _AircraftDataBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 42,
+      height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xFF07111D).withValues(alpha: .45),
@@ -1214,9 +1237,15 @@ class _AircraftMediaEmpty extends StatelessWidget {
 }
 
 class _EmptyResultsCard extends StatelessWidget {
-  const _EmptyResultsCard({required this.onBackToSearch});
+  const _EmptyResultsCard({
+    required this.onBackToSearch,
+    this.onRetry,
+    this.hasServerError = false,
+  });
 
   final VoidCallback? onBackToSearch;
+  final VoidCallback? onRetry;
+  final bool hasServerError;
 
   @override
   Widget build(BuildContext context) {
@@ -1235,7 +1264,9 @@ class _EmptyResultsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'No hay aeronaves para esta busqueda.',
+            hasServerError
+                ? 'No fue posible cargar las aeronaves.'
+                : 'No encontramos aeronaves disponibles.',
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 18,
@@ -1244,13 +1275,26 @@ class _EmptyResultsCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Ajusta origen, fecha o pasajeros y vuelve a buscar disponibilidad.',
+            hasServerError
+                ? 'La cotización falló mientras consultábamos el servidor. Puedes reintentar ahora o volver a modificar la búsqueda.'
+                : 'Revisa el origen, la fecha o vuelve a intentarlo para consultar disponibilidad en el aeropuerto de origen y en bases cercanas.',
             style: TextStyle(
               color: palette.textSecondary,
               height: 1.35,
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: onRetry,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reintentar'),
+            ),
+          ],
           if (onBackToSearch != null) ...[
             const SizedBox(height: 16),
             FilledButton(
@@ -1293,6 +1337,173 @@ class _InfoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RepositioningPill extends StatelessWidget {
+  const _RepositioningPill({
+    required this.baseLabel,
+    required this.routeLabel,
+    required this.metaLabel,
+  });
+
+  final String baseLabel;
+  final String routeLabel;
+  final String metaLabel;
+
+  String _compactBaseLabel() {
+    final normalized = baseLabel.trim().toUpperCase();
+    if (normalized.isEmpty) return '';
+
+    final tokens =
+        normalized
+            .split(RegExp(r'\s+'))
+            .where((token) => token.isNotEmpty)
+            .toList();
+
+    if (tokens.length <= 2) return normalized;
+
+    final codeToken = tokens.firstWhere(
+      (token) => RegExp(r'^[A-Z]{3,4}$').hasMatch(token),
+      orElse: () => '',
+    );
+    if (codeToken.isNotEmpty) return codeToken;
+
+    return tokens.take(2).join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final compactBaseLabel = _compactBaseLabel();
+    final title =
+        compactBaseLabel.isEmpty
+            ? 'Reposicionamiento'
+            : 'Reposicionamiento desde $compactBaseLabel';
+    final detailParts = <String>[
+      if (routeLabel.trim().isNotEmpty) routeLabel.trim(),
+      if (metaLabel.trim().isNotEmpty) metaLabel.trim(),
+      'Incluido en la tarifa',
+    ];
+    final detailLine = detailParts.join(' · ');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: .09)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFD8B15D),
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            detailLine,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .68),
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+double _quoteTotalAmountValue(Map<String, dynamic> quote) {
+  final pricing = _nestedMap(
+    quote['pricing'] ?? quote['pricing_breakdown'] ?? quote['pricing_context'],
+  );
+  return _resultNumber(
+    pricing['total_amount'] ??
+        quote['amount_due'] ??
+        quote['selected_card_price'] ??
+        quote['estimated_total'] ??
+        quote['total_amount'] ??
+        quote['final_price'] ??
+        quote['total'] ??
+        quote['price'],
+  );
+}
+
+String _repositioningBaseLabel(
+  Map<String, dynamic> aircraftBaseAirport, {
+  String fallback = '',
+}) {
+  return _firstText(aircraftBaseAirport, const [
+        'city',
+        'name',
+        'icao',
+        'iata',
+      ]).trim().isNotEmpty
+      ? _firstText(aircraftBaseAirport, const ['city', 'name', 'icao', 'iata'])
+      : fallback;
+}
+
+String _repositioningRouteLabel(
+  Map<String, dynamic> quote,
+  Map<String, dynamic> repositioning,
+) {
+  final origin = _firstText(repositioning, const [
+    'origin_icao',
+    'origin_iata',
+  ]);
+  final destination = _firstText(repositioning, const [
+    'destination_icao',
+    'destination_iata',
+  ]);
+  if (origin.isEmpty || destination.isEmpty) return '';
+  return '$origin -> $destination';
+}
+
+String _repositioningMetaLabel(
+  Map<String, dynamic> quote,
+  Map<String, dynamic> repositioning,
+) {
+  final distanceNm = _resultNumber(
+    repositioning['distance_nm'] ?? quote['repositioning_distance_nm'],
+  );
+  final flightHours = _resultNumber(
+    repositioning['flight_hours'] ??
+        repositioning['operational_hours'] ??
+        quote['repositioning_hours'],
+  );
+  final parts = <String>[];
+  if (distanceNm > 0) {
+    parts.add('${distanceNm.round()} NM');
+  }
+  final minutes = (flightHours * 60).round();
+  if (minutes > 0) {
+    parts.add('$minutes min');
+  }
+  return parts.join(' · ');
+}
+
+Map<String, dynamic> _nestedMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return const <String, dynamic>{};
+}
+
+double _resultNumber(dynamic value) {
+  if (value is num) return value.toDouble();
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text.toLowerCase() == 'null') return 0;
+  return double.tryParse(text.replaceAll(RegExp(r'[^0-9.\-]'), '')) ?? 0;
 }
 
 class _RoundIconButton extends StatelessWidget {
