@@ -1,4 +1,5 @@
 class Airport {
+  final int? id;
   final String name;
   final String city;
   final String? state;
@@ -9,6 +10,7 @@ class Airport {
   final String? country;
 
   Airport({
+    this.id,
     required this.name,
     required this.city,
     this.state,
@@ -20,6 +22,7 @@ class Airport {
   });
 
   factory Airport.fromJson(Map<String, dynamic> json) {
+    final idValue = json['id'] ?? json['airport_id'] ?? json['aeropuerto_id'];
     final name =
         json['AEROPUERTO'] ??
         json['name'] ??
@@ -52,6 +55,7 @@ class Airport {
     final lngValue = json['LONGITUDE'] ?? json['lng'] ?? json['longitude'];
 
     return Airport(
+      id: _toInt(idValue),
       name: name,
       iata: iata,
       icao: icao,
@@ -69,8 +73,16 @@ class Airport {
     return 0;
   }
 
+  static int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
   Map<String, dynamic> toCacheMap() {
     return {
+      'id': id,
       'name': name,
       'city': city,
       'state': state,

@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../core/billable_hours_formatter.dart';
 import '../core/cliente_api.dart';
+import '../core/config/app_environment.dart';
 import '../core/client_workflow_status.dart';
 import '../core/auth/session_cleanup_registry.dart';
 import '../models/aeronave.dart';
@@ -199,6 +201,12 @@ class ReservationProvider extends ChangeNotifier {
     final json = Map<String, dynamic>.from(raw as Map);
 
     return {
+      'id':
+          json['id'] ??
+          json['airport_id'] ??
+          json['aeropuerto_id'] ??
+          json['ID'] ??
+          json['airportId'],
       'name':
           json['AEROPUERTO'] ??
           json['name'] ??
@@ -400,7 +408,45 @@ class ReservationProvider extends ChangeNotifier {
 
       final segmentCount = _completeQuoteRoutes().length;
       final previewPayload = _buildBackendFlightRequestPayload();
-
+      assert(() {
+        debugPrint('========================================');
+        debugPrint('[QUOTE REQUEST][MOBILE]');
+        debugPrint('method = POST');
+        debugPrint('baseUrl = ${_api.baseUrl}');
+        debugPrint('endpoint = ${_api.baseUrl}/client/quotes/preview');
+        debugPrint('environment = ${AppEnvironment.current.label}');
+        debugPrint(
+          'origin_airport_id = ${previewPayload['origin_airport_id'] ?? ''}',
+        );
+        debugPrint(
+          'origin_icao = ${previewPayload['origin_icao'] ?? previewPayload['origin'] ?? ''}',
+        );
+        debugPrint(
+          'destination_airport_id = ${previewPayload['destination_airport_id'] ?? ''}',
+        );
+        debugPrint(
+          'destination_icao = ${previewPayload['destination_icao'] ?? previewPayload['destination'] ?? ''}',
+        );
+        debugPrint('trip_type = ${previewPayload['trip_type'] ?? ''}');
+        debugPrint('return_date = ${previewPayload['return_date'] ?? ''}');
+        debugPrint('aircraft_id = ${previewPayload['aircraft_id'] ?? ''}');
+        debugPrint(
+          'passenger_count = ${previewPayload['passenger_count'] ?? previewPayload['passengers'] ?? ''}',
+        );
+        debugPrint(
+          'flight_time_model = ${previewPayload['flight_time_model'] ?? ''}',
+        );
+        debugPrint(
+          'include_operational_time = ${previewPayload['include_operational_time'] ?? ''}',
+        );
+        debugPrint(
+          'route_signature = ${previewPayload['route_signature'] ?? ''}',
+        );
+        debugPrint('headers = Authorization, Content-Type: application/json');
+        debugPrint('payload = $previewPayload');
+        debugPrint('========================================');
+        return true;
+      }());
       final response = await _api.previewClientQuotesPayload(previewPayload);
 
       quoteMatches = _normalizeMatches(response, segmentCount: segmentCount);
@@ -413,7 +459,7 @@ class ReservationProvider extends ChangeNotifier {
       if (_enableClientQuoteLogs) {
         for (final match in quoteMatches) {
           debugPrint(
-            '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${_quoteOfficialTotalValue(match)} tiempo=${match['time'] ?? match['flight_time'] ?? match['duration']}',
+            '[client-quote][panel] avion=${match['aircraft'] ?? match['aircraft_name'] ?? match['model']} total=${_quoteOfficialTotalValue(match)} tiempo=${match['time']}',
           );
         }
       }
@@ -629,13 +675,14 @@ class ReservationProvider extends ChangeNotifier {
     final normalizedLegs = _normalizedBackendLegs();
     final firstLeg = normalizedLegs.isNotEmpty ? normalizedLegs.first : null;
     final lastLeg = normalizedLegs.isNotEmpty ? normalizedLegs.last : null;
+    final explicitTripType = currentTripTypeCode;
     final inferredClosedRoute =
         normalizedLegs.length > 1 &&
         (firstLeg?['origin']?.toString().trim().toUpperCase() ?? '') ==
             (lastLeg?['destination']?.toString().trim().toUpperCase() ?? '');
     final tripType =
-        currentTripTypeCode != 'one_way'
-            ? currentTripTypeCode
+        explicitTripType != 'one_way'
+            ? explicitTripType
             : normalizedLegs.length > 2 ||
                 (normalizedLegs.length > 1 && !inferredClosedRoute)
             ? 'multi_leg'
@@ -651,6 +698,8 @@ class ReservationProvider extends ChangeNotifier {
         inferredClosedRoute
             ? (lastLeg?['departure_datetime']?.toString().trim())
             : null;
+    final departureDate = firstLeg?['date']?.toString().trim() ?? '';
+    final departureTime = firstLeg?['time']?.toString().trim() ?? '';
     final selectedAircraftModel =
         (quote?['aircraft'] ??
                 quote?['aircraft_name'] ??
@@ -660,12 +709,20 @@ class ReservationProvider extends ChangeNotifier {
             ?.toString()
             .trim() ??
         '';
-    final pricingBreakdown = _nestedMap(
-      quote?['pricing_breakdown'] ??
-          quote?['pricing_context'] ??
-          quote?['pricing'],
+    final priorityCode = selectedPriorityType.trim();
+    final pricingBreakdown =
+        quote == null
+            ? const <String, dynamic>{}
+            : mergeBackendPricingSources(quote);
+    final finalBillableHours =
+        quote == null ? null : extractBackendBillableHours(quote);
+    final totalBillableHours =
+        quote == null ? null : extractBackendTotalBillableHours(quote);
+    final routeBillableHours =
+        quote == null ? null : extractBackendRouteBillableHours(quote);
+    final total = _resolveOfficialQuoteTotal(
+      quote ?? const <String, dynamic>{},
     );
-    final total = _resolveOfficialQuoteTotal(quote ?? const <String, dynamic>{});
     final basePrice = _asNumber(
       quote?['base_price'] ??
           quote?['flight_base'] ??
@@ -691,13 +748,11 @@ class ReservationProvider extends ChangeNotifier {
           basePrice,
     );
     final days = _itineraryDays(normalizedLegs);
-
-    return {
+    final payload = <String, dynamic>{
       'origin': firstLeg?['origin'] ?? '',
       'base_airport': firstLeg?['origin'] ?? '',
       'destination': firstLeg?['destination'] ?? '',
       'departure_datetime': departureDatetime,
-      'return_datetime': returnDatetime,
       'passengers': passengers,
       'trip_type': tripType,
       'trip_label': currentTripTypeLabel,
@@ -708,44 +763,8 @@ class ReservationProvider extends ChangeNotifier {
       'close_route':
           tripType == 'multi_leg' ? shouldCloseRoute : inferredClosedRoute,
       'open_route': tripType == 'multi_leg' ? !shouldCloseRoute : false,
-      'aircraft_type':
-          selectedAircraftModel.isNotEmpty
-              ? selectedAircraftModel
-              : (flightType ?? aircraftType),
-      'aircraft_model':
-          selectedAircraftModel.isEmpty ? null : selectedAircraftModel,
-      'assigned_aircraft_model':
-          selectedAircraftModel.isEmpty ? null : selectedAircraftModel,
-      'aircraft_name':
-          selectedAircraftModel.isEmpty ? null : selectedAircraftModel,
-      'aircraft_id': quote?['aircraft_id'],
-      'provider_id': quote?['provider_id'],
-      'match_id':
-          quote?['match_id'] ?? quote?['matched_option_id'] ?? quote?['id'],
-      'matched_option_id':
-          quote?['matched_option_id'] ?? quote?['match_id'] ?? quote?['id'],
-      'flight_package': selectedPriorityLabel,
-      'service_tier': selectedPriorityLabel,
-      'priority_type': selectedPriorityType,
+      'priority_type': priorityCode,
       'priority_multiplier': priorityMultiplier,
-      'priority_price': priorityPrice == 0 ? null : priorityPrice,
-      'base_price': basePrice == 0 ? null : basePrice,
-      'operational_fee':
-          _asNumber(
-                    quote?['operational_fee'] ??
-                        pricingBreakdown['operational_fee'],
-                  ) ==
-                  0
-              ? null
-              : _asNumber(
-                quote?['operational_fee'] ??
-                    pricingBreakdown['operational_fee'],
-              ),
-      'subtotal': subtotal == 0 ? null : subtotal,
-      'estimated_total': total == 0 ? null : total,
-      'total': total == 0 ? null : total,
-      'final_price': total == 0 ? null : total,
-      'selected_card_price': total == 0 ? null : total,
       'time_display_mode': quote?['time_display_mode'] ?? 'direct',
       'billing_hours_mode': quote?['billing_hours_mode'] ?? 'operational',
       'flight_base_source': quote?['flight_base_source'] ?? 'billable_hours',
@@ -755,75 +774,199 @@ class ReservationProvider extends ChangeNotifier {
           quote?['include_return_to_base_in_billed_hours'] ?? true,
       'include_overnight_in_billed_hours':
           quote?['include_overnight_in_billed_hours'] ?? false,
-      'pricing_context': pricingBreakdown.isEmpty ? null : pricingBreakdown,
-      'pricing_formula_version':
-          pricingBreakdown['pricing_formula_version'] ??
-          quote?['pricing_formula_version'],
-      'commercial_margin':
-          pricingBreakdown['commercial_margin'] ?? quote?['commercial_margin'],
-      'priority_factor':
-          pricingBreakdown['priority_factor'] ?? quote?['priority_factor'],
-      'billable_hours':
-          pricingBreakdown['billable_hours'] ??
-          pricingBreakdown['billableHours'] ??
-          quote?['billable_hours'],
-      'real_flight_hours':
-          pricingBreakdown['real_flight_hours'] ?? quote?['real_flight_hours'],
-      'minimum_hours':
-          pricingBreakdown['minimum_hours'] ?? quote?['minimum_hours'],
-      'minimum_route_price':
-          pricingBreakdown['minimum_route_price'] ??
-          quote?['minimum_route_price'],
-      'subtotal_before_multipliers':
-          pricingBreakdown['subtotal_before_multipliers'] ??
-          quote?['subtotal_before_multipliers'] ??
-          subtotal,
-      'extra_services_total':
-          pricingBreakdown['extra_services_total'] ??
-          quote?['extra_services_total'],
-      'source_database': quote?['source_database'],
-      'source_table': quote?['source_table'],
-      'aircraft_snapshot':
-          quote == null
-              ? null
-              : {
-                ...quote,
-                'aircraft': selectedAircraftModel,
-                'model': quote['model'] ?? selectedAircraftModel,
-                'category': quote['cabin'] ?? quote['category'] ?? '',
-                'capacity': quote['capacity'] ?? '',
-                'selected_card_price': total == 0 ? null : total,
-                'total': total == 0 ? null : total,
-                'final_price': total == 0 ? null : total,
-                'estimated_total': total == 0 ? null : total,
-              },
+      'legs': normalizedLegs,
       'requirements':
           normalizedLegs.length > 1
               ? (inferredClosedRoute && tripType == 'multi_leg'
                   ? normalizedLegs.sublist(1, normalizedLegs.length - 1)
                   : normalizedLegs.sublist(1))
               : [],
-      'legs': normalizedLegs,
-      'pets': pets.trim().isEmpty ? null : pets.trim(),
-      'special_baggage':
-          specialBaggage.trim().isEmpty ? null : specialBaggage.trim(),
-      'preference':
-          preference.trim().isEmpty ? selectedAircraftModel : preference.trim(),
-      'overnight_nights': days == 0 ? null : days,
-      'days': days,
-      'notes': [
-        currentTripTypeLabel,
-        selectedPriorityLabel,
-        fullName.isEmpty ? 'App movil Red Sky' : 'Pasajero: $fullName',
-        if (pets.trim().isNotEmpty) pets.trim(),
-        if (specialBaggage.trim().isNotEmpty) specialBaggage.trim(),
-        if (pricingBreakdown['minimum_route_price'] != null)
-          'Minimo ruta ${pricingBreakdown['minimum_route_price']}',
-        'Noches $days',
-        if (subtotal > 0) 'Subtotal $subtotal',
-        if (total > 0) 'Total $total',
-      ].join(' | '),
     };
+
+    _putIfMeaningful(
+      payload,
+      'origin_airport_id',
+      firstLeg?['origin_airport_id'],
+    );
+    _putIfMeaningful(payload, 'origin_icao', firstLeg?['origin_icao']);
+    _putIfMeaningful(payload, 'origin_iata', firstLeg?['origin_iata']);
+    _putIfMeaningful(payload, 'origin_airport', firstLeg?['origin_airport']);
+    _putIfMeaningful(
+      payload,
+      'destination_airport_id',
+      firstLeg?['destination_airport_id'],
+    );
+    _putIfMeaningful(
+      payload,
+      'destination_icao',
+      firstLeg?['destination_icao'],
+    );
+    _putIfMeaningful(
+      payload,
+      'destination_iata',
+      firstLeg?['destination_iata'],
+    );
+    _putIfMeaningful(
+      payload,
+      'destination_airport',
+      firstLeg?['destination_airport'],
+    );
+    _putIfMeaningful(payload, 'departure_date', departureDate);
+    _putIfMeaningful(payload, 'departure_time', departureTime);
+    _putIfMeaningful(payload, 'start_date', departureDate);
+    _putIfMeaningful(payload, 'start_time', departureTime);
+    _putIfMeaningful(payload, 'start_datetime', departureDatetime);
+    _putIfMeaningful(payload, 'return_datetime', returnDatetime);
+    _putIfMeaningful(
+      payload,
+      'aircraft_type',
+      selectedAircraftModel.isNotEmpty
+          ? selectedAircraftModel
+          : (flightType ?? aircraftType),
+    );
+    _putIfMeaningful(payload, 'aircraft_model', selectedAircraftModel);
+    _putIfMeaningful(payload, 'assigned_aircraft_model', selectedAircraftModel);
+    _putIfMeaningful(payload, 'aircraft_name', selectedAircraftModel);
+    _putIfMeaningful(payload, 'aircraft_id', quote?['aircraft_id']);
+    _putIfMeaningful(payload, 'provider_id', quote?['provider_id']);
+    _putIfMeaningful(
+      payload,
+      'match_id',
+      quote?['match_id'] ?? quote?['matched_option_id'] ?? quote?['id'],
+    );
+    _putIfMeaningful(
+      payload,
+      'matched_option_id',
+      quote?['matched_option_id'] ?? quote?['match_id'] ?? quote?['id'],
+    );
+    _putIfMeaningful(payload, 'flight_package', priorityCode);
+    _putIfMeaningful(payload, 'service_tier', priorityCode);
+    _putIfMeaningful(payload, 'source_database', quote?['source_database']);
+    _putIfMeaningful(payload, 'source_table', quote?['source_table']);
+    _putIfMeaningful(payload, 'pets', pets.trim());
+    _putIfMeaningful(payload, 'special_baggage', specialBaggage.trim());
+    _putIfMeaningful(
+      payload,
+      'preference',
+      preference.trim().isEmpty ? selectedAircraftModel : preference.trim(),
+    );
+    _putIfMeaningful(payload, 'overnight_nights', days == 0 ? null : days);
+    _putIfMeaningful(payload, 'days', days);
+    _putIfMeaningful(
+      payload,
+      'notes',
+      [
+        currentTripTypeLabel,
+        priorityCode,
+        pets.trim() == 'Si' ? 'Mascotas a bordo' : '',
+        specialBaggage.trim(),
+        'Noches $days',
+      ].where((item) => _hasMeaningfulValue(item)).join(' · '),
+    );
+
+    if (quote != null) {
+      _putIfMeaningful(
+        payload,
+        'priority_price',
+        priorityPrice == 0 ? null : priorityPrice,
+      );
+      _putIfMeaningful(
+        payload,
+        'base_price',
+        basePrice == 0 ? null : basePrice,
+      );
+      _putIfMeaningful(payload, 'subtotal', subtotal == 0 ? null : subtotal);
+      _putIfMeaningful(payload, 'estimated_total', total == 0 ? null : total);
+      _putIfMeaningful(payload, 'total', total == 0 ? null : total);
+      _putIfMeaningful(payload, 'final_price', total == 0 ? null : total);
+      _putIfMeaningful(
+        payload,
+        'selected_card_price',
+        total == 0 ? null : total,
+      );
+      _putIfMeaningful(
+        payload,
+        'operational_fee',
+        _asNumber(
+                  quote['operational_fee'] ??
+                      pricingBreakdown['operational_fee'],
+                ) ==
+                0
+            ? null
+            : _asNumber(
+              quote['operational_fee'] ?? pricingBreakdown['operational_fee'],
+            ),
+      );
+      _putIfMeaningful(
+        payload,
+        'pricing_context',
+        pricingBreakdown.isEmpty ? null : pricingBreakdown,
+      );
+      _putIfMeaningful(
+        payload,
+        'pricing_formula_version',
+        pricingBreakdown['pricing_formula_version'] ??
+            quote['pricing_formula_version'],
+      );
+      _putIfMeaningful(
+        payload,
+        'commercial_margin',
+        pricingBreakdown['commercial_margin'] ?? quote['commercial_margin'],
+      );
+      _putIfMeaningful(
+        payload,
+        'priority_factor',
+        pricingBreakdown['priority_factor'] ?? quote['priority_factor'],
+      );
+      _putIfMeaningful(payload, 'billable_hours', totalBillableHours);
+      _putIfMeaningful(payload, 'final_billable_hours', finalBillableHours);
+      _putIfMeaningful(payload, 'route_billable_hours', routeBillableHours);
+      _putIfMeaningful(
+        payload,
+        'real_flight_hours',
+        pricingBreakdown['real_flight_hours'] ?? quote['real_flight_hours'],
+      );
+      _putIfMeaningful(
+        payload,
+        'minimum_hours',
+        pricingBreakdown['minimum_hours'] ?? quote['minimum_hours'],
+      );
+      _putIfMeaningful(
+        payload,
+        'minimum_route_price',
+        pricingBreakdown['minimum_route_price'] ?? quote['minimum_route_price'],
+      );
+      _putIfMeaningful(
+        payload,
+        'subtotal_before_multipliers',
+        pricingBreakdown['subtotal_before_multipliers'] ??
+            quote['subtotal_before_multipliers'] ??
+            subtotal,
+      );
+      _putIfMeaningful(
+        payload,
+        'extra_services_total',
+        pricingBreakdown['extra_services_total'] ??
+            quote['extra_services_total'],
+      );
+      _putIfMeaningful(payload, 'aircraft_snapshot', {
+        ...quote,
+        'aircraft': selectedAircraftModel,
+        'model': quote['model'] ?? selectedAircraftModel,
+        'category': quote['cabin'] ?? quote['category'] ?? '',
+        'capacity': quote['capacity'] ?? '',
+        'selected_card_price': total == 0 ? null : total,
+        'total': total == 0 ? null : total,
+        'final_price': total == 0 ? null : total,
+        'estimated_total': total == 0 ? null : total,
+        'billable_hours': totalBillableHours,
+        'final_billable_hours': finalBillableHours,
+        'route_billable_hours': routeBillableHours,
+        'debug_pricing': quote['debug_pricing'],
+      });
+    }
+
+    return payload;
   }
 
   String? _quoteValidationMessage() {
@@ -884,14 +1027,33 @@ class ReservationProvider extends ChangeNotifier {
           final date = route.startDate ?? startDate;
           final dateLabel = date == null ? '' : _dateOnly(date);
           final timeLabel = date == null ? '09:00' : _timeOnly(date);
+          final originIdentity = _airportIdentityForRequest(
+            route.fromAirport,
+            _backendAirportCode(route.fromAirport),
+          );
+          final destinationIdentity = _airportIdentityForRequest(
+            route.toAirport,
+            _backendAirportCode(route.toAirport),
+          );
 
           return {
             'origin': _backendAirportCode(route.fromAirport),
             'destination': _backendAirportCode(route.toAirport),
+            'origin_airport_id': originIdentity['id'],
+            'destination_airport_id': destinationIdentity['id'],
+            'origin_icao': originIdentity['icao'],
+            'destination_icao': destinationIdentity['icao'],
+            'origin_iata': originIdentity['iata'],
+            'destination_iata': destinationIdentity['iata'],
+            'origin_airport': originIdentity['airport'],
+            'destination_airport': destinationIdentity['airport'],
             'date': dateLabel,
             'time': timeLabel,
             'departure_datetime':
-                dateLabel.isEmpty ? '' : '$dateLabel $timeLabel',
+                dateLabel.isEmpty
+                    ? ''
+                    : '$dateLabel'
+                        'T$timeLabel:00',
             'passengers': route.passengers > 0 ? route.passengers : passengers,
           };
         })
@@ -900,6 +1062,47 @@ class ReservationProvider extends ChangeNotifier {
               (leg['destination'] as String).isNotEmpty;
         })
         .toList();
+  }
+
+  void _putIfMeaningful(
+    Map<String, dynamic> target,
+    String key,
+    dynamic value,
+  ) {
+    if (_hasMeaningfulValue(value)) {
+      target[key] = value;
+    }
+  }
+
+  Map<String, dynamic> _airportIdentityForRequest(
+    Airport? airport,
+    String fallbackCode,
+  ) {
+    final code = fallbackCode.trim().toUpperCase();
+    final icao = airport?.icao?.trim().toUpperCase();
+    final iata = airport?.iata?.trim().toUpperCase();
+    final name = airport?.name.trim();
+
+    final airportPayload = <String, dynamic>{};
+    if (_hasMeaningfulValue(airport?.id)) {
+      airportPayload['id'] = airport!.id;
+    }
+    if (_hasMeaningfulValue(icao)) {
+      airportPayload['icao'] = icao;
+    }
+    if (_hasMeaningfulValue(iata)) {
+      airportPayload['iata'] = iata;
+    }
+    if (_hasMeaningfulValue(name)) {
+      airportPayload['name'] = name;
+    }
+
+    return {
+      'id': airport?.id,
+      'icao': _hasMeaningfulValue(icao) ? icao : code,
+      'iata': _hasMeaningfulValue(iata) ? iata : null,
+      'airport': airportPayload.isEmpty ? null : airportPayload,
+    };
   }
 
   int _itineraryDays(List<Map<String, dynamic>> legs) {
@@ -989,16 +1192,119 @@ class ReservationProvider extends ChangeNotifier {
     final pricing =
         backendPricing ??
         (computedPricing['hasFormulaInputs'] == true ? computedPricing : null);
+    final backendOnlyPricing = backendPricing;
     final aircraftBaseAirport = _nestedMap(match['aircraft_base_airport']);
     final repositioning = _nestedMap(match['repositioning']);
     final returnToBase = _nestedMap(match['return_to_base']);
+    final debugPricing = _nestedMap(match['debug_pricing']);
+    final mergedPricingSources = mergeBackendPricingSources({
+      ...match,
+      if (pricing != null) 'pricing': pricing,
+    });
+    final hasExplicitFinalBillableHours =
+        _asNumber(
+          backendOnlyPricing?['final_billable_hours'] ?? match['final_billable_hours'],
+          0,
+        ) >
+        0;
     final resolvedTotal =
         pricing != null
-            ? _resolveOfficialQuoteTotal({
-              ...match,
-              'pricing': pricing,
-            })
+            ? _resolveOfficialQuoteTotal({...match, 'pricing': pricing})
             : _resolveOfficialQuoteTotal(match);
+
+    final normalizedFinalBillableHours = _asNumber(
+      backendOnlyPricing?['final_billable_hours'] ?? match['final_billable_hours'],
+      0,
+    );
+    final normalizedBillableHours = _asNumber(
+      backendOnlyPricing?['billable_hours'] ?? match['billable_hours'],
+      normalizedFinalBillableHours,
+    );
+    final normalizedRouteBillableHours = _asNumber(
+      backendOnlyPricing?['route_billable_hours'] ?? match['route_billable_hours'],
+      0,
+    );
+    final timeResolution = resolveQuoteDisplayTime({
+      ...match,
+      if (backendOnlyPricing != null) 'pricing_breakdown': backendOnlyPricing,
+      'final_billable_hours': normalizedFinalBillableHours,
+      'billable_hours': normalizedBillableHours,
+      'route_billable_hours': normalizedRouteBillableHours,
+    });
+    final normalizedTime = timeResolution.time;
+    final normalizedDebugPricing = <String, dynamic>{
+      ...mergedPricingSources,
+      ...debugPricing,
+    };
+    if (normalizedFinalBillableHours > 0) {
+      normalizedDebugPricing['final_billable_hours'] =
+          normalizedDebugPricing['final_billable_hours'] ??
+          normalizedFinalBillableHours;
+    }
+    if (normalizedBillableHours > 0) {
+      normalizedDebugPricing['billable_hours'] =
+          normalizedDebugPricing['billable_hours'] ?? normalizedBillableHours;
+    }
+    if (normalizedRouteBillableHours > 0) {
+      normalizedDebugPricing['route_billable_hours'] =
+          normalizedDebugPricing['route_billable_hours'] ??
+          normalizedRouteBillableHours;
+    }
+    normalizedDebugPricing['has_explicit_final_billable_hours'] =
+        hasExplicitFinalBillableHours;
+
+    assert(() {
+      final finalBillableHours =
+          debugPricing['final_billable_hours'] ??
+          backendOnlyPricing?['final_billable_hours'] ??
+          match['final_billable_hours'];
+      final totalBillableHours =
+          backendOnlyPricing?['billable_hours'] ??
+          match['billable_hours'] ??
+          debugPricing['billable_hours'];
+      final routeBillableHours =
+          backendOnlyPricing?['route_billable_hours'] ??
+          match['route_billable_hours'] ??
+          debugPricing['route_billable_hours'];
+      final tripTime =
+          match['trip_time'] ??
+          match['card_time'] ??
+          match['display_time'] ??
+          match['ui_time'] ??
+          match['time'];
+      final billedTime =
+          match['billed_time'] ??
+          match['billable_flight_time'] ??
+          backendOnlyPricing?['billed_time'] ??
+          backendOnlyPricing?['billable_flight_time'];
+      final displayPrice =
+          match['total_amount'] ??
+          match['total'] ??
+          match['final_price'] ??
+          backendOnlyPricing?['total_amount'] ??
+          backendOnlyPricing?['total'];
+      debugPrint('========================================');
+      debugPrint('[QUOTE NORMALIZATION]');
+      debugPrint(
+        'Aircraft: ${match['aircraft_name'] ?? match['name'] ?? aircraftRecord['model'] ?? 'N/A'}',
+      );
+      debugPrint(
+        'pricing_breakdown.billable_hours = ${backendOnlyPricing?['billable_hours'] ?? match['pricing_breakdown']?['billable_hours']}',
+      );
+      debugPrint('top_level.billable_hours = ${match['billable_hours']}');
+      debugPrint('trip_type = ${match['trip_type'] ?? currentTripTypeCode}');
+      debugPrint('selected_time_source = ${timeResolution.source}');
+      debugPrint('formatted_time = $normalizedTime');
+      debugPrint('price = $displayPrice');
+      debugPrint('pricing.final_billable_hours = $finalBillableHours');
+      debugPrint('pricing.billable_hours = $totalBillableHours');
+      debugPrint('pricing.route_billable_hours = $routeBillableHours');
+      debugPrint('backend.trip_time = $tripTime');
+      debugPrint('backend.billed_time = $billedTime');
+      debugPrint("normalized quote['time'] = $normalizedTime");
+      debugPrint('========================================');
+      return true;
+    }());
 
     return {
       ...match,
@@ -1022,7 +1328,28 @@ class ReservationProvider extends ChangeNotifier {
           aircraftRecord['model'] ??
           aircraftRecord['category'] ??
           'Aeronave verificada',
-      'time': _resolveMatchTime(match, pricing),
+      'time': normalizedTime,
+      'estimated_flight_minutes': _asNumber(
+        pricing?['estimated_flight_minutes'] ??
+            match['estimated_flight_minutes'] ??
+            ((pricing?['client_display_flight_hours'] ??
+                        match['client_display_flight_hours']) !=
+                    null
+                ? (_asNumber(
+                      pricing?['client_display_flight_hours'] ??
+                          match['client_display_flight_hours'],
+                    ) *
+                    60)
+                : null),
+        0,
+      ),
+      'billable_flight_minutes': _asNumber(
+        pricing?['billable_flight_minutes'] ??
+            match['billable_flight_minutes'] ??
+            pricing?['billable_minutes'] ??
+            match['billable_minutes'],
+        0,
+      ),
       'final_price':
           pricing != null
               ? _asMoney(resolvedTotal)
@@ -1116,10 +1443,61 @@ class ReservationProvider extends ChangeNotifier {
           aircraftBaseAirport.isEmpty ? null : aircraftBaseAirport,
       'repositioning': repositioning.isEmpty ? null : repositioning,
       'return_to_base': returnToBase.isEmpty ? null : returnToBase,
+      'trip_time':
+          normalizeTimeText(match['trip_time']) ??
+          normalizeTimeText(match['flight_time']) ??
+          normalizeTimeText(match['operative_time']) ??
+          normalizeTimeText(match['time']) ??
+          '',
+      'card_time':
+          normalizeTimeText(match['card_time']) ??
+          normalizeTimeText(match['display_time']) ??
+          normalizeTimeText(match['ui_time']) ??
+          normalizeTimeText(match['time']) ??
+          '',
+      'display_time':
+          normalizeTimeText(match['display_time']) ??
+          normalizeTimeText(match['ui_time']) ??
+          normalizeTimeText(match['card_time']) ??
+          normalizeTimeText(match['time']) ??
+          '',
+      'ui_time':
+          normalizeTimeText(match['ui_time']) ??
+          normalizeTimeText(match['display_time']) ??
+          normalizeTimeText(match['card_time']) ??
+          normalizeTimeText(match['time']) ??
+          '',
+      'billed_time':
+          normalizeTimeText(match['billed_time']) ??
+          normalizeTimeText(match['billable_flight_time']) ??
+          normalizeTimeText(backendOnlyPricing?['billed_time']) ??
+          normalizeTimeText(backendOnlyPricing?['billable_flight_time']) ??
+          '',
+      'billable_flight_time':
+          normalizeTimeText(match['billable_flight_time']) ??
+          normalizeTimeText(match['billed_time']) ??
+          normalizeTimeText(backendOnlyPricing?['billable_flight_time']) ??
+          normalizeTimeText(backendOnlyPricing?['billed_time']) ??
+          '',
       'pricing_context':
-          match['pricing_context'] ?? match['pricingContext'] ?? pricing,
-      'pricing_breakdown': pricing,
-      'pricing': pricing,
+          match['pricing_context'] ?? match['pricingContext'] ?? backendOnlyPricing,
+      'pricing_breakdown': backendOnlyPricing,
+      'pricing': backendOnlyPricing ?? _nestedMap(match['pricing']),
+      'debug_pricing':
+          normalizedDebugPricing.isEmpty ? null : normalizedDebugPricing,
+      'has_explicit_final_billable_hours': hasExplicitFinalBillableHours,
+      'final_billable_hours':
+          hasExplicitFinalBillableHours && normalizedFinalBillableHours > 0
+              ? normalizedFinalBillableHours
+              : match['final_billable_hours'],
+      'billable_hours':
+          normalizedBillableHours > 0
+              ? normalizedBillableHours
+              : match['billable_hours'],
+      'route_billable_hours':
+          normalizedRouteBillableHours > 0
+              ? normalizedRouteBillableHours
+              : match['route_billable_hours'],
       'total': resolvedTotal,
       'subtotal':
           pricing != null ? pricing['subtotal'] : _asNumber(match['subtotal']),
@@ -1136,17 +1514,18 @@ class ReservationProvider extends ChangeNotifier {
     final rawBreakdown = _nestedMap(
       match['pricing_breakdown'] ??
           match['pricingBreakdown'] ??
-          match['breakdown'] ??
-          match['pricing'],
+          match['breakdown'],
     );
 
     final source = rawBreakdown.isNotEmpty ? rawBreakdown : match;
+    final hasExplicitFinalBillableHours =
+        _hasMeaningfulValue(source['final_billable_hours']) &&
+        _asNumber(source['final_billable_hours'], 0) > 0;
 
     final billableHours = _asNumber(
       source['billable_hours'] ??
           source['billableHours'] ??
-          source['estimated_hours'] ??
-          source['flight_hours'],
+          source['final_billable_hours'],
       double.nan,
     );
     final subtotal = _asNumber(
@@ -1208,7 +1587,9 @@ class ReservationProvider extends ChangeNotifier {
     }
 
     return {
-      ...Map<String, dynamic>.from(rawBreakdown.isNotEmpty ? rawBreakdown : source),
+      ...Map<String, dynamic>.from(
+        rawBreakdown.isNotEmpty ? rawBreakdown : source,
+      ),
       'source': 'backend',
       'hasFormulaInputs': false,
       'billable_hours': billableHours.isNaN ? null : billableHours,
@@ -1220,6 +1601,19 @@ class ReservationProvider extends ChangeNotifier {
       'utility': utility.isNaN ? 0 : utility,
       'total': total.isNaN ? 0 : total,
       'total_amount': total.isNaN ? 0 : total,
+      'estimated_flight_minutes': _asNumber(
+        source['estimated_flight_minutes'],
+        0,
+      ),
+      'billable_flight_minutes': _asNumber(
+        source['billable_flight_minutes'] ?? source['billable_minutes'],
+        0,
+      ),
+      'estimated_flight_time': source['estimated_flight_time'],
+      'billable_flight_time':
+          source['billable_flight_time'] ?? source['billed_time'],
+      'has_explicit_final_billable_hours': hasExplicitFinalBillableHours,
+      'final_billable_hours': _asNumber(source['final_billable_hours'], 0),
       'customer_flight_cost': _asNumber(
         source['customer_flight_cost'] ?? source['client_flight_cost'],
         0,
@@ -1259,10 +1653,9 @@ class ReservationProvider extends ChangeNotifier {
       ),
       'tax_rate': _asNumber(
         source['tax_rate'] ??
-                source['taxRate'] ??
-                source['iva_rate'] ??
-                source['ivaRate']
-            ??
+            source['taxRate'] ??
+            source['iva_rate'] ??
+            source['ivaRate'] ??
             '',
         0,
       ),
@@ -1276,7 +1669,9 @@ class ReservationProvider extends ChangeNotifier {
 
   double _resolveOfficialQuoteTotal(Map<String, dynamic> match) {
     final pricing = _nestedMap(
-      match['pricing'] ?? match['pricing_breakdown'] ?? match['pricing_context'],
+      match['pricing'] ??
+          match['pricing_breakdown'] ??
+          match['pricing_context'],
     );
 
     return _asNumber(
@@ -1523,56 +1918,14 @@ class ReservationProvider extends ChangeNotifier {
     });
   }
 
-  String _resolveMatchTime(
+  String _resolveWebMatchTime(
     Map<String, dynamic> match,
     Map<String, dynamic>? pricing,
   ) {
-    final directTime = [match['time'], match['flight_time'], match['duration']]
-        .map((value) => value?.toString().trim() ?? '')
-        .firstWhere(
-          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
-          orElse: () => '',
-        );
-    if (directTime.isNotEmpty) return directTime;
-
-    final hours = _asNumber(
-      pricing?['billable_hours'] ??
-          pricing?['billableHours'] ??
-          match['billable_hours'] ??
-          match['billableHours'] ??
-          pricing?['real_flight_hours'] ??
-          match['billable_hours'] ??
-          match['real_flight_hours'],
-      double.nan,
-    );
-    if (!hours.isNaN && hours > 0) {
-      return _formatHoursLabel(hours);
-    }
-
-    final billedTime = [
-          match['billed_time'],
-          match['operative_time'],
-          match['operational_time'],
-          match['final_time'],
-        ]
-        .map((value) => value?.toString().trim() ?? '')
-        .firstWhere(
-          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
-          orElse: () => '',
-        );
-    if (billedTime.isNotEmpty) return billedTime;
-
-    return 'Tiempo por confirmar';
-  }
-
-  String _formatHoursLabel(double hours) {
-    final totalMinutes = (hours * 60).round();
-    final hourPart = totalMinutes ~/ 60;
-    final minutePart = totalMinutes % 60;
-
-    if (hourPart <= 0) return '${minutePart}m';
-    if (minutePart == 0) return '${hourPart}h';
-    return '${hourPart}h ${minutePart}m';
+    return resolveQuoteDisplayTime({
+      ...match,
+      if (pricing != null) 'pricing': pricing,
+    }).time;
   }
 
   String _resolveMatchReason(

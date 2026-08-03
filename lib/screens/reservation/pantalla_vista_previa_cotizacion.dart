@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/billable_hours_formatter.dart';
+import '../../core/quote_price_formatter.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import 'pantalla_exito.dart';
 
@@ -104,9 +106,24 @@ class QuotePreviewScreen extends StatelessWidget {
 
     final aircraft =
         (quote['aircraft_name'] ?? quote['model'] ?? '-').toString();
-    final total = (quote['final_price'] ?? quote['price'] ?? '-').toString();
+    final total = formatQuotePriceLabel(quote);
+    final resolvedTime = resolveQuoteDisplayTime(quote).time;
+    final billableHours =
+        shouldDisplayBackendBillableHours(quote)
+            ? extractBackendBillableHours(quote)
+            : null;
+    final formattedTime = formatBillableHoursLabel(billableHours);
     final time =
-        (quote['flight_time'] ?? quote['time'] ?? 'Por confirmar').toString();
+        resolvedTime.isNotEmpty && resolvedTime != '0 h 00 min'
+            ? resolvedTime
+            : formattedTime.isNotEmpty
+            ? formattedTime
+            : 'Por confirmar';
+    final backendBillableLabel =
+        formattedTime.isNotEmpty
+            ? 'Horas cobrables backend: $formattedTime'
+            : '';
+
     final cabin = (quote['cabin'] ?? 'Jet privado').toString();
     final capacity = (quote['capacity'] ?? 'N/D').toString();
     final providerName =
@@ -119,8 +136,11 @@ class QuotePreviewScreen extends StatelessWidget {
         quote['pricing_breakdown'] is Map
             ? Map<String, dynamic>.from(quote['pricing_breakdown'] as Map)
             : <String, dynamic>{};
-    final billableHours =
-        breakdown['billable_hours'] ?? breakdown['billableHours'] ?? '-';
+    final breakdownBillableHours =
+        breakdown['final_billable_hours'] ??
+        breakdown['billable_hours'] ??
+        breakdown['billableHours'] ??
+        '-';
     final subtotal =
         breakdown['subtotal'] ??
         breakdown['subtotal_before_multipliers'] ??
@@ -194,6 +214,10 @@ class QuotePreviewScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (backendBillableLabel.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _BackendBillableHoursChip(label: backendBillableLabel),
+                  ],
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 8,
@@ -243,7 +267,7 @@ class QuotePreviewScreen extends StatelessWidget {
                   children: [
                     _LineItem(
                       label: 'Horas billables',
-                      value: '$billableHours',
+                      value: '$breakdownBillableHours',
                     ),
                     _LineItem(label: 'Subtotal', value: '\$$subtotal'),
                     _LineItem(label: 'Combustible', value: '\$$fuel'),
@@ -300,6 +324,50 @@ class _PriceBlock extends StatelessWidget {
             style: const TextStyle(
               fontWeight: FontWeight.w800,
               color: Color(0xFF10253A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackendBillableHoursChip extends StatelessWidget {
+  const _BackendBillableHoursChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD8B15D).withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFFD8B15D).withValues(alpha: .32),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.schedule_rounded,
+            color: Color(0xFFB8860B),
+            size: 13,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF6F4E12),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+              ),
             ),
           ),
         ],

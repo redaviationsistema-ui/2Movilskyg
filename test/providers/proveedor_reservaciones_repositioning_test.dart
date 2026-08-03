@@ -127,13 +127,16 @@ void main() {
         expect(provider.quoteMatches.single['pricing']['total_amount'], 14493);
         expect(provider.quoteMatches.single['total'], 14493);
 
-        await provider.createFlightRequestForMatch(provider.quoteMatches.single);
+        await provider.createFlightRequestForMatch(
+          provider.quoteMatches.single,
+        );
 
         expect(capturedFlightRequestPayload, isNotNull);
         expect(capturedFlightRequestPayload!['total'], 14493);
         expect(capturedFlightRequestPayload!['final_price'], 14493);
         expect(
-          (capturedFlightRequestPayload!['pricing_context'] as Map<String, dynamic>)['total_amount'],
+          (capturedFlightRequestPayload!['pricing_context']
+              as Map<String, dynamic>)['total_amount'],
           14493,
         );
       },
@@ -155,9 +158,7 @@ void main() {
                   'total': 13535,
                   'selected_card_price': 14493,
                   'time': '45 min',
-                  'pricing': {
-                    'billable_hours': 3.25,
-                  },
+                  'pricing': {'billable_hours': 3.25},
                 },
               ],
             });
@@ -177,6 +178,171 @@ void main() {
         expect(provider.quoteMatches, hasLength(1));
         expect(provider.quoteMatches.single['total'], 14493);
         expect(provider.quoteMatches.single['time'], '45 min');
+      },
+    );
+
+    test(
+      'preserves normalized backend billable hours in preview matches when pricing and breakdown diverge',
+      () async {
+        final provider = ReservationProvider(
+          apiClient: _api((request) async {
+            expect(request.url.path, '/api/v1/client/quotes/preview');
+            return _json(200, {
+              'matches': [
+                {
+                  'id': 'match-g4',
+                  'match_id': 'match-g4',
+                  'aircraft_id': 'aircraft-g4',
+                  'aircraft_name': 'GULFSTREAM G-IV',
+                  'status': 'available',
+                  'billable_hours': 3.28,
+                  'pricing': {'total_amount': 47700},
+                  'pricing_breakdown': {
+                    'final_billable_hours': 4.17,
+                    'billable_hours': 6.10,
+                    'route_billable_hours': 3.28,
+                  },
+                },
+              ],
+            });
+          }),
+        );
+        addTearDown(provider.dispose);
+
+        provider.routes.first
+          ..fromAirport = _airport('Toluca', 'MMTO', 'TLC')
+          ..toAirport = _airport('Guaymas', 'MMGM', 'GYM')
+          ..startDate = DateTime(2026, 8, 3, 9);
+        provider.passengers = 8;
+
+        final success = await provider.previewCurrentSelection();
+
+        expect(success, isTrue);
+        expect(provider.quoteMatches, hasLength(1));
+        expect(provider.quoteMatches.single['time'], '4 h 10 min');
+        expect(provider.quoteMatches.single['final_billable_hours'], 4.17);
+        expect(provider.quoteMatches.single['billable_hours'], 6.1);
+        expect(provider.quoteMatches.single['route_billable_hours'], 3.28);
+        expect(
+          (provider.quoteMatches.single['debug_pricing']
+              as Map<String, dynamic>)['final_billable_hours'],
+          4.17,
+        );
+      },
+    );
+
+    test(
+      'sends closed two-leg itineraries as multi_leg so backend includes billable repositioning logic',
+      () async {
+        Map<String, dynamic>? capturedPreviewPayload;
+        final provider = ReservationProvider(
+          apiClient: _api((request) async {
+            if (request.url.path == '/api/v1/client/quotes/preview') {
+              capturedPreviewPayload =
+                  jsonDecode(request.body) as Map<String, dynamic>;
+              return _json(200, {'matches': []});
+            }
+            throw StateError('Unexpected path ${request.url.path}');
+          }),
+        );
+        addTearDown(provider.dispose);
+
+        provider.setBookingTripLabel('Ida y vuelta');
+        provider.routes.first
+          ..fromAirport = _airport('Toluca', 'MMTO', 'TLC')
+          ..toAirport = _airport('Guaymas', 'MMGM', 'GYM')
+          ..startDate = DateTime(2026, 8, 3, 9);
+        provider.passengers = 8;
+        provider.addRoute(allowIncomplete: true);
+        provider.routes[1]
+          ..fromAirport = _airport('Guaymas', 'MMGM', 'GYM')
+          ..toAirport = _airport('Toluca', 'MMTO', 'TLC')
+          ..startDate = DateTime(2026, 8, 6, 9);
+
+        await provider.previewCurrentSelection();
+
+        expect(capturedPreviewPayload, isNotNull);
+        expect(capturedPreviewPayload!['trip_type'], 'multi_leg');
+        expect(capturedPreviewPayload!['close_route'], isTrue);
+        expect(capturedPreviewPayload!['open_route'], isFalse);
+        expect(capturedPreviewPayload!['return_to_origin'], isTrue);
+      },
+    );
+
+    test(
+      'persists normalized backend billable hours when creating a flight request',
+      () async {
+        Map<String, dynamic>? capturedFlightRequestPayload;
+        final provider = ReservationProvider(
+          apiClient: _api((request) async {
+            if (request.url.path == '/api/v1/client/quotes/preview') {
+              return _json(200, {
+                'matches': [
+                  {
+                    'id': 'match-g4-request',
+                    'match_id': 'match-g4-request',
+                    'aircraft_id': 'aircraft-g4-request',
+                    'aircraft_name': 'GULFSTREAM G-IV',
+                    'status': 'available',
+                    'billable_hours': 3.28,
+                    'pricing': {'total_amount': 47700},
+                    'pricing_breakdown': {
+                      'final_billable_hours': 4.17,
+                      'billable_hours': 6.10,
+                      'route_billable_hours': 3.28,
+                    },
+                  },
+                ],
+              });
+            }
+
+            if (request.url.path == '/api/v1/client/flight-requests') {
+              capturedFlightRequestPayload =
+                  jsonDecode(request.body) as Map<String, dynamic>;
+              return _json(200, {
+                'flight_request': {
+                  'id': 'req-g4-request',
+                  'match_id': 'match-g4-request',
+                  'total_amount': 47700,
+                },
+              });
+            }
+
+            throw StateError('Unexpected path ${request.url.path}');
+          }),
+        );
+        addTearDown(provider.dispose);
+
+        provider.routes.first
+          ..fromAirport = _airport('Toluca', 'MMTO', 'TLC')
+          ..toAirport = _airport('Guaymas', 'MMGM', 'GYM')
+          ..startDate = DateTime(2026, 8, 3, 9);
+        provider.passengers = 8;
+
+        final success = await provider.previewCurrentSelection();
+
+        expect(success, isTrue);
+        await provider.createFlightRequestForMatch(
+          provider.quoteMatches.single,
+        );
+
+        expect(capturedFlightRequestPayload, isNotNull);
+        expect(capturedFlightRequestPayload!['billable_hours'], 6.1);
+        expect(capturedFlightRequestPayload!['final_billable_hours'], 4.17);
+        expect(capturedFlightRequestPayload!['route_billable_hours'], 3.28);
+        expect(
+          capturedFlightRequestPayload!['time_display_mode'],
+          'operational',
+        );
+        expect(
+          capturedFlightRequestPayload!['billing_hours_mode'],
+          'operational',
+        );
+        expect(
+          (capturedFlightRequestPayload!['aircraft_snapshot']
+              as Map<String, dynamic>)['final_billable_hours'],
+          4.17,
+        );
       },
     );
 

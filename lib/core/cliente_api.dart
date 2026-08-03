@@ -1821,6 +1821,9 @@ class ApiClient {
       ..._headers(authenticated: authenticated),
       ...?headers,
     };
+    if (_shouldLogQuoteTraffic(path)) {
+     
+    }
 
     switch (method) {
       case 'POST':
@@ -1910,13 +1913,14 @@ class ApiClient {
     required Uri uri,
     required http.Response response,
   }) {
-    // debugPrint(
-    //   '[API ${Platform.isIOS
-    //       ? 'iOS'
-    //       : Platform.isAndroid
-    //       ? 'Android'
-    //       : Platform.operatingSystem}] response method=$method uri=$uri status=${response.statusCode} body=${response.body}',
-    // );
+    if (_shouldLogQuoteTraffic(uri.path)) {
+      
+    }
+  }
+
+  bool _shouldLogQuoteTraffic(String path) {
+    final normalizedPath = path.trim().toLowerCase();
+    return normalizedPath.endsWith('/client/quotes/preview');
   }
 
   Map<String, String> _headers({required bool authenticated}) {

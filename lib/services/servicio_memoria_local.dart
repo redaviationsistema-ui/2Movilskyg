@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalCacheService {
   static const _dbName = 'reservation_cache.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   static const airportsTable = 'airports';
   static const aircraftTable = 'aircraft_fleet';
@@ -25,6 +25,7 @@ class LocalCacheService {
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $airportsTable (
+            id INTEGER,
             name TEXT PRIMARY KEY,
             city TEXT,
             state TEXT,
@@ -79,10 +80,14 @@ class LocalCacheService {
         if (oldVersion < 3) {
           await _ensureAirportsIcaoColumn(db);
         }
+        if (oldVersion < 4) {
+          await _ensureAirportsIdColumn(db);
+        }
       },
       onOpen: (db) async {
         await _ensureAircraftImageUrlColumn(db);
         await _ensureAirportsIcaoColumn(db);
+        await _ensureAirportsIdColumn(db);
       },
     );
   }
@@ -140,9 +145,19 @@ class LocalCacheService {
     }
   }
 
+  Future<void> _ensureAirportsIdColumn(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info($airportsTable)');
+    final hasId = columns.any((column) => column['name'] == 'id');
+
+    if (!hasId) {
+      await db.execute('ALTER TABLE $airportsTable ADD COLUMN id INTEGER');
+    }
+  }
+
   Future<void> cacheAirports(List<Map<String, dynamic>> airports) async {
     await _withWriteRecovery((db) async {
       await _ensureAirportsIcaoColumn(db);
+      await _ensureAirportsIdColumn(db);
 
       Future<void> writeBatch() async {
         final batch = db.batch();
@@ -163,8 +178,11 @@ class LocalCacheService {
       try {
         await writeBatch();
       } on DatabaseException catch (error) {
-        if (error.toString().contains('no column named icao')) {
+        final message = error.toString();
+        if (message.contains('no column named icao') ||
+            message.contains('no column named id')) {
           await _ensureAirportsIcaoColumn(db);
+          await _ensureAirportsIdColumn(db);
           await writeBatch();
           return;
         }

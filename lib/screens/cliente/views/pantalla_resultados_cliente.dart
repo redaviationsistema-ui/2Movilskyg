@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
+import '../../../core/billable_hours_formatter.dart';
 import '../../../core/media_utils.dart';
+import '../../../core/quote_price_formatter.dart';
 import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
@@ -342,25 +344,12 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
   }
 
   double _quoteTimeValue(Map<String, dynamic> match) {
-    final raw = _firstText(match, const [
-      'time',
-      'flight_time',
-      'duration',
-      'display_time',
-      'card_time',
-    ]);
-    if (raw.isEmpty) return double.maxFinite;
-
-    final lower = raw.toLowerCase();
-    final hourMatch = RegExp(r'(\d+(?:\.\d+)?)\s*h').firstMatch(lower);
-    final minuteMatch = RegExp(r'(\d+(?:\.\d+)?)\s*m').firstMatch(lower);
-    final hours = double.tryParse(hourMatch?.group(1) ?? '') ?? 0;
-    final minutes = double.tryParse(minuteMatch?.group(1) ?? '') ?? 0;
-    final totalMinutes = hours * 60 + minutes;
-    if (totalMinutes > 0) return totalMinutes;
-
-    final numeric = _extractNumber(raw);
-    return numeric > 0 ? numeric : double.maxFinite;
+    if (!shouldDisplayBackendBillableHours(match)) return double.maxFinite;
+    final billableHours = extractBackendBillableHours(match);
+    if (billableHours != null && billableHours > 0) {
+      return billableHours * 60;
+    }
+    return double.maxFinite;
   }
 
   double _exclusivityScore(Map<String, dynamic> match) {
@@ -689,8 +678,24 @@ class _QuoteMatchCard extends StatelessWidget {
     ]);
     final provider = _providerName(quote);
     final imageUrl = resolveMediaUrl(_aircraftImageUrl(quote));
-    final price = _moneyLabel(_quoteTotalAmountValue(quote));
-    final time = _firstText(quote, const ['time', 'flight_time', 'duration']);
+    final price = formatQuotePriceLabel(quote);
+    final resolvedTime = resolveQuoteDisplayTime(quote).time;
+    final billableHours =
+        shouldDisplayBackendBillableHours(quote)
+            ? extractBackendBillableHours(quote)
+            : null;
+    final formattedTime = formatBillableHoursLabel(billableHours);
+    final time =
+        resolvedTime.isNotEmpty && resolvedTime != '0 h 00 min'
+            ? resolvedTime
+            : formattedTime.isNotEmpty
+            ? formattedTime
+            : 'Tiempo por confirmar';
+    final backendBillableLabel =
+        formattedTime.isNotEmpty
+            ? 'Horas cobrables backend: $formattedTime'
+            : '';
+
     final autonomy = _firstText(quote, const [
       'range',
       'autonomy',
@@ -977,6 +982,12 @@ class _QuoteMatchCard extends StatelessWidget {
                                       ),
                                     ),
                                   ],
+                                ),
+                              ] else if (backendBillableLabel.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                _BackendBillableHoursChip(
+                                  label: backendBillableLabel,
+                                  dense: true,
                                 ),
                               ],
                             ],
@@ -1339,6 +1350,57 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
+class _BackendBillableHoursChip extends StatelessWidget {
+  const _BackendBillableHoursChip({required this.label, this.dense = false});
+
+  final String label;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? 8 : 10,
+        vertical: dense ? 5 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD8B15D).withValues(alpha: dense ? .12 : .1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFFD8B15D).withValues(alpha: dense ? .32 : .28),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.schedule_rounded,
+            color: const Color(0xFFD8B15D),
+            size: dense ? 11 : 13,
+          ),
+          SizedBox(width: dense ? 4 : 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color:
+                    dense
+                        ? Colors.white.withValues(alpha: .86)
+                        : const Color(0xFF6F4E12),
+                fontSize: dense ? 8.5 : 11.5,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RepositioningPill extends StatelessWidget {
   const _RepositioningPill({
     required this.baseLabel,
@@ -1422,22 +1484,6 @@ class _RepositioningPill extends StatelessWidget {
       ),
     );
   }
-}
-
-double _quoteTotalAmountValue(Map<String, dynamic> quote) {
-  final pricing = _nestedMap(
-    quote['pricing'] ?? quote['pricing_breakdown'] ?? quote['pricing_context'],
-  );
-  return _resultNumber(
-    pricing['total_amount'] ??
-        quote['amount_due'] ??
-        quote['selected_card_price'] ??
-        quote['estimated_total'] ??
-        quote['total_amount'] ??
-        quote['final_price'] ??
-        quote['total'] ??
-        quote['price'],
-  );
 }
 
 String _repositioningBaseLabel(
@@ -1692,18 +1738,4 @@ String _firstText(
   }
 
   return fallback;
-}
-
-String _moneyLabel(dynamic value) {
-  if (value == null) return 'Por confirmar';
-  if (value is num) return 'USD ${value.toStringAsFixed(0)}';
-
-  final text = value.toString().trim();
-  if (text.isEmpty || text.toLowerCase() == 'null') return 'Por confirmar';
-  if (text.toUpperCase().contains('USD') || text.contains(r'$')) return text;
-
-  final numeric = double.tryParse(text.replaceAll(RegExp(r'[^0-9.\-]'), ''));
-  if (numeric != null) return 'USD ${numeric.toStringAsFixed(0)}';
-
-  return text;
 }
