@@ -1,7 +1,11 @@
 double? extractBackendBillableHours(Map<String, dynamic> quote) {
   return _firstPositive([
-    _backendPricingBreakdown(quote)['billable_hours'],
+    _backendDebugPricing(quote)['final_billable_hours'],
     quote['billable_hours'],
+    _backendPricingBreakdown(quote)['final_billable_hours'],
+    _backendPricing(quote)['final_billable_hours'],
+    quote['final_billable_hours'],
+    _backendPricingBreakdown(quote)['billable_hours'],
   ]);
 }
 
@@ -14,21 +18,92 @@ class QuoteDisplayTimeResolution {
 
 QuoteDisplayTimeResolution resolveQuoteDisplayTime(Map<String, dynamic> quote) {
   final pricingBreakdown = _backendPricingBreakdown(quote);
-  final selectedHours = extractBackendBillableHours(quote);
-  final selectedSource =
-      _asDouble(pricingBreakdown['billable_hours']) != null &&
-              (_asDouble(pricingBreakdown['billable_hours']) ?? 0) > 0
-          ? 'pricing_breakdown.billable_hours'
-          : _asDouble(quote['billable_hours']) != null &&
-              (_asDouble(quote['billable_hours']) ?? 0) > 0
-          ? 'billable_hours'
-          : 'default_zero';
+  final pricing = _backendPricing(quote);
+  final pricingContext = _backendPricingContext(quote);
+  final hourCandidates = <(String, dynamic)>[
+    ('display_route_hours', quote['display_route_hours']),
+    (
+      'pricing_breakdown.display_route_hours',
+      pricingBreakdown['display_route_hours'],
+    ),
+    ('pricing.display_route_hours', pricing['display_route_hours']),
+    (
+      'pricing_context.display_route_hours',
+      pricingContext['display_route_hours'],
+    ),
+    ('client_display_flight_hours', quote['client_display_flight_hours']),
+    (
+      'pricing_breakdown.client_display_flight_hours',
+      pricingBreakdown['client_display_flight_hours'],
+    ),
+    (
+      'pricing.client_display_flight_hours',
+      pricing['client_display_flight_hours'],
+    ),
+  ];
+  for (final candidate in hourCandidates) {
+    final hours = _asNonNegativeDouble(candidate.$2);
+    if (hours != null && hours > 0) {
+      return QuoteDisplayTimeResolution(
+        time: hoursToTimeText(hours),
+        source: candidate.$1,
+      );
+    }
+  }
 
-  if (selectedHours != null && selectedHours.isFinite && selectedHours > 0) {
+  final legsResolution = _sumRouteLegHours(quote);
+  if (legsResolution != null) {
     return QuoteDisplayTimeResolution(
-      time: hoursToTimeText(selectedHours),
-      source: selectedSource,
+      time: hoursToTimeText(legsResolution.hours),
+      source: legsResolution.source,
     );
+  }
+
+  final minuteCandidates = <(String, dynamic)>[
+    ('estimated_flight_minutes', quote['estimated_flight_minutes']),
+    ('pricing.estimated_flight_minutes', pricing['estimated_flight_minutes']),
+    (
+      'pricing_breakdown.estimated_flight_minutes',
+      pricingBreakdown['estimated_flight_minutes'],
+    ),
+  ];
+  for (final candidate in minuteCandidates) {
+    final minutes = _asNonNegativeDouble(candidate.$2);
+    if (minutes != null && minutes > 0) {
+      return QuoteDisplayTimeResolution(
+        time: hoursToTimeText(minutes / 60),
+        source: candidate.$1,
+      );
+    }
+  }
+
+  for (final candidate in <(String, dynamic)>[
+    ('trip_time', quote['trip_time']),
+    ('flight_time', quote['flight_time']),
+    ('operative_time', quote['operative_time']),
+  ]) {
+    final hours = parseDurationToHours(candidate.$2);
+    if (hours != null && hours > 0) {
+      return QuoteDisplayTimeResolution(
+        time: hoursToTimeText(hours),
+        source: candidate.$1,
+      );
+    }
+  }
+
+  for (final candidate in <(String, dynamic)>[
+    ('display_time', quote['display_time']),
+    ('card_time', quote['card_time']),
+    ('ui_time', quote['ui_time']),
+    ('time', quote['time']),
+  ]) {
+    final hours = parseDurationToHours(candidate.$2);
+    if (hours != null && hours > 0) {
+      return QuoteDisplayTimeResolution(
+        time: hoursToTimeText(hours),
+        source: candidate.$1,
+      );
+    }
   }
 
   return const QuoteDisplayTimeResolution(
@@ -49,7 +124,75 @@ String hoursToTimeText(double hours) {
 
   final h = totalMinutes ~/ 60;
   final m = totalMinutes % 60;
+  if (h == 0) return '$m min';
   return '$h h ${m.toString().padLeft(2, '0')} min';
+}
+
+double? parseDurationToHours(dynamic value) {
+  final numeric = _asNonNegativeDouble(value);
+  if (numeric != null && value is! String) return numeric;
+
+  final raw = value?.toString().trim().toLowerCase() ?? '';
+  if (raw.isEmpty) return null;
+  final decimal = _asNonNegativeDouble(raw);
+  if (decimal != null) return decimal;
+
+  final hhmm = RegExp(r'^(\d+):(\d{1,2})$').firstMatch(raw);
+  if (hhmm != null) {
+    final hours = int.parse(hhmm.group(1)!);
+    final minutes = int.parse(hhmm.group(2)!);
+    if (minutes < 60) return hours + minutes / 60;
+  }
+
+  final hoursMatch = RegExp(r'(\d+(?:\.\d+)?)\s*h').firstMatch(raw);
+  final minutesMatch = RegExp(r'(\d+(?:\.\d+)?)\s*(?:m|min)').firstMatch(raw);
+  if (hoursMatch == null && minutesMatch == null) return null;
+  final hours = double.tryParse(hoursMatch?.group(1) ?? '') ?? 0;
+  final minutes = double.tryParse(minutesMatch?.group(1) ?? '') ?? 0;
+  if (minutes >= 60) return null;
+  return hours + minutes / 60;
+}
+
+({double hours, String source})? _sumRouteLegHours(Map<String, dynamic> quote) {
+  final pricingBreakdown = _backendPricingBreakdown(quote);
+  final pricing = _backendPricing(quote);
+  for (final entry in <(String, dynamic)>[
+    ('client_legs', quote['client_legs']),
+    ('pricing_breakdown.client_legs', pricingBreakdown['client_legs']),
+    ('pricing.client_legs', pricing['client_legs']),
+    ('legs', quote['legs']),
+    ('segments', quote['segments']),
+    ('routes', quote['routes']),
+  ]) {
+    if (entry.$2 is! List || (entry.$2 as List).isEmpty) continue;
+    var total = 0.0;
+    var resolvedLegs = 0;
+    for (final rawLeg in entry.$2 as List) {
+      if (rawLeg is! Map) continue;
+      final leg = _asMap(rawLeg);
+      final hours =
+          _asNonNegativeDouble(leg['display_flight_hours']) ??
+          _asNonNegativeDouble(leg['flight_hours']) ??
+          _asNonNegativeDouble(leg['direct_hours']) ??
+          _asNonNegativeDouble(leg['real_flight_hours']) ??
+          _asNonNegativeDouble(leg['duration_hours']) ??
+          ((_asNonNegativeDouble(leg['flight_minutes']) ??
+                      _asNonNegativeDouble(leg['duration_minutes'])) !=
+                  null
+              ? (_asNonNegativeDouble(leg['flight_minutes']) ??
+                      _asNonNegativeDouble(leg['duration_minutes']))! /
+                  60
+              : null) ??
+          parseDurationToHours(leg['flight_time']) ??
+          parseDurationToHours(leg['duration']);
+      if (hours != null) {
+        total += hours;
+        resolvedLegs++;
+      }
+    }
+    if (resolvedLegs > 0 && total > 0) return (hours: total, source: entry.$1);
+  }
+  return null;
 }
 
 String? normalizeTimeText(dynamic value) {
@@ -152,21 +295,6 @@ Map<String, dynamic> _backendPricingBreakdown(Map<String, dynamic> quote) =>
 Map<String, dynamic> _backendPricingContext(Map<String, dynamic> quote) =>
     _asMap(quote['pricing_context']);
 
-bool _hasExplicitFinalBillableHours(Map<String, dynamic> source) {
-  if (source.isEmpty) return false;
-  if (source.containsKey('has_explicit_final_billable_hours')) {
-    return source['has_explicit_final_billable_hours'] == true;
-  }
-  return _firstPositive([source['final_billable_hours']]) != null;
-}
-
-bool _hasTopLevelExplicitFinalBillableHours(Map<String, dynamic> quote) {
-  if (quote.containsKey('has_explicit_final_billable_hours')) {
-    return quote['has_explicit_final_billable_hours'] == true;
-  }
-  return _firstPositive([quote['final_billable_hours']]) != null;
-}
-
 double? _firstPositive(List<dynamic> candidates) {
   for (final candidate in candidates) {
     final value = _asDouble(candidate);
@@ -179,4 +307,16 @@ double? _asDouble(dynamic value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString().trim());
+}
+
+double? _asNonNegativeDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) {
+    final result = value.toDouble();
+    return result.isFinite && result >= 0 ? result : null;
+  }
+  if (value is! String) return null;
+  final normalized = value.replaceAll('USD', '').replaceAll(',', '').trim();
+  final result = double.tryParse(normalized);
+  return result != null && result.isFinite && result >= 0 ? result : null;
 }

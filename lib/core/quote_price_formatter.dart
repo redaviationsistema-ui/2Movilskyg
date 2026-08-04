@@ -1,20 +1,25 @@
 import 'package:intl/intl.dart';
 
 double extractOfficialQuoteTotal(Map<String, dynamic> quote) {
-  final pricing = _asMap(
-    quote['pricing'] ?? quote['pricing_breakdown'] ?? quote['pricing_context'],
-  );
-
-  return _asNumber(
-    pricing['total_amount'] ??
-        quote['amount_due'] ??
-        quote['selected_card_price'] ??
-        quote['estimated_total'] ??
-        quote['total_amount'] ??
-        quote['final_price'] ??
-        quote['total'] ??
-        quote['price'],
-  );
+  final pricing = _asMap(quote['pricing']);
+  final pricingBreakdown = _asMap(quote['pricing_breakdown']);
+  final pricingContext = _asMap(quote['pricing_context']);
+  for (final candidate in [
+    pricing['total_amount'],
+    pricingBreakdown['total_amount'],
+    pricingContext['total_amount'],
+    quote['total_amount'],
+    quote['amount_due'],
+    quote['selected_card_price'],
+    quote['estimated_total'],
+    quote['final_price'],
+    quote['total'],
+    quote['price'],
+  ]) {
+    final value = _positiveMoney(candidate);
+    if (value != null) return value;
+  }
+  return 0;
 }
 
 bool hasBackendQuotedPrice(Map<String, dynamic> quote) {
@@ -57,30 +62,6 @@ double resolveQuoteOperationalFees(Map<String, dynamic> quote) {
 }
 
 double resolveDisplayedQuotePriceValue(Map<String, dynamic> quote) {
-  if (hasBackendQuotedPrice(quote)) {
-    final pricing = _asMap(quote['pricing']);
-    final pricingBreakdown = _asMap(quote['pricing_breakdown']);
-    final pricingContext = _asMap(quote['pricing_context']);
-    final basePrice = _asNumber(quote['base_price']);
-    final operationalFees = resolveQuoteOperationalFees(quote);
-    final officialTotal =
-        _asNumber(pricing['total_amount']) > 0
-            ? _asNumber(pricing['total_amount'])
-            : _asNumber(pricingBreakdown['total_amount']) > 0
-            ? _asNumber(pricingBreakdown['total_amount'])
-            : _asNumber(pricingContext['total_amount']) > 0
-            ? _asNumber(pricingContext['total_amount'])
-            : _asNumber(quote['total_amount']);
-
-    if (officialTotal > 0) return officialTotal;
-    if (_asNumber(quote['total']) > 0) return _asNumber(quote['total']);
-
-    final finalPrice = moneyValue(quote['final_price']);
-    if (finalPrice > 0) return finalPrice;
-
-    return basePrice + operationalFees;
-  }
-
   return extractOfficialQuoteTotal(quote);
 }
 
@@ -110,6 +91,11 @@ double _asNumber(dynamic value) {
   final text = value?.toString().trim() ?? '';
   if (text.isEmpty) return 0;
   return double.tryParse(text.replaceAll(RegExp(r'[^0-9.\-]'), '')) ?? 0;
+}
+
+double? _positiveMoney(dynamic value) {
+  final parsed = _asNumber(value);
+  return parsed.isFinite && parsed > 0 ? parsed : null;
 }
 
 String _text(dynamic value) {

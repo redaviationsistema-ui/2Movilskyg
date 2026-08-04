@@ -110,53 +110,48 @@ void main() {
     expect(normalizeTimeText('04:10'), '4 h 10 min');
   });
 
-  test(
-    'normalizeQuoteDisplayTime prefers explicit backend billable hours over billed display fields',
-    () {
-      final quote = <String, dynamic>{
-        'trip_time': '3h 3m',
-        'billed_time': '4h',
-        'pricing': {'final_billable_hours': 4.0},
-      };
+  test('visible time uses trip time instead of final billable hours', () {
+    final quote = <String, dynamic>{
+      'trip_time': '3h 3m',
+      'billed_time': '4h',
+      'pricing': {'final_billable_hours': 4.0},
+    };
 
-      final resolution = resolveQuoteDisplayTime(quote);
+    final resolution = resolveQuoteDisplayTime(quote);
 
-      expect(resolution.source, 'pricing.final_billable_hours');
-      expect(resolution.time, '4 h 00 min');
-    },
-  );
+    expect(resolution.source, 'trip_time');
+    expect(resolution.time, '3 h 03 min');
+  });
 
-  test(
-    'normalizeQuoteDisplayTime falls back to final billable hours before trip time',
-    () {
-      final quote = <String, dynamic>{
-        'trip_time': '3h 3m',
-        'pricing': {'final_billable_hours': 4.0},
-      };
+  test('display route hours take precedence over billable duration', () {
+    final quote = <String, dynamic>{
+      'trip_time': '3h 3m',
+      'pricing_breakdown': {
+        'display_route_hours': 2.75,
+        'route_billable_hours': 2.75,
+        'final_billable_hours': 4.0,
+      },
+    };
 
-      final resolution = resolveQuoteDisplayTime(quote);
+    final resolution = resolveQuoteDisplayTime(quote);
 
-      expect(resolution.source, 'pricing.final_billable_hours');
-      expect(resolution.time, '4 h 00 min');
-    },
-  );
+    expect(resolution.source, 'pricing_breakdown.display_route_hours');
+    expect(resolution.time, '2 h 45 min');
+  });
 
-  test(
-    'normalizeQuoteDisplayTime prefers backend final billable hours before stale top-level time',
-    () {
-      final quote = <String, dynamic>{
-        'time': '3 h 27 min',
-        'card_time': '3 h 27 min',
-        'pricing_breakdown': {'final_billable_hours': 4.33},
-        'debug_pricing': {'final_billable_hours': 4.333333333333333},
-      };
+  test('visible time never falls back to minimum billable hours', () {
+    final quote = <String, dynamic>{
+      'time': '3 h 27 min',
+      'card_time': '3 h 27 min',
+      'pricing_breakdown': {'final_billable_hours': 4.33},
+      'debug_pricing': {'final_billable_hours': 4.333333333333333},
+    };
 
-      final resolution = resolveQuoteDisplayTime(quote);
+    final resolution = resolveQuoteDisplayTime(quote);
 
-      expect(resolution.source, 'debug_pricing.final_billable_hours');
-      expect(resolution.time, '4 h 20 min');
-    },
-  );
+    expect(resolution.source, 'card_time');
+    expect(resolution.time, '3 h 27 min');
+  });
 
   test(
     'shouldDisplayBackendBillableHours requires an explicit backend billable-time signal',
@@ -177,4 +172,77 @@ void main() {
       );
     },
   );
+
+  group('dynamic requested-route time', () {
+    test('one way sums its only requested leg', () {
+      final result = resolveQuoteDisplayTime({
+        'legs': [
+          {'flight_hours': '0.92'},
+        ],
+      });
+      expect(result.source, 'legs');
+      expect(result.time, '55 min');
+    });
+
+    test('round trip sums asymmetric legs instead of doubling one leg', () {
+      final result = resolveQuoteDisplayTime({
+        'segments': [
+          {'duration': '55 min'},
+          {'duration': '1 h 09 min'},
+        ],
+        'pricing_breakdown': {'final_billable_hours': 4},
+      });
+      expect(result.source, 'segments');
+      expect(result.time, '2 h 04 min');
+    });
+
+    test('multidestination sums every requested leg', () {
+      final result = resolveQuoteDisplayTime({
+        'routes': [
+          {'duration_hours': 0.75},
+          {'flight_time': '42 min'},
+          {'flight_hours': 1.1},
+        ],
+      });
+      expect(result.source, 'routes');
+      expect(result.time, '2 h 33 min');
+    });
+
+    test('falls back to calculated backend client legs', () {
+      final result = resolveQuoteDisplayTime({
+        'pricing_breakdown': {
+          'client_legs': [
+            {'flight_hours': 0.92, 'flight_minutes': 55},
+            {'flight_hours': 0.91, 'flight_minutes': 55},
+          ],
+        },
+        'final_billable_hours': 3,
+      });
+      expect(result.source, 'pricing_breakdown.client_legs');
+      expect(result.time, '1 h 50 min');
+    });
+
+    test('minimums and repositioning do not replace requested-route time', () {
+      final result = resolveQuoteDisplayTime({
+        'pricing_breakdown': {
+          'display_route_hours': 1.83,
+          'route_billable_hours': 1.83,
+          'final_billable_hours': 4,
+          'billable_hours': 5.25,
+        },
+        'repositioning': {'flight_hours': 1.5},
+      });
+      expect(result.time, '1 h 50 min');
+      expect(
+        extractBackendTotalBillableHours({
+          'pricing_breakdown': {
+            'route_billable_hours': 1.83,
+            'final_billable_hours': 4,
+            'billable_hours': 5.25,
+          },
+        }),
+        5.25,
+      );
+    });
+  });
 }

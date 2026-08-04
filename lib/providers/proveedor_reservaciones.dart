@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../core/billable_hours_formatter.dart';
 import '../core/cliente_api.dart';
+import '../core/quote_price_formatter.dart';
 import '../core/config/app_environment.dart';
 import '../core/client_workflow_status.dart';
 import '../core/auth/session_cleanup_registry.dart';
@@ -700,6 +701,8 @@ class ReservationProvider extends ChangeNotifier {
             : null;
     final departureDate = firstLeg?['date']?.toString().trim() ?? '';
     final departureTime = firstLeg?['time']?.toString().trim() ?? '';
+    final returnDate =
+        inferredClosedRoute ? (lastLeg?['date']?.toString().trim() ?? '') : '';
     final selectedAircraftModel =
         (quote?['aircraft'] ??
                 quote?['aircraft_name'] ??
@@ -765,7 +768,7 @@ class ReservationProvider extends ChangeNotifier {
       'open_route': tripType == 'multi_leg' ? !shouldCloseRoute : false,
       'priority_type': priorityCode,
       'priority_multiplier': priorityMultiplier,
-      'time_display_mode': quote?['time_display_mode'] ?? 'direct',
+      'time_display_mode': 'operational',
       'billing_hours_mode': quote?['billing_hours_mode'] ?? 'operational',
       'flight_base_source': quote?['flight_base_source'] ?? 'billable_hours',
       'include_repositioning_in_billed_hours':
@@ -816,6 +819,7 @@ class ReservationProvider extends ChangeNotifier {
     _putIfMeaningful(payload, 'start_date', departureDate);
     _putIfMeaningful(payload, 'start_time', departureTime);
     _putIfMeaningful(payload, 'start_datetime', departureDatetime);
+    _putIfMeaningful(payload, 'return_date', returnDate);
     _putIfMeaningful(payload, 'return_datetime', returnDatetime);
     _putIfMeaningful(
       payload,
@@ -1184,14 +1188,7 @@ class ReservationProvider extends ChangeNotifier {
           match['aircraftRecord'],
     );
     final backendPricing = _buildBackendPricingBreakdown(match);
-    final computedPricing = _buildPricingBreakdown(
-      match,
-      aircraftRecord,
-      segmentCount: segmentCount,
-    );
-    final pricing =
-        backendPricing ??
-        (computedPricing['hasFormulaInputs'] == true ? computedPricing : null);
+    final pricing = backendPricing;
     final backendOnlyPricing = backendPricing;
     final aircraftBaseAirport = _nestedMap(match['aircraft_base_airport']);
     final repositioning = _nestedMap(match['repositioning']);
@@ -1203,7 +1200,8 @@ class ReservationProvider extends ChangeNotifier {
     });
     final hasExplicitFinalBillableHours =
         _asNumber(
-          backendOnlyPricing?['final_billable_hours'] ?? match['final_billable_hours'],
+          backendOnlyPricing?['final_billable_hours'] ??
+              match['final_billable_hours'],
           0,
         ) >
         0;
@@ -1213,7 +1211,8 @@ class ReservationProvider extends ChangeNotifier {
             : _resolveOfficialQuoteTotal(match);
 
     final normalizedFinalBillableHours = _asNumber(
-      backendOnlyPricing?['final_billable_hours'] ?? match['final_billable_hours'],
+      backendOnlyPricing?['final_billable_hours'] ??
+          match['final_billable_hours'],
       0,
     );
     final normalizedBillableHours = _asNumber(
@@ -1221,7 +1220,8 @@ class ReservationProvider extends ChangeNotifier {
       normalizedFinalBillableHours,
     );
     final normalizedRouteBillableHours = _asNumber(
-      backendOnlyPricing?['route_billable_hours'] ?? match['route_billable_hours'],
+      backendOnlyPricing?['route_billable_hours'] ??
+          match['route_billable_hours'],
       0,
     );
     final timeResolution = resolveQuoteDisplayTime({
@@ -1480,7 +1480,9 @@ class ReservationProvider extends ChangeNotifier {
           normalizeTimeText(backendOnlyPricing?['billed_time']) ??
           '',
       'pricing_context':
-          match['pricing_context'] ?? match['pricingContext'] ?? backendOnlyPricing,
+          match['pricing_context'] ??
+          match['pricingContext'] ??
+          backendOnlyPricing,
       'pricing_breakdown': backendOnlyPricing,
       'pricing': backendOnlyPricing ?? _nestedMap(match['pricing']),
       'debug_pricing':
@@ -1557,7 +1559,9 @@ class ReservationProvider extends ChangeNotifier {
       double.nan,
     );
     final total = _asNumber(
-      source['total_amount'] ??
+      _nestedMap(match['pricing'])['total_amount'] ??
+          source['total_amount'] ??
+          _nestedMap(match['pricing_context'])['total_amount'] ??
           source['amount_due'] ??
           source['selected_card_price'] ??
           source['estimated_total'] ??
@@ -1668,25 +1672,11 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   double _resolveOfficialQuoteTotal(Map<String, dynamic> match) {
-    final pricing = _nestedMap(
-      match['pricing'] ??
-          match['pricing_breakdown'] ??
-          match['pricing_context'],
-    );
-
-    return _asNumber(
-      pricing['total_amount'] ??
-          match['amount_due'] ??
-          match['selected_card_price'] ??
-          match['estimated_total'] ??
-          match['total_amount'] ??
-          match['final_price'] ??
-          match['total'] ??
-          match['price'],
-      0,
-    );
+    return extractOfficialQuoteTotal(match);
   }
 
+  // Legacy calculator retained outside the backend quote presentation flow.
+  // ignore: unused_element
   Map<String, dynamic> _buildPricingBreakdown(
     Map<String, dynamic> match,
     Map<String, dynamic> aircraftRecord, {
@@ -1865,23 +1855,7 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   double _quoteOfficialTotalValue(Map<String, dynamic> match) {
-    final pricing = _nestedMap(
-      match['pricing'] ??
-          match['pricing_breakdown'] ??
-          match['pricing_context'],
-    );
-    final amount = _asNumber(
-      pricing['total_amount'] ??
-          match['amount_due'] ??
-          match['selected_card_price'] ??
-          match['estimated_total'] ??
-          match['total'] ??
-          match['final_price'] ??
-          match['price'],
-      double.nan,
-    );
-    if (!amount.isNaN && amount > 0) return amount;
-    return 0;
+    return extractOfficialQuoteTotal(match);
   }
 
   String _quotePreviewErrorMessage(ApiException error) {
@@ -1916,16 +1890,6 @@ class ReservationProvider extends ChangeNotifier {
       if (leg is! Map) return sum;
       return sum + _asNumber(leg['distance_km']);
     });
-  }
-
-  String _resolveWebMatchTime(
-    Map<String, dynamic> match,
-    Map<String, dynamic>? pricing,
-  ) {
-    return resolveQuoteDisplayTime({
-      ...match,
-      if (pricing != null) 'pricing': pricing,
-    }).time;
   }
 
   String _resolveMatchReason(

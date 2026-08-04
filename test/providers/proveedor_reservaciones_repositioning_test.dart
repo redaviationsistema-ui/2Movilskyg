@@ -198,6 +198,7 @@ void main() {
                   'billable_hours': 3.28,
                   'pricing': {'total_amount': 47700},
                   'pricing_breakdown': {
+                    'display_route_hours': 3.28,
                     'final_billable_hours': 4.17,
                     'billable_hours': 6.10,
                     'route_billable_hours': 3.28,
@@ -219,7 +220,7 @@ void main() {
 
         expect(success, isTrue);
         expect(provider.quoteMatches, hasLength(1));
-        expect(provider.quoteMatches.single['time'], '4 h 10 min');
+        expect(provider.quoteMatches.single['time'], '3 h 17 min');
         expect(provider.quoteMatches.single['final_billable_hours'], 4.17);
         expect(provider.quoteMatches.single['billable_hours'], 6.1);
         expect(provider.quoteMatches.single['route_billable_hours'], 3.28);
@@ -232,7 +233,7 @@ void main() {
     );
 
     test(
-      'sends closed two-leg itineraries as multi_leg so backend includes billable repositioning logic',
+      'sends closed two-leg itineraries as round trip with the selected return date',
       () async {
         Map<String, dynamic>? capturedPreviewPayload;
         final provider = ReservationProvider(
@@ -262,10 +263,15 @@ void main() {
         await provider.previewCurrentSelection();
 
         expect(capturedPreviewPayload, isNotNull);
-        expect(capturedPreviewPayload!['trip_type'], 'multi_leg');
+        expect(capturedPreviewPayload!['trip_type'], 'round_trip');
         expect(capturedPreviewPayload!['close_route'], isTrue);
         expect(capturedPreviewPayload!['open_route'], isFalse);
         expect(capturedPreviewPayload!['return_to_origin'], isTrue);
+        expect(capturedPreviewPayload!['return_date'], '2026-08-06');
+        expect(
+          capturedPreviewPayload!['return_datetime'],
+          '2026-08-06T09:00:00',
+        );
       },
     );
 
