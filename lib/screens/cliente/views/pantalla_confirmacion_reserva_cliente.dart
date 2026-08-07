@@ -18,6 +18,7 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paymentConfirmed = _isPaymentConfirmed(request);
+    final segments = _segments(request);
 
     return Scaffold(
       backgroundColor: _background,
@@ -64,8 +65,8 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   _RouteCapsule(
-                    route: _routeLabel(request),
-                    details: _flightDetails(request),
+                    segments: segments,
+                    details: _flightDetails(request, segments),
                   ),
                   const SizedBox(height: 26),
                   _ConfirmationTimeline(paymentConfirmed: paymentConfirmed),
@@ -110,71 +111,171 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
     );
   }
 
-  String _routeLabel(Map<String, dynamic> request) {
-    final origin =
-        request['origin']?.toString() ??
-        request['base_airport']?.toString() ??
-        'Origen';
-    final destination = request['destination']?.toString() ?? 'Destino';
-    return '${origin.toUpperCase()}  →  ${destination.toUpperCase()}';
-  }
-
-  String _flightDetails(Map<String, dynamic> request) {
+  String _flightDetails(
+    Map<String, dynamic> request,
+    List<_FlightSegmentViewData> segments,
+  ) {
     final passengers =
         request['passengers'] ??
         request['passenger_count'] ??
         request['capacity'] ??
         1;
-    final rawDate =
-        request['departure_date'] ??
-        request['date'] ??
-        request['start_date'] ??
-        request['flight_date'];
-    final rawTime =
-        request['departure_time'] ??
-        request['time'] ??
-        request['start_time'] ??
-        request['flight_time'];
     final pieces = <String>[
       '$passengers ${passengers.toString() == '1' ? 'pasajero' : 'pasajeros'}',
-      if (_shortDate(rawDate).isNotEmpty) _shortDate(rawDate),
-      if (_shortTime(rawTime).isNotEmpty) _shortTime(rawTime),
+      '${segments.length} ${segments.length == 1 ? 'tramo' : 'tramos'}',
     ];
     return pieces.join('  •  ');
   }
 
+  List<_FlightSegmentViewData> _segments(Map<String, dynamic> request) {
+    final sources = <dynamic>[
+      request['legs'],
+      request['segments'],
+      request['routes'],
+    ];
+
+    for (final source in sources) {
+      final segments = _segmentsFromList(source);
+      if (segments.isNotEmpty) return segments;
+    }
+
+    final requirements = request['requirements'];
+    if (requirements is List) {
+      final segments = <_FlightSegmentViewData>[];
+      final primary = _segmentFromMap({
+        'origin':
+            request['origin'] ??
+            request['base_airport'] ??
+            request['origin_icao'],
+        'destination': request['destination'] ?? request['destination_icao'],
+        'departure_datetime':
+            request['departure_datetime'] ??
+            _joinDateAndTime(
+              request['departure_date'] ??
+                  request['date'] ??
+                  request['start_date'] ??
+                  request['flight_date'],
+              request['departure_time'] ??
+                  request['time'] ??
+                  request['start_time'] ??
+                  request['flight_time'],
+            ),
+      });
+      if (primary != null) {
+        segments.add(primary);
+      }
+      for (final item in requirements.whereType<Map>()) {
+        final segment = _segmentFromMap(Map<String, dynamic>.from(item));
+        if (segment != null) {
+          segments.add(segment);
+        }
+      }
+      if (segments.isNotEmpty) return segments;
+    }
+
+    return [
+      _FlightSegmentViewData(
+        routeLabel: _fallbackRouteLabel(request),
+        dateLabel: _shortDate(
+          request['departure_datetime'] ??
+              _joinDateAndTime(
+                request['departure_date'] ??
+                    request['date'] ??
+                    request['start_date'] ??
+                    request['flight_date'],
+                request['departure_time'] ??
+                    request['time'] ??
+                    request['start_time'] ??
+                    request['flight_time'],
+              ),
+        ),
+      ),
+    ];
+  }
+
+  List<_FlightSegmentViewData> _segmentsFromList(dynamic source) {
+    if (source is! List) return const [];
+    return source
+        .whereType<Map>()
+        .map((item) => _segmentFromMap(Map<String, dynamic>.from(item)))
+        .whereType<_FlightSegmentViewData>()
+        .toList();
+  }
+
+  _FlightSegmentViewData? _segmentFromMap(Map<String, dynamic> item) {
+    final origin = _firstNonEmpty(item, const [
+      'origin',
+      'from',
+      'origin_icao',
+    ]);
+    final destination = _firstNonEmpty(item, const [
+      'destination',
+      'to',
+      'destination_icao',
+    ]);
+    if (origin == null || destination == null) return null;
+
+    final departure =
+        _firstNonEmpty(item, const ['departure_datetime', 'start_datetime']) ??
+        _joinDateAndTime(item['date'], item['time']);
+
+    return _FlightSegmentViewData(
+      routeLabel: '${origin.toUpperCase()}  →  ${destination.toUpperCase()}',
+      dateLabel: _shortDate(departure),
+    );
+  }
+
+  String _fallbackRouteLabel(Map<String, dynamic> request) {
+    final origin =
+        request['origin']?.toString() ??
+        request['base_airport']?.toString() ??
+        request['origin_icao']?.toString() ??
+        'Origen';
+    final destination =
+        request['destination']?.toString() ??
+        request['destination_icao']?.toString() ??
+        'Destino';
+    return '${origin.toUpperCase()}  →  ${destination.toUpperCase()}';
+  }
+
+  String? _firstNonEmpty(Map<String, dynamic> item, List<String> keys) {
+    for (final key in keys) {
+      final value = item[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  String? _joinDateAndTime(dynamic rawDate, dynamic rawTime) {
+    final date = rawDate?.toString().trim() ?? '';
+    final time = rawTime?.toString().trim() ?? '';
+    if (date.isEmpty) return null;
+    if (time.isEmpty) return date;
+    return '${date}T$time';
+  }
+
   String _shortDate(dynamic value) {
     final raw = value?.toString().trim() ?? '';
-    if (raw.isEmpty) return '';
+    if (raw.isEmpty) return 'Fecha por confirmar';
     final parsed = DateTime.tryParse(raw);
     if (parsed == null) return raw;
     const months = [
-      'Ene',
-      'Feb',
-      'Mar',
-      'Abr',
-      'May',
-      'Jun',
-      'Jul',
-      'Ago',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dic',
+      'ene',
+      'feb',
+      'mar',
+      'abr',
+      'may',
+      'jun',
+      'jul',
+      'ago',
+      'sep',
+      'oct',
+      'nov',
+      'dic',
     ];
-    return '${parsed.day} ${months[parsed.month - 1]}';
-  }
-
-  String _shortTime(dynamic value) {
-    final raw = value?.toString().trim() ?? '';
-    if (raw.isEmpty) return '';
-    final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(raw);
-    if (match == null) return raw;
-    final hour = int.tryParse(match.group(1) ?? '') ?? 0;
-    final minute = match.group(2) ?? '00';
-    final suffix = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
-    return '$displayHour:$minute $suffix';
+    return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
   }
 
   bool _isPaymentConfirmed(Map<String, dynamic> request) {
@@ -191,6 +292,16 @@ class ClientBookingConfirmationScreen extends StatelessWidget {
         status == 'payment_confirmed' ||
         status == 'paid';
   }
+}
+
+class _FlightSegmentViewData {
+  const _FlightSegmentViewData({
+    required this.routeLabel,
+    required this.dateLabel,
+  });
+
+  final String routeLabel;
+  final String dateLabel;
 }
 
 class _ConfirmationHero extends StatelessWidget {
@@ -420,9 +531,9 @@ class _GoldParticle extends StatelessWidget {
 }
 
 class _RouteCapsule extends StatelessWidget {
-  const _RouteCapsule({required this.route, required this.details});
+  const _RouteCapsule({required this.segments, required this.details});
 
-  final String route;
+  final List<_FlightSegmentViewData> segments;
   final String details;
 
   @override
@@ -431,20 +542,39 @@ class _RouteCapsule extends StatelessWidget {
       children: [
         Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: .04),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(28),
               border: Border.all(color: Colors.white.withValues(alpha: .09)),
             ),
-            child: Text(
-              route,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                letterSpacing: .3,
-              ),
+            child: Column(
+              children: [
+                for (var index = 0; index < segments.length; index++) ...[
+                  Text(
+                    segments[index].routeLabel,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    segments[index].dateLabel,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .62),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (index != segments.length - 1) const SizedBox(height: 12),
+                ],
+              ],
             ),
           ),
         ),

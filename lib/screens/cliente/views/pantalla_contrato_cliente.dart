@@ -570,10 +570,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
                   _PremiumDocuSignCard(
                     isLoading: _externalSigning,
                     isWaitingForReturn: _waitingForExternalSignatureReturn,
-                    onSign:
-                        _externalSigning || _submitting
-                            ? null
-                            : _openExternalSignature,
                   ),
                   const SizedBox(height: 14),
                   _PremiumAcceptanceRow(
@@ -634,6 +630,14 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   }
 
   Future<void> _openExternalSignature() async {
+    if (!_accepted) {
+      setState(() {
+        _submitMessage =
+            'Primero confirma que has leído el resumen del contrato y aceptas los términos.';
+      });
+      return;
+    }
+
     final accessState = resolveCommercialAccessState(
       context.read<AuthProvider>().accessData,
     );
@@ -1680,12 +1684,10 @@ class _PremiumDocuSignCard extends StatelessWidget {
   const _PremiumDocuSignCard({
     required this.isLoading,
     required this.isWaitingForReturn,
-    required this.onSign,
   });
 
   final bool isLoading;
   final bool isWaitingForReturn;
-  final VoidCallback? onSign;
 
   @override
   Widget build(BuildContext context) {
@@ -1742,37 +1744,16 @@ class _PremiumDocuSignCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: onSign,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                backgroundColor: const Color(0xFFD7B05C),
-                foregroundColor: const Color(0xFF07111D),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(17),
-                ),
-              ),
-              icon:
-                  isLoading
-                      ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF07111D),
-                        ),
-                      )
-                      : const Icon(Icons.draw_rounded),
-              label: Text(
-                isWaitingForReturn
-                    ? 'Validar firma'
-                    : isLoading
-                    ? 'Preparando firma...'
-                    : 'Firmar contrato',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
+          Text(
+            isWaitingForReturn
+                ? 'DocuSign regreso a la app. Usa el boton inferior para validar la firma.'
+                : isLoading
+                ? 'Preparando el enlace seguro de DocuSign...'
+                : 'Revisa el resumen, acepta los terminos y luego firma desde el boton inferior.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .72),
+              fontSize: 12.5,
+              height: 1.35,
             ),
           ),
         ],

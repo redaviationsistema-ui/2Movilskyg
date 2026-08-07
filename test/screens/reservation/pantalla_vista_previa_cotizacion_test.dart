@@ -64,4 +64,37 @@ void main() {
       expect(find.text('USD18,874'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'reuses the official display route hours when legacy trip labels are stale',
+    (tester) async {
+      final reservation = ReservationProvider();
+      addTearDown(reservation.dispose);
+
+      reservation.selectedQuoteMatch = {
+        'id': 'match-preview-display-route-hours',
+        'match_id': 'match-preview-display-route-hours',
+        'aircraft_name': 'LEARJET 45',
+        'time': '1 h 50 min',
+        'trip_time': '4 h 50 min',
+        'card_time': '4 h 50 min',
+        'pricing': {'total_amount': 18874, 'display_route_hours': 1.83},
+        'pricing_breakdown': {
+          'display_route_hours': 1.83,
+          'final_billable_hours': 4.83,
+        },
+      };
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ReservationProvider>.value(
+          value: reservation,
+          child: const MaterialApp(home: QuotePreviewScreen()),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('1 h 50 min'), findsWidgets);
+      expect(find.text('4 h 50 min'), findsNothing);
+    },
+  );
 }

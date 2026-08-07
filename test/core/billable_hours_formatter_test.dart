@@ -139,6 +139,14 @@ void main() {
     expect(resolution.time, '2 h 45 min');
   });
 
+  test('extractBackendDisplayRouteHours reads official visible route hours', () {
+    final quote = <String, dynamic>{
+      'pricing': {'display_route_hours': 1.83, 'total_amount': 25000},
+    };
+
+    expect(extractBackendDisplayRouteHours(quote), 1.83);
+  });
+
   test('visible time never falls back to minimum billable hours', () {
     final quote = <String, dynamic>{
       'time': '3 h 27 min',

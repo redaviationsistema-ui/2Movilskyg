@@ -263,6 +263,7 @@ void main() {
         await provider.previewCurrentSelection();
 
         expect(capturedPreviewPayload, isNotNull);
+        expect(capturedPreviewPayload!['flight_base_source'], 'pricing_trip_hours');
         expect(capturedPreviewPayload!['trip_type'], 'round_trip');
         expect(capturedPreviewPayload!['close_route'], isTrue);
         expect(capturedPreviewPayload!['open_route'], isFalse);
@@ -271,6 +272,54 @@ void main() {
         expect(
           capturedPreviewPayload!['return_datetime'],
           '2026-08-06T09:00:00',
+        );
+      },
+    );
+
+    test(
+      'promotes official display route hours over stale trip labels when normalizing preview matches',
+      () async {
+        final provider = ReservationProvider(
+          apiClient: _api((request) async {
+            expect(request.url.path, '/api/v1/client/quotes/preview');
+            return _json(200, {
+              'matches': [
+                {
+                  'id': 'match-visible-time',
+                  'aircraft_id': 'aircraft-visible-time',
+                  'aircraft_name': 'LEARJET 45',
+                  'trip_time': '4 h 50 min',
+                  'card_time': '4 h 50 min',
+                  'time': '4 h 50 min',
+                  'pricing': {
+                    'display_route_hours': 1.83,
+                    'total_amount': 18874,
+                  },
+                },
+              ],
+            });
+          }),
+        );
+        addTearDown(provider.dispose);
+
+        provider.routes.first
+          ..fromAirport = _airport('Toluca', 'MMTO', 'TLC')
+          ..toAirport = _airport('Guaymas', 'MMGM', 'GYM')
+          ..startDate = DateTime(2026, 8, 3, 9);
+        provider.passengers = 4;
+
+        final success = await provider.previewCurrentSelection();
+
+        expect(success, isTrue);
+        expect(provider.quoteMatches, hasLength(1));
+        expect(provider.quoteMatches.single['display_route_hours'], 1.83);
+        expect(provider.quoteMatches.single['time'], '1 h 50 min');
+        expect(provider.quoteMatches.single['trip_time'], '1 h 50 min');
+        expect(provider.quoteMatches.single['card_time'], '1 h 50 min');
+        expect(
+          (provider.quoteMatches.single['pricing_breakdown']
+              as Map<String, dynamic>)['display_route_hours'],
+          1.83,
         );
       },
     );

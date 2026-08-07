@@ -116,6 +116,18 @@ String normalizeQuoteDisplayTime(Map<String, dynamic> quote) {
   return resolveQuoteDisplayTime(quote).time;
 }
 
+double? extractBackendDisplayRouteHours(Map<String, dynamic> quote) {
+  return _firstPositive([
+    quote['display_route_hours'],
+    _backendPricingBreakdown(quote)['display_route_hours'],
+    _backendPricing(quote)['display_route_hours'],
+    _backendPricingContext(quote)['display_route_hours'],
+    quote['client_display_flight_hours'],
+    _backendPricingBreakdown(quote)['client_display_flight_hours'],
+    _backendPricing(quote)['client_display_flight_hours'],
+  ]);
+}
+
 String hoursToTimeText(double hours) {
   if (!hours.isFinite || hours <= 0) return '0 h 00 min';
 

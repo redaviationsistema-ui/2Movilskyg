@@ -586,6 +586,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Necesita un enlace nuevo'
             : reservationPaymentPending
             ? 'Pago pendiente de confirmacion'
+            : _reservationContractPending
+            ? 'Firma pendiente'
             : 'Listo para abrir enlace seguro';
     final checkoutDescription =
         commercialAccessActive
@@ -598,6 +600,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'El checkout anterior de Stripe ya cerro o vencio. Generaremos un enlace nuevo y validaremos otra vez antes de avanzar.'
             : reservationPaymentPending
             ? 'Stripe recibio el checkout, pero el backend aun esta validando el pago. Actualizaremos la reserva al confirmarse.'
+            : _reservationContractPending
+            ? _reservationContractPendingMessage
             : 'El cobro se completa fuera de la app en Stripe. Al terminar, volveras automaticamente para validar tu reserva.';
     final commercialHeadline =
         commercialAccessActive
@@ -636,6 +640,8 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
             ? 'Abriendo Stripe Checkout...'
             : _showTripsShortcut
             ? 'Ir a Tus vuelos'
+            : _reservationContractPending
+            ? 'Firma pendiente'
             : _reservationCheckoutNeedsRegeneration
             ? 'Generar nuevo enlace'
             : _reservationPaymentConfirmed
@@ -1142,6 +1148,14 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                   _hasReservationPaymentIntent(widget.request) ||
                   _requestIndicatesPaymentConfirmed(widget.request))));
 
+  bool get _reservationContractPending =>
+      !widget.commercialAccessMode &&
+      !_reservationPaymentConfirmed &&
+      !_contractAllowsPayment(widget.request);
+
+  String get _reservationContractPendingMessage =>
+      'Antes de abrir Stripe Checkout necesitamos que el contrato quede completado en DocuSign. Firma el contrato y vuelve a intentarlo.';
+
   bool get _shouldValidateReservationPaymentOnReturn =>
       !widget.commercialAccessMode &&
       _waitingForReservationCheckoutReturn &&
@@ -1156,6 +1170,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
     }
     if (widget.commercialAccessMode) return _canSubmit;
     if (_showTripsShortcut) return true;
+    if (_reservationContractPending) return false;
     if (_reservationCheckoutNeedsRegeneration) return _canSubmit;
     if (_reservationPaymentConfirmed) return true;
     if (_reservationCheckoutAwaitingCompletion) return true;
@@ -2230,6 +2245,13 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
         _showTripsShortcut = false;
         _inlineMessage =
             'Tu reserva esta pendiente de pago. Abre Stripe Checkout para capturar tu tarjeta y continuar.';
+      });
+      return;
+    }
+
+    if (_reservationContractPending && _inlineMessage.isEmpty && mounted) {
+      setState(() {
+        _inlineMessage = _reservationContractPendingMessage;
       });
     }
   }
