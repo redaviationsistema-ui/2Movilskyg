@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/cliente_api.dart';
 import '../../../providers/proveedor_autenticacion.dart';
+import '../../../providers/proveedor_reservaciones.dart';
 import '../tema_cliente.dart';
 import '../widgets/widgets_experiencia_cliente.dart';
 
@@ -35,12 +36,14 @@ class ClientContractScreen extends StatefulWidget {
     super.key,
     required this.request,
     required this.onConfirm,
+    this.onAircraftUnavailable,
     this.onOpenTrips,
     this.showBackButton = true,
   });
 
   final Map<String, dynamic> request;
   final VoidCallback onConfirm;
+  final VoidCallback? onAircraftUnavailable;
   final VoidCallback? onOpenTrips;
   final bool showBackButton;
 
@@ -64,6 +67,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   String _submitMessage = '';
   String _externalContractId = '';
   int? _expandedContractSection;
+  bool _showAvailabilityAlternatives = false;
 
   @override
   void initState() {
@@ -90,6 +94,20 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
   void _handleSignatureChange() {
     if (mounted) setState(() {});
+  }
+
+  void _processAircraftAvailabilityConflict(ApiException error) {
+    context.read<ReservationProvider>().handleAircraftUnavailable({
+      ...widget.request,
+      ...?error.payload,
+    });
+    if (!mounted) return;
+    setState(() {
+      _waitingForExternalSignatureReturn = false;
+      _showAvailabilityAlternatives = true;
+      _submitMessage =
+          'Disponibilidad actualizada\n\nLa aeronave seleccionada ya no se encuentra disponible.\nTe mostramos otras opciones disponibles para tu vuelo.';
+    });
   }
 
   Future<String> _assetToDataUrl(String assetPath) async {
@@ -583,6 +601,17 @@ class _ClientContractScreenState extends State<ClientContractScreen>
                   if (_submitMessage.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     _PremiumContractMessage(message: _submitMessage),
+                    if (_showAvailabilityAlternatives) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: widget.onAircraftUnavailable,
+                          icon: const Icon(Icons.flight_takeoff_rounded),
+                          label: const Text('Ver otras opciones'),
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 16),
                 ],
@@ -671,6 +700,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
     setState(() {
       _externalSigning = true;
+      _showAvailabilityAlternatives = false;
       _submitMessage = 'Preparando enlace seguro de DocuSign...';
     });
 
@@ -754,13 +784,19 @@ class _ClientContractScreenState extends State<ClientContractScreen>
             'DocuSign abierto. Al volver a la app validaremos la firma automaticamente.';
       });
     } on ApiException catch (error) {
+      if (error.isAircraftAvailabilityConflict) {
+        _processAircraftAvailabilityConflict(error);
+        return;
+      }
       if (!mounted) return;
       setState(() {
+        _showAvailabilityAlternatives = false;
         _submitMessage = error.message;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _showAvailabilityAlternatives = false;
         _submitMessage = 'No fue posible preparar DocuSign: $error';
       });
     } finally {
@@ -776,6 +812,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
 
     setState(() {
       _externalSigning = true;
+      _showAvailabilityAlternatives = false;
       _submitMessage = 'Validando firma de DocuSign...';
     });
 
@@ -813,10 +850,23 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         _submitMessage = 'Contrato firmado. Actualizando tus vuelos...';
       });
       widget.onConfirm();
+    } on ApiException catch (error) {
+      if (error.isAircraftAvailabilityConflict) {
+        _processAircraftAvailabilityConflict(error);
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _waitingForExternalSignatureReturn = false;
+        _showAvailabilityAlternatives = false;
+        _submitMessage =
+            'No fue posible validar automaticamente la firma: ${error.message}';
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _waitingForExternalSignatureReturn = false;
+        _showAvailabilityAlternatives = false;
         _submitMessage =
             'No fue posible validar automaticamente la firma: $error';
       });

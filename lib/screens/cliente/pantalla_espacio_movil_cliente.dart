@@ -165,6 +165,26 @@ class _ClientMobileWorkspaceScreenState
     unawaited(_persistCurrentFlow());
   }
 
+  void _openAvailabilityAlternatives() {
+    setState(() {
+      _selectedIndex = 0;
+      _tripsStage = _TripsStage.list;
+    });
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ClientResultsScreen(
+              userInitial: _userInitial(
+                context.read<AuthProvider>().displayName,
+              ),
+              onBackToSearch: _resetSearchFlow,
+              onReservationCreated: _openReservationConfirmation,
+              onCommercialAccessRequired: _openCommercialAccessPayment,
+            ),
+      ),
+    );
+  }
+
   Widget _buildTripsScreen(Map<String, dynamic>? activeRequest) {
     if (_tripsStage != _TripsStage.list && activeRequest == null) {
       return _MissingClientRequestScreen(
@@ -181,6 +201,7 @@ class _ClientMobileWorkspaceScreenState
         return ClientContractScreen(
           request: activeRequest ?? const {},
           showBackButton: false,
+          onAircraftUnavailable: _openAvailabilityAlternatives,
           onOpenTrips: () {
             setState(() {
               _tripsStage = _TripsStage.list;
@@ -232,23 +253,7 @@ class _ClientMobileWorkspaceScreenState
             });
           },
           onAircraftUnavailable: (_) {
-            setState(() {
-              _selectedIndex = 0;
-              _tripsStage = _TripsStage.list;
-            });
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder:
-                    (_) => ClientResultsScreen(
-                      userInitial: _userInitial(
-                        context.read<AuthProvider>().displayName,
-                      ),
-                      onBackToSearch: _resetSearchFlow,
-                      onReservationCreated: _openReservationConfirmation,
-                      onCommercialAccessRequired: _openCommercialAccessPayment,
-                    ),
-              ),
-            );
+            _openAvailabilityAlternatives();
           },
         );
       case _TripsStage.confirmation:

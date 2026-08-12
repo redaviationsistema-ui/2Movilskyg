@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
 import '../../../core/billable_hours_formatter.dart';
+import '../../../core/cliente_api.dart';
 import '../../../core/media_utils.dart';
 import '../../../core/quote_price_formatter.dart';
 import '../../../models/modelo_ruta.dart';
@@ -187,6 +188,19 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
       return;
     }
 
+    if (quote['is_available'] == false) {
+      reservation.handleAircraftUnavailable(quote);
+      if (!mounted) return;
+      _showResultAlert(
+        (quote['availability_reason']?.toString().trim().isNotEmpty ?? false)
+            ? quote['availability_reason'].toString()
+            : 'Disponibilidad actualizada. Esta aeronave ya no esta disponible. Te mostramos otras opciones para tu vuelo.',
+        icon: Icons.info_outline_rounded,
+        isError: true,
+      );
+      return;
+    }
+
     reservation.setSelectedQuoteMatch(quote);
 
     setState(() {
@@ -213,6 +227,22 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
       _showResultAlert(
         'Solicitud creada correctamente. Ya puedes seguirla en Reservas.',
         icon: Icons.check_circle_rounded,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.isAircraftAvailabilityConflict) {
+        reservation.handleAircraftUnavailable({...quote, ...?error.payload});
+        _showResultAlert(
+          'Disponibilidad actualizada. La aeronave seleccionada ya no se encuentra disponible. Te mostramos otras opciones disponibles para tu vuelo.',
+          icon: Icons.info_outline_rounded,
+          isError: true,
+        );
+        return;
+      }
+      _showResultAlert(
+        'No fue posible crear la solicitud: ${error.message}',
+        icon: Icons.error_outline_rounded,
+        isError: true,
       );
     } catch (error) {
       if (!mounted) return;

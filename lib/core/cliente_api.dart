@@ -1821,9 +1821,7 @@ class ApiClient {
       ..._headers(authenticated: authenticated),
       ...?headers,
     };
-    if (_shouldLogQuoteTraffic(path)) {
-     
-    }
+    if (_shouldLogQuoteTraffic(path)) {}
 
     switch (method) {
       case 'POST':
@@ -1913,9 +1911,7 @@ class ApiClient {
     required Uri uri,
     required http.Response response,
   }) {
-    if (_shouldLogQuoteTraffic(uri.path)) {
-      
-    }
+    if (_shouldLogQuoteTraffic(uri.path)) {}
   }
 
   bool _shouldLogQuoteTraffic(String path) {
@@ -2084,7 +2080,7 @@ class ApiException implements Exception {
 
   const ApiException(this.message, {this.statusCode, this.cause, this.payload});
 
-  bool get isAircraftNotAvailable {
+  bool get isAircraftAvailabilityConflict {
     if (statusCode != 409) return false;
     final values = [
       payload?['code'],
@@ -2093,11 +2089,14 @@ class ApiException implements Exception {
       payload?['message'],
       message,
     ];
-    return values.any(
-      (value) =>
-          value.toString().toUpperCase().contains('AIRCRAFT_NOT_AVAILABLE'),
-    );
+    return values.any((value) {
+      final normalized = value.toString().toUpperCase();
+      return normalized.contains('AIRCRAFT_NOT_AVAILABLE') ||
+          normalized.contains('AIRCRAFT_ALREADY_RESERVED');
+    });
   }
+
+  bool get isAircraftNotAvailable => isAircraftAvailabilityConflict;
 
   @override
   String toString() => message;

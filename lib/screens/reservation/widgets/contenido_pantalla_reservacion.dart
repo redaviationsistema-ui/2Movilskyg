@@ -1315,7 +1315,7 @@ class SuggestedDestinationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final code = airport.iata?.trim().toUpperCase() ?? 'RUTA';
     final location = _displayCityForCode(code, airport.city);
-    final imageUrl = _imageUrlForCode(code);
+    final imageUrls = _imageUrlsForCode(code);
 
     return InkWell(
       onTap: onTap,
@@ -1339,22 +1339,9 @@ class SuggestedDestinationCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (_, __, ___) => DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  const Color(0xFF12243B),
-                                  const Color(0xFF07111D),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                            ),
-                          ),
+                    _SuggestedDestinationImage(
+                      imageUrls: imageUrls,
+                      location: location,
                     ),
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -1454,19 +1441,96 @@ class SuggestedDestinationCard extends StatelessWidget {
     }
   }
 
-  static String _imageUrlForCode(String code) {
+  static List<String> _imageUrlsForCode(String code) {
     switch (code) {
       case 'MEX':
-        return 'https://images.unsplash.com/photo-1518105779142-d975f22f1b0a?auto=format&fit=crop&w=900&q=80';
+        return const [
+          'https://images.unsplash.com/photo-1518105779142-d975f22f1b0a?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+        ];
       case 'CUN':
-        return 'https://images.unsplash.com/photo-1510097467424-192d713fd8b2?auto=format&fit=crop&w=900&q=80';
+        return const [
+          'https://images.unsplash.com/photo-1510097467424-192d713fd8b2?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+        ];
       case 'MTY':
-        return 'https://images.unsplash.com/photo-1574042320609-8cb5e7f4d13b?auto=format&fit=crop&w=900&q=80';
+        return const [
+          'https://images.unsplash.com/photo-1512813195386-6cf811ad3542?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+        ];
       case 'SJD':
-        return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80';
+        return const [
+          'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+        ];
       default:
-        return 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80';
+        return const [
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+        ];
     }
+  }
+}
+
+class _SuggestedDestinationImage extends StatefulWidget {
+  const _SuggestedDestinationImage({
+    required this.imageUrls,
+    required this.location,
+  });
+
+  final List<String> imageUrls;
+  final String location;
+
+  @override
+  State<_SuggestedDestinationImage> createState() =>
+      _SuggestedDestinationImageState();
+}
+
+class _SuggestedDestinationImageState
+    extends State<_SuggestedDestinationImage> {
+  int _imageIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      widget.imageUrls[_imageIndex],
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) {
+        if (_imageIndex < widget.imageUrls.length - 1) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() {
+              _imageIndex += 1;
+            });
+          });
+          return const SizedBox.expand();
+        }
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF12243B), Color(0xFF07111D)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Text(
+                widget.location,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

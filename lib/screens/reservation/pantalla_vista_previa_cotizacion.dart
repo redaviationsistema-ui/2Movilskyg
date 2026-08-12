@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/billable_hours_formatter.dart';
+import '../../core/cliente_api.dart';
 import '../../core/quote_price_formatter.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import 'pantalla_exito.dart';
@@ -35,6 +36,21 @@ class QuotePreviewScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Faltan datos base para crear la solicitud.'),
+        ),
+      );
+      return;
+    }
+
+    if (quote['is_available'] == false) {
+      reservation.handleAircraftUnavailable(quote);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (quote['availability_reason']?.toString().trim().isNotEmpty ??
+                    false)
+                ? quote['availability_reason'].toString()
+                : 'Disponibilidad actualizada. Esta aeronave ya no esta disponible. Te mostramos otras opciones para tu vuelo.',
+          ),
         ),
       );
       return;
@@ -80,6 +96,26 @@ class QuotePreviewScreen extends StatelessWidget {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const SuccessScreen()),
+      );
+    } on ApiException catch (error) {
+      if (context.mounted) Navigator.pop(context);
+
+      if (error.isAircraftAvailabilityConflict) {
+        reservation.handleAircraftUnavailable({...quote, ...?error.payload});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Disponibilidad actualizada. La aeronave seleccionada ya no se encuentra disponible. Te mostramos otras opciones disponibles para tu vuelo.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al crear la solicitud: ${error.message}'),
+        ),
       );
     } catch (error) {
       if (context.mounted) Navigator.pop(context);

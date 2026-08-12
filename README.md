@@ -1,16 +1,16 @@
 # skygmovil
 
-A new Flutter project.
+App móvil de Red Sky para clientes, reservas, contrato y pago.
 
-## Getting Started
+## Auditoría de disponibilidad
 
-This project is a starting point for a Flutter application.
+La auditoría real de disponibilidad de aeronaves quedó documentada en:
 
-A few resources to get you started if this is your first Flutter project:
+- [docs/aircraft-availability-audit.md](docs/aircraft-availability-audit.md)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Esa guía explica:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- cómo ejecutar pruebas reales contra backend
+- qué `dart-defines` se necesitan
+- qué escenarios requieren datos sembrados por backend
+- cómo validar conflicto, contrato y concurrencia sin hardcodear datos funcionales en Flutter

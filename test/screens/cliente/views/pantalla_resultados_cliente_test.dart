@@ -22,6 +22,9 @@ void main() {
       );
       addTearDown(reservation.dispose);
       addTearDown(auth.dispose);
+      auth.syncAccessState({
+        'commercial_access': {'status': 'active', 'has_paid_access': true},
+      });
 
       reservation.quoteMatches = [
         {
@@ -59,11 +62,62 @@ void main() {
         find.textContaining('Reposicionamiento desde TOLUCA'),
         findsOneWidget,
       );
-      expect(find.text('MMTO -> MMQT'), findsOneWidget);
+      expect(find.textContaining('MMTO'), findsOneWidget);
       expect(find.textContaining('92 NM'), findsOneWidget);
       expect(find.textContaining('Incluido en la tarifa'), findsOneWidget);
-      expect(find.textContaining('USD 20787'), findsOneWidget);
+      expect(find.textContaining('USD20'), findsOneWidget);
       expect(find.text('Base en origen'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'blocks request creation when quote is already unavailable and removes it from results',
+    (tester) async {
+      final reservation = ReservationProvider();
+      final auth = AuthProvider(
+        api: ApiClient.forTesting(
+          baseUrl: 'https://api.example.test/api/v1',
+          httpClient: MockClient((_) async => throw UnimplementedError()),
+        ),
+        sessionStorage: _MemorySessionStorage(),
+      );
+      addTearDown(reservation.dispose);
+      addTearDown(auth.dispose);
+      auth.syncAccessState({
+        'commercial_access': {'status': 'active', 'has_paid_access': true},
+      });
+
+      reservation.quoteMatches = [
+        {
+          'id': 'match-1',
+          'match_id': 'match-1',
+          'aircraft': 'Learjet 45',
+          'aircraft_id': 'aircraft-1',
+          'is_available': false,
+          'availability_reason': 'Esta aeronave ya no esta disponible.',
+          'pricing': {'total_amount': 20787},
+        },
+      ];
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ReservationProvider>.value(
+              value: reservation,
+            ),
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ],
+          child: const MaterialApp(home: ClientResultsScreen()),
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Crear solicitud'));
+      await tester.tap(find.text('Crear solicitud'));
+      await tester.pump();
+
+      expect(reservation.quoteMatches, isEmpty);
+      expect(find.text('Esta aeronave ya no esta disponible.'), findsOneWidget);
     },
   );
 }

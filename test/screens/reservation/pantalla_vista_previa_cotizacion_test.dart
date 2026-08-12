@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:red_sky/providers/proveedor_reservaciones.dart';
 import 'package:red_sky/screens/reservation/pantalla_vista_previa_cotizacion.dart';
+import 'package:red_sky/models/modelo_ruta.dart';
+import 'package:red_sky/models/aeropuerto.dart';
 
 void main() {
   testWidgets(
@@ -95,6 +97,65 @@ void main() {
 
       expect(find.text('1 h 50 min'), findsWidgets);
       expect(find.text('4 h 50 min'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'prevents confirmation when selected quote is no longer available',
+    (tester) async {
+      final reservation = ReservationProvider();
+      addTearDown(reservation.dispose);
+
+      reservation.selectedQuoteMatch = {
+        'id': 'match-unavailable',
+        'match_id': 'match-unavailable',
+        'aircraft_name': 'LEARJET 45',
+        'aircraft_id': 'aircraft-1',
+        'is_available': false,
+        'availability_reason': 'Esta aeronave ya no esta disponible.',
+      };
+      reservation.quoteMatches = [
+        Map<String, dynamic>.from(reservation.selectedQuoteMatch!),
+      ];
+      reservation.routes = [
+        RouteModel(
+          fromAirport: Airport(
+            name: 'Toluca',
+            city: 'Toluca',
+            icao: 'MMTO',
+            iata: 'TLC',
+            lat: 19.3371,
+            lng: -99.5660,
+          ),
+          toAirport: Airport(
+            name: 'Queretaro',
+            city: 'Queretaro',
+            icao: 'MMQT',
+            iata: 'QRO',
+            lat: 20.6173,
+            lng: -100.1857,
+          ),
+          startDate: DateTime.utc(2026, 8, 20, 10),
+        ),
+      ];
+      reservation.startDate = DateTime.utc(2026, 8, 20, 10);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ReservationProvider>.value(
+          value: reservation,
+          child: const MaterialApp(home: QuotePreviewScreen()),
+        ),
+      );
+      await tester.pump();
+
+      await const QuotePreviewScreen().confirm(
+        tester.element(find.byType(QuotePreviewScreen)),
+      );
+      await tester.pump();
+
+      expect(reservation.selectedQuoteMatch, isNull);
+      expect(reservation.quoteMatches, isEmpty);
+      expect(find.text('Esta aeronave ya no esta disponible.'), findsOneWidget);
     },
   );
 }

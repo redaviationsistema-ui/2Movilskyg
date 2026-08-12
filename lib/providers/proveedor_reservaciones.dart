@@ -1245,11 +1245,26 @@ class ReservationProvider extends ChangeNotifier {
       ...match,
       if (backendOnlyPricing != null) 'pricing_breakdown': backendOnlyPricing,
     });
+    final normalizedIsAvailable =
+        match['is_available'] == true
+            ? true
+            : match['is_available'] == false
+            ? false
+            : aircraftRecord['is_available'] == true
+            ? true
+            : aircraftRecord['is_available'] == false
+            ? false
+            : null;
+    final normalizedAvailabilityStatus =
+        match['availability_status'] ?? aircraftRecord['availability_status'];
+    final normalizedAvailabilityReason =
+        match['availability_reason'] ?? aircraftRecord['availability_reason'];
     final normalizedDebugPricing = <String, dynamic>{
       ...mergedPricingSources,
       ...debugPricing,
     };
-    if (normalizedDisplayRouteHours != null && normalizedDisplayRouteHours > 0) {
+    if (normalizedDisplayRouteHours != null &&
+        normalizedDisplayRouteHours > 0) {
       normalizedDebugPricing['display_route_hours'] =
           normalizedDebugPricing['display_route_hours'] ??
           normalizedDisplayRouteHours;
@@ -1339,6 +1354,9 @@ class ReservationProvider extends ChangeNotifier {
           _nestedMap(match['provider'])['id'] ??
           aircraftRecord['provider_id'] ??
           _nestedMap(aircraftRecord['provider'])['id'],
+      'is_available': normalizedIsAvailable,
+      'availability_status': normalizedAvailabilityStatus,
+      'availability_reason': normalizedAvailabilityReason,
       'aircraft':
           match['aircraft_name'] ??
           match['name'] ??
@@ -1463,14 +1481,10 @@ class ReservationProvider extends ChangeNotifier {
           aircraftBaseAirport.isEmpty ? null : aircraftBaseAirport,
       'repositioning': repositioning.isEmpty ? null : repositioning,
       'return_to_base': returnToBase.isEmpty ? null : returnToBase,
-      'trip_time':
-          normalizedTime,
-      'card_time':
-          normalizedTime,
-      'display_time':
-          normalizedTime,
-      'ui_time':
-          normalizedTime,
+      'trip_time': normalizedTime,
+      'card_time': normalizedTime,
+      'display_time': normalizedTime,
+      'ui_time': normalizedTime,
       'billed_time':
           normalizeTimeText(match['billed_time']) ??
           normalizeTimeText(match['billable_flight_time']) ??
@@ -1527,17 +1541,8 @@ class ReservationProvider extends ChangeNotifier {
 
     final source =
         rawBreakdown.isNotEmpty
-            ? {
-              ...rawPricing,
-              ...rawPricingContext,
-              ...match,
-              ...rawBreakdown,
-            }
-            : {
-              ...rawPricing,
-              ...rawPricingContext,
-              ...match,
-            };
+            ? {...rawPricing, ...rawPricingContext, ...match, ...rawBreakdown}
+            : {...rawPricing, ...rawPricingContext, ...match};
     final hasExplicitFinalBillableHours =
         _hasMeaningfulValue(source['final_billable_hours']) &&
         _asNumber(source['final_billable_hours'], 0) > 0;
