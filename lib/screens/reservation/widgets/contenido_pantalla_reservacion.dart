@@ -916,7 +916,6 @@ class _FlightSearchHero extends StatelessWidget {
                       style: TextStyle(
                         color: Color(0xFFD9B25F),
                         fontSize: 18,
-                        fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

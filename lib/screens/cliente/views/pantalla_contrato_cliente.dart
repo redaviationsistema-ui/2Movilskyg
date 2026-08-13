@@ -838,7 +838,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         setState(() {
           _waitingForExternalSignatureReturn = false;
           _submitMessage =
-              'DocuSign regreso a la app, pero el backend aun no confirma la firma. Actualiza Mis vuelos en unos segundos.';
+              'DocuSign regreso a la app, aun no se confirma la firma. Actualiza Mis vuelos en unos segundos.';
         });
         return;
       }
@@ -876,8 +876,9 @@ class _ClientContractScreenState extends State<ClientContractScreen>
   }
 
   Future<void> _downloadContractPdf() async {
-    final contractEntityId = _contractEntityId(widget.request);
-    if (contractEntityId.isEmpty) {
+    var reservationId = _reservationId(widget.request);
+    final flightRequestId = _flightRequestId(widget.request);
+    if (reservationId.isEmpty && flightRequestId.isEmpty) {
       setState(() {
         _submitMessage =
             'No se encontro un identificador del contrato para descargar el PDF.';
@@ -891,8 +892,15 @@ class _ClientContractScreenState extends State<ClientContractScreen>
     });
 
     try {
+      if (reservationId.isEmpty) {
+        reservationId = await _resolveReservationIdForDocuSign(
+          request: widget.request,
+          reservationId: reservationId,
+          flightRequestId: flightRequestId,
+        );
+      }
       final bytes = await ApiClient.instance.downloadClientContractPdf(
-        contractEntityId,
+        reservationId,
       );
       final directory = await getApplicationDocumentsDirectory();
       final contractsDirectory = Directory(
@@ -902,7 +910,7 @@ class _ClientContractScreenState extends State<ClientContractScreen>
         await contractsDirectory.create(recursive: true);
       }
       final file = File(
-        path.join(contractsDirectory.path, 'contrato-$contractEntityId.pdf'),
+        path.join(contractsDirectory.path, 'contrato-$reservationId.pdf'),
       );
       await file.writeAsBytes(bytes, flush: true);
       final result = await OpenFilex.open(file.path);
@@ -1380,17 +1388,19 @@ class _PremiumCostSummary extends StatelessWidget {
           const SizedBox(height: 17),
           _PremiumAmountRow(
             label: 'Costo total',
-            value: model.finalPriceLabel,
+            value: _ensureLeadingCurrencySymbol(model.finalPriceLabel),
             emphasized: true,
           ),
-          const SizedBox(height: 13),
-          _PremiumAmountRow(label: 'Depósito', value: model.depositLabel),
-          const SizedBox(height: 13),
-          _PremiumAmountRow(label: 'Saldo', value: model.balanceLabel),
         ],
       ),
     );
   }
+}
+
+String _ensureLeadingCurrencySymbol(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty || normalized.startsWith(r'$')) return normalized;
+  return '\$$normalized';
 }
 
 class _PremiumAmountRow extends StatelessWidget {

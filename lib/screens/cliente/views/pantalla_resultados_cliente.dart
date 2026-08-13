@@ -37,6 +37,7 @@ class ClientResultsScreen extends StatefulWidget {
 
 class _ClientResultsScreenState extends State<ClientResultsScreen> {
   bool _isCreatingRequest = false;
+  String? _selectingQuoteId;
   _ResultsSortCriterion _sortCriterion = _ResultsSortCriterion.advisor;
 
   @override
@@ -151,12 +152,13 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                               _sortCriterion == _ResultsSortCriterion.advisor &&
                               entry.key == 0,
                           isSelected: _sameQuote(entry.value, selected),
+                          isSelecting:
+                              _selectingQuoteId != null &&
+                              _sameQuoteId(entry.value, _selectingQuoteId),
                           isBusy:
                               _isCreatingRequest &&
                               _sameQuote(entry.value, selected),
-                          onSelect: () {
-                            reservation.setSelectedQuoteMatch(entry.value);
-                          },
+                          onSelect: () => _selectQuote(entry.value),
                           onCreateRequest: () => _createRequest(entry.value),
                           actionLabel: createActionLabel,
                         ),
@@ -204,6 +206,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     reservation.setSelectedQuoteMatch(quote);
 
     setState(() {
+      _selectingQuoteId = null;
       _isCreatingRequest = true;
     });
 
@@ -260,6 +263,28 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     }
   }
 
+  Future<void> _selectQuote(Map<String, dynamic> quote) async {
+    final reservation = context.read<ReservationProvider>();
+    final quoteId = _quoteIdentity(quote);
+
+    if (_isCreatingRequest || quoteId.isEmpty || _selectingQuoteId == quoteId) {
+      return;
+    }
+
+    setState(() {
+      _selectingQuoteId = quoteId;
+    });
+
+    reservation.setSelectedQuoteMatch(quote);
+
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (!mounted || _selectingQuoteId != quoteId) return;
+
+    setState(() {
+      _selectingQuoteId = null;
+    });
+  }
+
   void _showResultAlert(
     String message, {
     required IconData icon,
@@ -310,20 +335,26 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
   bool _sameQuote(Map<String, dynamic> quote, Map<String, dynamic>? selected) {
     if (selected == null) return false;
 
-    final quoteId =
-        quote['match_id']?.toString() ??
-        quote['id']?.toString() ??
-        quote['aircraft_id']?.toString();
-    final selectedId =
-        selected['match_id']?.toString() ??
-        selected['id']?.toString() ??
-        selected['aircraft_id']?.toString();
+    final quoteId = _quoteIdentity(quote);
+    final selectedId = _quoteIdentity(selected);
 
     if (quoteId != null && selectedId != null) {
       return quoteId == selectedId;
     }
 
     return identical(quote, selected);
+  }
+
+  bool _sameQuoteId(Map<String, dynamic> quote, String? selectedId) {
+    if (selectedId == null || selectedId.isEmpty) return false;
+    return _quoteIdentity(quote) == selectedId;
+  }
+
+  String _quoteIdentity(Map<String, dynamic> quote) {
+    return quote['match_id']?.toString() ??
+        quote['id']?.toString() ??
+        quote['aircraft_id']?.toString() ??
+        '';
   }
 
   List<Map<String, dynamic>> _sortMatches(List<Map<String, dynamic>> matches) {
@@ -680,6 +711,7 @@ class _QuoteMatchCard extends StatelessWidget {
     required this.quote,
     required this.isRecommended,
     required this.isSelected,
+    required this.isSelecting,
     required this.isBusy,
     required this.onSelect,
     required this.onCreateRequest,
@@ -689,6 +721,7 @@ class _QuoteMatchCard extends StatelessWidget {
   final Map<String, dynamic> quote;
   final bool isRecommended;
   final bool isSelected;
+  final bool isSelecting;
   final bool isBusy;
   final VoidCallback onSelect;
   final VoidCallback onCreateRequest;
@@ -766,7 +799,7 @@ class _QuoteMatchCard extends StatelessWidget {
             ),
           ),
       child: InkWell(
-        onTap: onSelect,
+        onTap: isSelecting || isBusy ? null : onSelect,
         borderRadius: BorderRadius.circular(28),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
@@ -902,13 +935,24 @@ class _QuoteMatchCard extends StatelessWidget {
                                     ),
                                   ),
                                   if (isSelected)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 5),
-                                      child: Icon(
-                                        Icons.check_circle_rounded,
-                                        color: Color(0xFFD8B15D),
-                                        size: 18,
-                                      ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 5),
+                                      child:
+                                          isSelecting
+                                              ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Color(0xFFD8B15D),
+                                                    ),
+                                              )
+                                              : const Icon(
+                                                Icons.check_circle_rounded,
+                                                color: Color(0xFFD8B15D),
+                                                size: 18,
+                                              ),
                                     ),
                                 ],
                               ),
@@ -1030,7 +1074,7 @@ class _QuoteMatchCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                   child: _ResultsScaleButton(
-                    onTap: isBusy ? null : onCreateRequest,
+                    onTap: isBusy || isSelecting ? null : onCreateRequest,
                     child: Container(
                       height: 38,
                       width: double.infinity,
@@ -1047,14 +1091,36 @@ class _QuoteMatchCard extends StatelessWidget {
                         ),
                       ),
                       child:
-                          isBusy
-                              ? const SizedBox(
-                                width: 17,
-                                height: 17,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFFD8B15D),
-                                ),
+                          isBusy || isSelecting
+                              ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 17,
+                                    height: 17,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color:
+                                          isSelected
+                                              ? const Color(0xFF07111D)
+                                              : const Color(0xFFD8B15D),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    isSelecting
+                                        ? 'Seleccionando...'
+                                        : 'Creando solicitud...',
+                                    style: TextStyle(
+                                      color:
+                                          isSelected
+                                              ? const Color(0xFF07111D)
+                                              : const Color(0xFFD8B15D),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
                               )
                               : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1066,7 +1132,9 @@ class _QuoteMatchCard extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    actionLabel.contains('Activar')
+                                    isSelecting
+                                        ? 'Seleccionando...'
+                                        : actionLabel.contains('Activar')
                                         ? 'Activar aeronave'
                                         : 'Crear solicitud',
                                     style: TextStyle(

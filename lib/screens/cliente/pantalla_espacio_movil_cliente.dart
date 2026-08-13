@@ -30,6 +30,7 @@ class ClientMobileWorkspaceScreen extends StatefulWidget {
 class _ClientMobileWorkspaceScreenState
     extends State<ClientMobileWorkspaceScreen>
     with WidgetsBindingObserver {
+  static const Duration _tripsAutoRefreshInterval = Duration(seconds: 12);
   int _selectedIndex = 0;
   int _searchSession = 0;
   _TripsStage _tripsStage = _TripsStage.list;
@@ -51,11 +52,8 @@ class _ClientMobileWorkspaceScreenState
       }
       unawaited(_restorePersistedFlow());
     });
-    _workspaceSyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!mounted) return;
-      final auth = context.read<AuthProvider>();
-      if (!auth.isAuthenticated) return;
-      context.read<ReservationProvider>().loadClientWorkspaceData(force: true);
+    _workspaceSyncTimer = Timer.periodic(_tripsAutoRefreshInterval, (_) {
+      unawaited(_refreshTripsWorkspaceIfVisible(force: true));
     });
     _notificationSubscription = PushNotificationsService.openedMessages.listen((
       payload,
@@ -78,9 +76,7 @@ class _ClientMobileWorkspaceScreenState
     final auth = context.read<AuthProvider>();
     if (!auth.isAuthenticated) return;
     unawaited(auth.refreshCommercialAccessStatus());
-    unawaited(
-      context.read<ReservationProvider>().loadClientWorkspaceData(force: true),
-    );
+    unawaited(_refreshTripsWorkspaceIfVisible(force: true));
     unawaited(_persistCurrentFlow());
   }
 
@@ -134,8 +130,20 @@ class _ClientMobileWorkspaceScreenState
               _tripsStage = _TripsStage.list;
             }
           });
+          if (index == 1) {
+            unawaited(_refreshTripsWorkspaceIfVisible(force: true));
+          }
         },
       ),
+    );
+  }
+
+  Future<void> _refreshTripsWorkspaceIfVisible({required bool force}) async {
+    if (!mounted || _selectedIndex != 1) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+    await context.read<ReservationProvider>().loadClientWorkspaceData(
+      force: force,
     );
   }
 

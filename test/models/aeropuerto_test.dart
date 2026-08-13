@@ -17,7 +17,7 @@ void main() {
     expect(airport.icao, 'MMTO');
   });
 
-  test('resolves the same airport state by IATA or ICAO', () {
+  test('resolves the same airport name by IATA or ICAO', () {
     final names = buildAirportNameIndex([
       Airport.fromJson({
         'nombre': 'Aeropuerto Intercontinental de Querétaro',
@@ -28,18 +28,30 @@ void main() {
       }),
     ]);
 
-    expect(airportDisplayName('MMQT', names), 'Querétaro');
-    expect(airportDisplayName('qro', names), 'Querétaro');
+    expect(
+      airportDisplayName('MMQT', names),
+      'Aeropuerto Intercontinental de Querétaro',
+    );
+    expect(
+      airportDisplayName('qro', names),
+      'Aeropuerto Intercontinental de Querétaro',
+    );
   });
 
   test('keeps the code as a safe fallback without an airport catalog', () {
     expect(airportDisplayName('XXXX', const {}), 'XXXX');
   });
 
-  test('shows verified states before the remote catalog finishes', () {
+  test('shows verified airport names before the remote catalog finishes', () {
     final names = buildAirportNameIndex(const []);
 
-    expect(airportDisplayName('MMSD', names), 'Baja California Sur');
-    expect(airportDisplayName('MMTO', names), 'Estado de México');
+    expect(
+      airportDisplayName('MMSD', names),
+      'Aeropuerto Internacional de Los Cabos',
+    );
+    expect(
+      airportDisplayName('MMTO', names),
+      'Aeropuerto Internacional de Toluca',
+    );
   });
 }

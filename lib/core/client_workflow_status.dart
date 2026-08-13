@@ -74,7 +74,7 @@ const List<ClientWorkflowDefinition> kClientWorkflowDefinitions = [
   ),
   ClientWorkflowDefinition(
     id: 'provider_accepted',
-    label: 'Respuesta proveedor',
+    label: 'Firma tu contrato',
     apiStatus: 'provider_accepted',
     apiWorkflow: 'proveedor aceptado',
     matches: [

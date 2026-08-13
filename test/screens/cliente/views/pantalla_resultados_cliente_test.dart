@@ -120,6 +120,56 @@ void main() {
       expect(find.text('Esta aeronave ya no esta disponible.'), findsOneWidget);
     },
   );
+
+  testWidgets('shows selecting loading state when a quote card is tapped', (
+    tester,
+  ) async {
+    final reservation = ReservationProvider();
+    final auth = AuthProvider(
+      api: ApiClient.forTesting(
+        baseUrl: 'https://api.example.test/api/v1',
+        httpClient: MockClient((_) async => throw UnimplementedError()),
+      ),
+      sessionStorage: _MemorySessionStorage(),
+    );
+    addTearDown(reservation.dispose);
+    addTearDown(auth.dispose);
+    auth.syncAccessState({
+      'commercial_access': {'status': 'active', 'has_paid_access': true},
+    });
+
+    reservation.quoteMatches = [
+      {
+        'id': 'match-1',
+        'match_id': 'match-1',
+        'aircraft': 'Merlin III',
+        'aircraft_id': 'aircraft-1',
+        'pricing': {'total_amount': 25642},
+        'category': 'Turboprop',
+        'capacity': 8,
+      },
+    ];
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ReservationProvider>.value(value: reservation),
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+        ],
+        child: const MaterialApp(home: ClientResultsScreen()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Merlin III'));
+    await tester.pump();
+
+    expect(find.text('Seleccionando...'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(reservation.selectedQuoteMatch?['match_id'], 'match-1');
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+  });
 }
 
 class _MemorySessionStorage implements SessionStorage {

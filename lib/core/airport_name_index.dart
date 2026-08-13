@@ -1,23 +1,25 @@
 import '../models/aeropuerto.dart';
 
 const Map<String, String> verifiedAirportNames = {
-  'MMSD': 'Baja California Sur',
-  'SJD': 'Baja California Sur',
-  'MMTO': 'Estado de México',
-  'TLC': 'Estado de México',
+  'MMSD': 'Aeropuerto Internacional de Los Cabos',
+  'SJD': 'Aeropuerto Internacional de Los Cabos',
+  'MMTO': 'Aeropuerto Internacional de Toluca',
+  'TLC': 'Aeropuerto Internacional de Toluca',
 };
 
 Map<String, String> buildAirportNameIndex(Iterable<Airport> airports) {
   final names = <String, String>{...verifiedAirportNames};
   for (final airport in airports) {
     final label =
-        airport.state?.trim().isNotEmpty == true
-            ? airport.state!.trim()
-            : airport.name.trim();
+        airport.name.trim().isNotEmpty
+            ? airport.name.trim()
+            : (airport.city.trim().isNotEmpty
+                ? airport.city.trim()
+                : (airport.state?.trim() ?? ''));
     if (label.isEmpty) continue;
     for (final code in [airport.iata, airport.icao]) {
       final normalized = code?.trim().toUpperCase() ?? '';
-      if (normalized.isNotEmpty) names.putIfAbsent(normalized, () => label);
+      if (normalized.isNotEmpty) names[normalized] = label;
     }
   }
   return names;

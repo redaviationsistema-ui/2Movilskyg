@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'core/app_theme.dart';
-import 'core/config/app_environment.dart';
 import 'core/replay_guard.dart';
 import 'providers/proveedor_autenticacion.dart';
 import 'providers/proveedor_reservaciones.dart';
@@ -91,8 +90,7 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
       if (initialUri != null) {
         unawaited(_handlePaymentReturnLink(initialUri));
       }
-    } catch (_) {
-    }
+    } catch (_) {}
 
     _paymentLinkSubscription = _appLinks.uriLinkStream.listen((uri) {
       unawaited(_handlePaymentReturnLink(uri));
@@ -253,14 +251,6 @@ class _RedSkyAppShellState extends State<_RedSkyAppShell> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder: (context, child) {
-        if (!AppEnvironment.current.showsEnvironmentBadge) return child!;
-        return Banner(
-          message: AppEnvironment.current.label,
-          location: BannerLocation.topEnd,
-          child: child!,
-        );
-      },
       home: const AuthGateScreen(),
     );
   }

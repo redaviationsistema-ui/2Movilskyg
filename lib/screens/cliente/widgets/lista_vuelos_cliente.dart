@@ -11,6 +11,7 @@ import '../../../core/app_theme.dart';
 import '../../../core/client_workflow_status.dart';
 import '../../../core/media_utils.dart';
 import '../../../models/aeronave.dart';
+import '../../../models/aeropuerto.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../../../services/servicio_aeropuertos.dart';
@@ -52,6 +53,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   late _TripTab _activeTab;
   Timer? _autoRefreshTimer;
   Map<String, String> _airportNames = buildAirportNameIndex(const []);
+  Map<String, _AirportPresentationData> _airportDetails = const {};
 
   @override
   void initState() {
@@ -74,18 +76,28 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   }
 
   Future<void> _loadAirportNames() async {
+    final airportDetails = _buildAirportPresentationIndex(
+      context.read<ReservationProvider>().airports,
+    );
     final names = <String, String>{
       ...buildAirportNameIndex(context.read<ReservationProvider>().airports),
     };
-    if (names.isNotEmpty && mounted) {
-      setState(() => _airportNames = Map.unmodifiable(names));
+    if (mounted && (names.isNotEmpty || airportDetails.isNotEmpty)) {
+      setState(() {
+        _airportNames = Map.unmodifiable(names);
+        _airportDetails = Map.unmodifiable(airportDetails);
+      });
     }
 
     try {
       final airports = await AirportService.getAirports();
       if (!mounted) return;
       names.addAll(buildAirportNameIndex(airports));
-      setState(() => _airportNames = Map.unmodifiable(names));
+      airportDetails.addAll(_buildAirportPresentationIndex(airports));
+      setState(() {
+        _airportNames = Map.unmodifiable(names);
+        _airportDetails = Map.unmodifiable(airportDetails);
+      });
     } catch (_) {
       // Conserva el catálogo local; usa códigos solo si tampoco existe caché.
     }
@@ -153,13 +165,21 @@ class _ClientFlightsListState extends State<ClientFlightsList>
   Widget build(BuildContext context) {
     final provider = context.watch<ReservationProvider>();
     final allRequests = provider.flightRequests;
-    final tabRequests = _filterRequests(allRequests);
-    final filteredRequests = tabRequests;
     final upcomingRequests = _filterRequestsForTab(
       allRequests,
       _TripTab.upcoming,
     );
     final nextFlight = upcomingRequests.isEmpty ? null : upcomingRequests.first;
+    final tabRequests = _filterRequests(allRequests);
+    final filteredRequests =
+        _activeTab == _TripTab.upcoming && nextFlight != null
+            ? tabRequests
+                .where(
+                  (request) =>
+                      _requestIdentity(request) != _requestIdentity(nextFlight),
+                )
+                .toList()
+            : tabRequests;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -188,6 +208,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                 request: nextFlight,
                 aircraftFleet: provider.aircraftFleet,
                 airportNames: _airportNames,
+                airportDetails: _airportDetails,
                 onTap:
                     nextFlight == null
                         ? widget.onOpenSearch
@@ -237,6 +258,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                         request: entry.value,
                         aircraftFleet: provider.aircraftFleet,
                         airportNames: _airportNames,
+                        airportDetails: _airportDetails,
                         onTap:
                             () => _openRequestForCurrentStage(
                               provider,
@@ -442,6 +464,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
             aircraft: aircraft,
             aircraftFleet: provider.aircraftFleet,
             airportNames: _airportNames,
+            airportDetails: _airportDetails,
             imageUrl: imageUrl,
             contractEnabled: contractEnabled,
             paymentEnabled: paymentEnabled,
@@ -630,6 +653,7 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
     required this.aircraft,
     required this.aircraftFleet,
     required this.airportNames,
+    this.airportDetails = const {},
     required this.imageUrl,
     required this.contractEnabled,
     required this.paymentEnabled,
@@ -647,6 +671,7 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
   final Aircraft? aircraft;
   final List<Aircraft> aircraftFleet;
   final Map<String, String> airportNames;
+  final Map<String, _AirportPresentationData> airportDetails;
   final String imageUrl;
   final bool contractEnabled;
   final bool paymentEnabled;
@@ -660,7 +685,12 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final route = _routeParts(request, airportNames);
+    final route = _outboundRoutePresentation(
+      request,
+      airportNames,
+      airportDetails,
+    );
+    final segments = _itinerarySegments(request);
     final departure = _departureCopy(request).split(',');
     final date = departure.first.trim();
     final time =
@@ -691,6 +721,7 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
                   children: [
                     _FlightSheetHero(
                       route: route,
+                      segments: segments,
                       meta: meta,
                       imageUrl: imageUrl,
                       onClose: onClose,
@@ -707,6 +738,14 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
                             passengers: _passengerCount(request).toString(),
                             reservation: _requestCode(request),
                           ),
+                          if (segments.isNotEmpty) ...[
+                            const SizedBox(height: 18),
+                            _FlightSegmentsCard(
+                              segments: segments,
+                              airportNames: airportNames,
+                              airportDetails: airportDetails,
+                            ),
+                          ],
                           const SizedBox(height: 20),
                           _FlightReadyCard(meta: meta),
                           const SizedBox(height: 24),
@@ -808,12 +847,14 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
 class _FlightSheetHero extends StatelessWidget {
   const _FlightSheetHero({
     required this.route,
+    required this.segments,
     required this.meta,
     required this.imageUrl,
     required this.onClose,
   });
 
-  final (String, String) route;
+  final (_RouteStopPresentation, _RouteStopPresentation) route;
+  final List<_ItinerarySegment> segments;
   final _WorkflowMeta meta;
   final String imageUrl;
   final VoidCallback onClose;
@@ -821,7 +862,7 @@ class _FlightSheetHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 220,
+      height: 304,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -841,7 +882,7 @@ class _FlightSheetHero extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 18, 20, 20),
+            padding: const EdgeInsets.fromLTRB(24, 18, 20, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -872,44 +913,273 @@ class _FlightSheetHero extends StatelessWidget {
                   ],
                 ),
                 const Spacer(),
-                Text(
-                  route.$1,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -.9,
-                  ),
-                ),
+                _SheetRouteStop(stop: route.$1),
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 3),
+                  padding: EdgeInsets.symmetric(vertical: 2),
                   child: Icon(
                     Icons.arrow_downward_rounded,
                     color: Color(0xFFD8B25D),
                     size: 22,
                   ),
                 ),
-                Text(
-                  route.$2,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -.9,
+                _SheetRouteStop(stop: route.$2),
+                if (segments.length > 1) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    '${segments.length} tramos confirmados',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .76),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _SheetRouteStop extends StatelessWidget {
+  const _SheetRouteStop({required this.stop});
+
+  final _RouteStopPresentation stop;
+
+  @override
+  Widget build(BuildContext context) {
+    final city = stop.city.trim().isEmpty ? 'Por confirmar' : stop.city.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          city,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: _sheetRouteFontSize(city),
+            height: 1.02,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -.9,
+          ),
+        ),
+        if (stop.airportName.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            stop.airportName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .72),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.15,
+            ),
+          ),
+        ],
+        if (stop.icao.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _AirportCodeBadge(code: stop.icao),
+        ],
+      ],
+    );
+  }
+
+  static double _sheetRouteFontSize(String value) {
+    final length = value.length;
+    if (length >= 26) return 18;
+    if (length >= 18) return 21;
+    return 24;
+  }
+}
+
+class _FlightSegmentsCard extends StatelessWidget {
+  const _FlightSegmentsCard({
+    required this.segments,
+    required this.airportNames,
+    required this.airportDetails,
+  });
+
+  final List<_ItinerarySegment> segments;
+  final Map<String, String> airportNames;
+  final Map<String, _AirportPresentationData> airportDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1624),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.alt_route_rounded,
+                color: Color(0xFFD8B25D),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                segments.length == 1
+                    ? 'Tramo confirmado'
+                    : 'Tramos confirmados',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var index = 0; index < segments.length; index++) ...[
+            _FlightSegmentRow(
+              segment: segments[index],
+              airportNames: airportNames,
+              airportDetails: airportDetails,
+            ),
+            if (index != segments.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FlightSegmentRow extends StatelessWidget {
+  const _FlightSegmentRow({
+    required this.segment,
+    required this.airportNames,
+    required this.airportDetails,
+  });
+
+  final _ItinerarySegment segment;
+  final Map<String, String> airportNames;
+  final Map<String, _AirportPresentationData> airportDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final origin = _routeStopPresentation(
+      segment.origin,
+      airportNames: airportNames,
+      airportDetails: airportDetails,
+      fallbackLabel: 'Origen por confirmar',
+    );
+    final destination = _routeStopPresentation(
+      segment.destination,
+      airportNames: airportNames,
+      airportDetails: airportDetails,
+      fallbackLabel: 'Destino por confirmar',
+    );
+    final departure = _segmentDepartureLabel(segment.departure);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD8B25D).withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${segment.order}',
+              style: const TextStyle(
+                color: Color(0xFFD8B25D),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${origin.city} → ${destination.city}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _segmentAirportsLine(origin, destination),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .66),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.22,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (origin.icao.isNotEmpty)
+                      _AirportCodeBadge(code: origin.icao),
+                    if (destination.icao.isNotEmpty)
+                      _AirportCodeBadge(code: destination.icao),
+                  ],
+                ),
+                if (departure.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    departure,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .62),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _segmentAirportsLine(
+    _RouteStopPresentation origin,
+    _RouteStopPresentation destination,
+  ) {
+    final originLabel =
+        origin.airportName.isNotEmpty ? origin.airportName : origin.city;
+    final destinationLabel =
+        destination.airportName.isNotEmpty
+            ? destination.airportName
+            : destination.city;
+    return '$originLabel → $destinationLabel';
   }
 }
 
@@ -1646,12 +1916,14 @@ class _NextFlightHero extends StatelessWidget {
     required this.request,
     required this.aircraftFleet,
     required this.airportNames,
+    required this.airportDetails,
     required this.onTap,
   });
 
   final Map<String, dynamic>? request;
   final List<Aircraft> aircraftFleet;
   final Map<String, String> airportNames;
+  final Map<String, _AirportPresentationData> airportDetails;
   final VoidCallback? onTap;
 
   @override
@@ -1659,8 +1931,19 @@ class _NextFlightHero extends StatelessWidget {
     final flight = request;
     final route =
         flight == null
-            ? const ('Tu próximo destino', 'Por descubrir')
-            : _routeParts(flight, airportNames);
+            ? const (
+              _RouteStopPresentation(
+                city: 'Tu próximo destino',
+                airportName: 'Por descubrir',
+                icao: '',
+              ),
+              _RouteStopPresentation(
+                city: 'Destino por confirmar',
+                airportName: '',
+                icao: '',
+              ),
+            )
+            : _outboundRoutePresentation(flight, airportNames, airportDetails);
     final imageUrl =
         flight == null ? '' : _aircraftImageUrl(flight, aircraftFleet);
     final status = flight == null ? null : _statusMeta(flight);
@@ -1677,129 +1960,108 @@ class _NextFlightHero extends StatelessWidget {
               child: child,
             ),
           ),
-      child: SizedBox(
-        height: 230,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const ColoredBox(color: Color(0xFF101C2D)),
-              Positioned(
-                top: 0,
-                bottom: 0,
-                right: 0,
-                width: MediaQuery.sizeOf(context).width * .48,
-                child: _PremiumJetImage(imageUrl: imageUrl),
-              ),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: [0, .55, 1],
-                    colors: [
-                      Color(0xFF101C2D),
-                      Color(0xEE101C2D),
-                      Color(0x55101C2D),
-                    ],
-                  ),
+      child: _ScaleTap(
+        onTap: onTap,
+        child: SizedBox(
+          height: 336,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: Color(0xFF101C2D)),
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  width: MediaQuery.sizeOf(context).width * .48,
+                  child: _PremiumJetImage(imageUrl: imageUrl),
                 ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: .08),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 18, 17),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'PRÓXIMO VUELO',
-                          style: TextStyle(
-                            color: Color(0xFFD7B15D),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.35,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (status != null)
-                          _PremiumStatusPill(meta: status, compact: true),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      stops: [0, .55, 1],
+                      colors: [
+                        Color(0xFF101C2D),
+                        Color(0xEE101C2D),
+                        Color(0x55101C2D),
                       ],
                     ),
-                    const SizedBox(height: 15),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 245),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            route.$1,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              height: 1.05,
-                            ),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 2),
-                            child: Icon(
-                              Icons.arrow_downward_rounded,
-                              color: Color(0xFFD7B15D),
-                              size: 18,
-                            ),
-                          ),
-                          Text(
-                            route.$2,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              height: 1.05,
-                            ),
-                          ),
-                        ],
-                      ),
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .08),
                     ),
-                    const Spacer(),
-                    if (flight != null)
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 18, 17),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Row(
                         children: [
-                          _HeroMeta(
-                            icon: Icons.calendar_month_outlined,
-                            label: _departureCopy(flight),
-                          ),
-                          const SizedBox(width: 11),
-                          _HeroMeta(
-                            icon: Icons.people_outline_rounded,
-                            label: '${_passengerCount(flight)} pax',
-                          ),
-                          const SizedBox(width: 11),
-                          Expanded(
-                            child: _HeroMeta(
-                              icon: Icons.flight_rounded,
-                              label: _aircraftLabel(flight),
+                          const Text(
+                            'PRÓXIMO VUELO',
+                            style: TextStyle(
+                              color: Color(0xFFD7B15D),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.35,
                             ),
                           ),
+                          const Spacer(),
+                          if (status != null)
+                            _PremiumStatusPill(meta: status, compact: true),
                         ],
                       ),
-                    const SizedBox(height: 10),
-                    _ScaleTap(
-                      onTap: onTap,
-                      child: Row(
+                      const SizedBox(height: 14),
+                      const Text(
+                        'RUTA',
+                        style: TextStyle(
+                          color: Color(0x80FFFFFF),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 148,
+                        child: _HeroRouteLayout(
+                          origin: route.$1,
+                          destination: route.$2,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (flight != null)
+                        Row(
+                          children: [
+                            _HeroMeta(
+                              icon: Icons.calendar_month_outlined,
+                              label: _departureCopy(flight),
+                            ),
+                            const SizedBox(width: 11),
+                            _HeroMeta(
+                              icon: Icons.people_outline_rounded,
+                              label: '${_passengerCount(flight)} pax',
+                            ),
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: _HeroMeta(
+                                icon: Icons.flight_rounded,
+                                label: _aircraftLabel(flight),
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 10),
+                      Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
@@ -1818,11 +2080,11 @@ class _NextFlightHero extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1857,6 +2119,231 @@ class _HeroMeta extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HeroRouteLayout extends StatelessWidget {
+  const _HeroRouteLayout({required this.origin, required this.destination});
+
+  final _RouteStopPresentation origin;
+  final _RouteStopPresentation destination;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _HeroRouteStop(
+                label: 'ORIGEN',
+                stop: origin,
+                alignEnd: false,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _HeroRouteStop(
+                label: 'DESTINO',
+                stop: destination,
+                alignEnd: true,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const _FlightRouteConnector(compact: true),
+      ],
+    );
+  }
+}
+
+class _HeroRouteStop extends StatelessWidget {
+  const _HeroRouteStop({
+    required this.label,
+    required this.stop,
+    required this.alignEnd,
+  });
+
+  final String label;
+  final _RouteStopPresentation stop;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final crossAxisAlignment =
+        alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final textAlign = alignEnd ? TextAlign.end : TextAlign.start;
+
+    return Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        Text(
+          label,
+          textAlign: textAlign,
+          style: const TextStyle(
+            color: Color(0xFFD7B15D),
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .9,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment:
+              alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!alignEnd) ...[
+              const Icon(
+                Icons.location_on_rounded,
+                color: Color(0xFFD7B15D),
+                size: 17,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Flexible(
+              child: Column(
+                crossAxisAlignment: crossAxisAlignment,
+                children: [
+                  Text(
+                    stop.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: textAlign,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.05,
+                    ),
+                  ),
+                  if (stop.airportName.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      stop.airportName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: textAlign,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .68),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w400,
+                        height: 1.18,
+                      ),
+                    ),
+                  ],
+                  if (stop.icao.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    _AirportCodeBadge(code: stop.icao),
+                  ],
+                ],
+              ),
+            ),
+            if (alignEnd) ...[
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.location_on_rounded,
+                color: Color(0xFFD7B15D),
+                size: 17,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FlightRouteConnector extends StatelessWidget {
+  const _FlightRouteConnector({this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final dashCount = compact ? 8 : 14;
+    return SizedBox(
+      height: compact ? 18 : 22,
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: List.generate(
+                dashCount,
+                (_) => Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    height: 1.5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .36),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Transform.rotate(
+              angle: .08,
+              child: Icon(
+                Icons.airplanemode_active_rounded,
+                color: const Color(0xFFD7B15D),
+                size: compact ? 18 : 22,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: List.generate(
+                dashCount,
+                (_) => Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    height: 1.5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .36),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AirportCodeBadge extends StatelessWidget {
+  const _AirportCodeBadge({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: .14)),
+      ),
+      child: Text(
+        code,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: .82),
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: .2,
+        ),
+      ),
     );
   }
 }
@@ -1932,6 +2419,7 @@ class _PremiumFlightCard extends StatefulWidget {
     required this.request,
     required this.aircraftFleet,
     required this.airportNames,
+    required this.airportDetails,
     required this.onTap,
     required this.onMenu,
   });
@@ -1939,6 +2427,7 @@ class _PremiumFlightCard extends StatefulWidget {
   final Map<String, dynamic> request;
   final List<Aircraft> aircraftFleet;
   final Map<String, String> airportNames;
+  final Map<String, _AirportPresentationData> airportDetails;
   final VoidCallback onTap;
   final VoidCallback onMenu;
 
@@ -1952,7 +2441,11 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
   @override
   Widget build(BuildContext context) {
     final meta = _statusMeta(widget.request);
-    final route = _routeParts(widget.request, widget.airportNames);
+    final route = _outboundRoutePresentation(
+      widget.request,
+      widget.airportNames,
+      widget.airportDetails,
+    );
     final imageUrl = _aircraftImageUrl(widget.request, widget.aircraftFleet);
 
     return GestureDetector(
@@ -1965,7 +2458,7 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
         duration: const Duration(milliseconds: 150),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 150,
+          height: 244,
           decoration: BoxDecoration(
             color: _pressed ? const Color(0xFF16253B) : const Color(0xFF101C2D),
             borderRadius: BorderRadius.circular(28),
@@ -2015,28 +2508,54 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
                         ),
                         const SizedBox(height: 4),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: Text(
-                                '${route.$1}\n→ ${route.$2}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  height: 1.22,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    route.$1.city,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15.5,
+                                      height: 1.15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '→ ${route.$2.city}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15.5,
+                                      height: 1.15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _CompactRouteRow(
+                                    origin: route.$1,
+                                    destination: route.$2,
+                                  ),
+                                ],
                               ),
                             ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: Color(0xFFD7B15D),
-                              size: 25,
+                            const Padding(
+                              padding: EdgeInsets.only(top: 4),
+                              child: Icon(
+                                Icons.chevron_right_rounded,
+                                color: Color(0xFFD7B15D),
+                                size: 25,
+                              ),
                             ),
                           ],
                         ),
-                        const Spacer(),
+                        const SizedBox(height: 10),
                         Row(
                           children: [
                             Expanded(
@@ -2067,6 +2586,121 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CompactRouteRow extends StatelessWidget {
+  const _CompactRouteRow({required this.origin, required this.destination});
+
+  final _RouteStopPresentation origin;
+  final _RouteStopPresentation destination;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _CompactRouteStop(label: 'ORIGEN', stop: origin)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _CompactRouteStop(
+                label: 'DESTINO',
+                stop: destination,
+                alignEnd: true,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const _FlightRouteConnector(compact: true),
+      ],
+    );
+  }
+}
+
+class _CompactRouteStop extends StatelessWidget {
+  const _CompactRouteStop({
+    required this.label,
+    required this.stop,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final _RouteStopPresentation stop;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final crossAxisAlignment =
+        alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final textAlign = alignEnd ? TextAlign.end : TextAlign.start;
+    return Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        Text(
+          label,
+          textAlign: textAlign,
+          style: const TextStyle(
+            color: Color(0xFFD7B15D),
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .7,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisAlignment:
+              alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!alignEnd)
+              const Icon(
+                Icons.location_on_rounded,
+                color: Color(0xFFD7B15D),
+                size: 13,
+              ),
+            if (!alignEnd) const SizedBox(width: 2),
+            Flexible(
+              child: Text(
+                stop.city,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: textAlign,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  height: 1.05,
+                ),
+              ),
+            ),
+            if (alignEnd) const SizedBox(width: 2),
+            if (alignEnd)
+              const Icon(
+                Icons.location_on_rounded,
+                color: Color(0xFFD7B15D),
+                size: 13,
+              ),
+          ],
+        ),
+        if (stop.icao.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            stop.icao,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: textAlign,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .64),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -4094,6 +4728,21 @@ String _requestCode(Map<String, dynamic> request) {
   return 'RESERVA SKY-$suffix';
 }
 
+String _requestIdentity(Map<String, dynamic> request) {
+  final identity =
+      _firstText([
+        request['reservation_id'],
+        request['booking_id'],
+        request['id'],
+        request['folio'],
+        request['booking_code'],
+        request['reservation_code'],
+        request['code'],
+      ]).trim();
+  if (identity.isNotEmpty) return identity.toUpperCase();
+  return _requestCode(request).trim().toUpperCase();
+}
+
 class _WorkflowActionCopy {
   const _WorkflowActionCopy({required this.title, required this.detail});
 
@@ -4140,9 +4789,9 @@ _WorkflowActionCopy _workflowActionCopy(String stageId) {
 
     case 'provider_accepted':
       return const _WorkflowActionCopy(
-        title: 'Documentación contractual',
+        title: 'Tu contrato está listo',
         detail:
-            'La operación ha sido aprobada y avanza a la etapa de formalización contractual.',
+            'Tu vuelo fue aceptado por el proveedor. El siguiente paso es revisar y firmar tu contrato.',
       );
 
     case 'contract_pending':
@@ -4230,14 +4879,48 @@ bool _asBool(dynamic value) {
   return text == 'true' || text == '1' || text == 'yes' || text == 'si';
 }
 
-String? _nestedText(dynamic value, String key) {
-  if (value is Map && value[key] != null) {
-    final text = value[key].toString().trim();
+class _AirportPresentationData {
+  const _AirportPresentationData({
+    required this.city,
+    required this.airportName,
+    required this.icao,
+  });
 
-    if (text.isNotEmpty) return text;
+  final String city;
+  final String airportName;
+  final String icao;
+}
+
+class _RouteStopPresentation {
+  const _RouteStopPresentation({
+    required this.city,
+    required this.airportName,
+    required this.icao,
+  });
+
+  final String city;
+  final String airportName;
+  final String icao;
+}
+
+Map<String, _AirportPresentationData> _buildAirportPresentationIndex(
+  Iterable<Airport> airports,
+) {
+  final index = <String, _AirportPresentationData>{};
+  for (final airport in airports) {
+    final data = _AirportPresentationData(
+      city: airport.city.trim(),
+      airportName: airport.name.trim(),
+      icao: airport.icao?.trim().toUpperCase() ?? '',
+    );
+    for (final code in [airport.iata, airport.icao]) {
+      final normalized = code?.trim().toUpperCase() ?? '';
+      if (normalized.isNotEmpty) {
+        index[normalized] = data;
+      }
+    }
   }
-
-  return null;
+  return index;
 }
 
 String _routeLabel(
@@ -4275,19 +4958,168 @@ String _routeLabel(
   return 'Ruta por confirmar';
 }
 
-(String, String) _routeParts(
+(_RouteStopPresentation, _RouteStopPresentation) _outboundRoutePresentation(
   Map<String, dynamic> request,
   Map<String, String> airportNames,
+  Map<String, _AirportPresentationData> airportDetails,
 ) {
-  final label = _routeLabel(request, airportNames: airportNames);
-  final points =
-      label
-          .split(RegExp(r'\s*→\s*'))
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toList();
-  if (points.length >= 2) return (points.first, points.last);
-  return (label, 'Destino por confirmar');
+  final segments = _itinerarySegments(request);
+  if (segments.isNotEmpty) {
+    final firstSegment = segments.first;
+    return (
+      _routeStopPresentation(
+        firstSegment.origin,
+        airportNames: airportNames,
+        airportDetails: airportDetails,
+        fallbackLabel: 'Origen por confirmar',
+      ),
+      _routeStopPresentation(
+        firstSegment.destination,
+        airportNames: airportNames,
+        airportDetails: airportDetails,
+        fallbackLabel: 'Destino por confirmar',
+      ),
+    );
+  }
+
+  return (
+    _routeStopPresentation(
+      request['origin']?.toString() ?? '',
+      airportNames: airportNames,
+      airportDetails: airportDetails,
+      fallbackLabel: 'Origen por confirmar',
+    ),
+    _routeStopPresentation(
+      request['destination']?.toString() ?? '',
+      airportNames: airportNames,
+      airportDetails: airportDetails,
+      fallbackLabel: 'Destino por confirmar',
+    ),
+  );
+}
+
+_RouteStopPresentation _routeStopPresentation(
+  String code, {
+  required Map<String, String> airportNames,
+  required Map<String, _AirportPresentationData> airportDetails,
+  required String fallbackLabel,
+}) {
+  final normalized = code.trim().toUpperCase();
+  final detail = airportDetails[normalized];
+  final resolvedAirportName =
+      detail?.airportName.isNotEmpty == true
+          ? detail!.airportName
+          : airportDisplayName(code, airportNames).trim();
+  final compactCity =
+      detail?.city.isNotEmpty == true
+          ? detail!.city
+          : _compactAirportDisplayName(code, airportNames).trim();
+  final city =
+      compactCity.isNotEmpty && compactCity.toUpperCase() != normalized
+          ? compactCity
+          : _cityFromAirportName(resolvedAirportName, normalized);
+  final airportName =
+      _isAirportLikeLabel(resolvedAirportName, normalized)
+          ? resolvedAirportName
+          : '';
+
+  return _RouteStopPresentation(
+    city: city.isEmpty ? fallbackLabel : city,
+    airportName: airportName == city ? '' : airportName,
+    icao: _resolveIcaoCode(normalized, detail),
+  );
+}
+
+String _resolveIcaoCode(String normalized, _AirportPresentationData? detail) {
+  if (detail != null && detail.icao.isNotEmpty) return detail.icao;
+  if (normalized.length == 4) return normalized;
+  return '';
+}
+
+bool _isAirportLikeLabel(String label, String normalizedCode) {
+  final normalizedLabel = label.trim();
+  if (normalizedLabel.isEmpty ||
+      normalizedLabel.toUpperCase() == normalizedCode) {
+    return false;
+  }
+  return true;
+}
+
+String _cityFromAirportName(String airportName, String normalizedCode) {
+  final normalizedAirportName = airportName.trim();
+  if (normalizedAirportName.isEmpty ||
+      normalizedAirportName.toUpperCase() == normalizedCode) {
+    return '';
+  }
+  return _compactAirportDisplayName(normalizedCode, {
+    normalizedCode: normalizedAirportName,
+  }).trim();
+}
+
+String _compactAirportDisplayName(
+  String code,
+  Map<String, String> airportNames,
+) {
+  final normalized = code.trim().toUpperCase();
+  final compactByCode = <String, String>{
+    'MMTO': 'Toluca',
+    'TLC': 'Toluca',
+    'MMSD': 'Los Cabos',
+    'SJD': 'Los Cabos',
+    'MMMY': 'Monterrey',
+    'MTY': 'Monterrey',
+    'MMGL': 'Guadalajara',
+    'GDL': 'Guadalajara',
+    'MMMX': 'Ciudad de Mexico',
+    'MEX': 'Ciudad de Mexico',
+  };
+  final explicit = compactByCode[normalized];
+  if (explicit != null) return explicit;
+
+  final fullLabel = airportDisplayName(code, airportNames).trim();
+  if (fullLabel.isEmpty || fullLabel == code) return fullLabel;
+
+  var compact =
+      fullLabel
+          .replaceFirst(
+            RegExp(
+              r'^(Aeropuerto)\s+(Internacional|International|Intercontinental|Nacional|National)\s+(de|del)\s+',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .replaceFirst(
+            RegExp(r'^(Aeropuerto|Airport)\s+', caseSensitive: false),
+            '',
+          )
+          .replaceFirst(
+            RegExp(
+              r'^(Licenciado|General|Ingeniero|Ing\.?)\s+',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .replaceFirst(
+            RegExp(
+              r'\s+(International|National)\s+Airport$',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .replaceFirst(RegExp(r'\s+Airport$', caseSensitive: false), '')
+          .trim();
+
+  if (compact.length > 28) {
+    final deMatch = RegExp(
+      r'(?:de|del)\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(compact);
+    if (deMatch != null) {
+      compact = deMatch.group(1)?.trim() ?? compact;
+    }
+  }
+
+  return compact.isEmpty ? fullLabel : compact;
 }
 
 String _departureCopy(Map<String, dynamic> request) {
@@ -4333,6 +5165,13 @@ String _departureCopy(Map<String, dynamic> request) {
   return '${parsed.day}-$month, $hour:$minute $suffix';
 }
 
+String _segmentDepartureLabel(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return '';
+  if (DateTime.tryParse(value) == null) return value;
+  return _departureCopy({'departure_datetime': value});
+}
+
 int _passengerCount(Map<String, dynamic> request) {
   return int.tryParse(
         request['passengers']?.toString() ??
@@ -4344,16 +5183,229 @@ int _passengerCount(Map<String, dynamic> request) {
 }
 
 String _aircraftLabel(Map<String, dynamic> request) {
-  return request['assigned_aircraft_model']?.toString() ??
-      request['aircraft']?.toString() ??
-      request['aircraft_model']?.toString() ??
-      request['aircraft_name']?.toString() ??
-      _nestedText(request['contract'], 'aircraft') ??
-      _nestedText(request['assigned_aircraft'], 'model') ??
-      _nestedText(request['assigned_aircraft'], 'name') ??
-      _nestedText(request['aircraft_data'], 'model') ??
-      _nestedText(request['aircraft_data'], 'name') ??
-      'Aeronave por asignar';
+  final direct = _meaningfulAircraftLabel(
+    _firstText([
+      request['assigned_aircraft_model'],
+      request['selected_aircraft_model'],
+      request['aircraft'],
+      request['aircraft_model'],
+      request['aircraft_name'],
+      request['model'],
+      request['name'],
+      request['selected_aircraft_name'],
+      request['requested_aircraft'],
+    ]),
+  );
+  if (direct.isNotEmpty) return direct;
+
+  final data = _nestedMap(request['data']);
+  final contract = _nestedMap(request['contract']);
+  final reservation = _nestedMap(request['reservation']);
+  final flightRequest = _nestedMap(request['flight_request']);
+  final termsSnapshot = _nestedMap(contract['terms_snapshot']);
+
+  for (final key in const [
+    'contract',
+    'assigned_aircraft',
+    'aircraft_data',
+    'aircraft',
+    'aircraft_snapshot',
+    'selected_aircraft',
+    'selected_quote_match',
+    'quote_match',
+    'matched_option',
+  ]) {
+    final nested = _nestedMap(request[key]);
+    if (nested.isEmpty) continue;
+    final nestedLabel = _meaningfulAircraftLabel(
+      _firstText([
+        nested['aircraft'],
+        nested['model'],
+        nested['name'],
+        nested['aircraft_model'],
+        nested['aircraft_name'],
+        nested['selected_aircraft_model'],
+        nested['selected_aircraft_name'],
+        nested['requested_aircraft'],
+        nested['registration'],
+        nested['matricula'],
+      ]),
+    );
+    if (nestedLabel.isNotEmpty) return nestedLabel;
+  }
+
+  for (final nested in [
+    data,
+    _nestedMap(data['aircraft_snapshot']),
+    _nestedMap(data['selected_aircraft']),
+    _nestedMap(contract['aircraft_snapshot']),
+    _nestedMap(termsSnapshot['aircraft_snapshot']),
+    _nestedMap(termsSnapshot['selected_aircraft']),
+    reservation,
+    _nestedMap(reservation['aircraft_snapshot']),
+    _nestedMap(reservation['selected_aircraft']),
+    flightRequest,
+    _nestedMap(flightRequest['aircraft_snapshot']),
+    _nestedMap(flightRequest['selected_aircraft']),
+  ]) {
+    if (nested.isEmpty) continue;
+    final nestedLabel = _meaningfulAircraftLabel(
+      _firstText([
+        nested['aircraft'],
+        nested['model'],
+        nested['name'],
+        nested['aircraft_model'],
+        nested['aircraft_name'],
+        nested['selected_aircraft_model'],
+        nested['selected_aircraft_name'],
+        nested['requested_aircraft'],
+        nested['registration'],
+        nested['matricula'],
+      ]),
+    );
+    if (nestedLabel.isNotEmpty) return nestedLabel;
+  }
+
+  final matchLabel = _aircraftLabelFromMatches(request);
+  if (matchLabel.isNotEmpty) return matchLabel;
+
+  final deepLabel = _deepAircraftLabel(request);
+  if (deepLabel.isNotEmpty) return deepLabel;
+
+  return 'Aeronave por asignar';
+}
+
+String _aircraftLabelFromMatches(Map<String, dynamic> request) {
+  final nestedSources = [
+    request,
+    _nestedMap(request['data']),
+    _nestedMap(request['contract']),
+    _nestedMap(request['reservation']),
+    _nestedMap(request['flight_request']),
+  ];
+
+  for (final source in nestedSources) {
+    if (source.isEmpty) continue;
+    for (final key in const ['matches', 'matched_options', 'request_matches']) {
+      final raw = source[key];
+      if (raw is! List) continue;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final match = Map<String, dynamic>.from(item);
+        final nestedLabel = _meaningfulAircraftLabel(
+          _firstText([
+            match['aircraft'],
+            match['model'],
+            match['name'],
+            match['aircraft_model'],
+            match['aircraft_name'],
+            match['selected_aircraft_model'],
+            match['selected_aircraft_name'],
+            match['requested_aircraft'],
+            match['registration'],
+            match['matricula'],
+          ]),
+        );
+        if (nestedLabel.isNotEmpty) return nestedLabel;
+      }
+    }
+  }
+
+  return '';
+}
+
+String _meaningfulAircraftLabel(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return '';
+  final lower = normalized.toLowerCase();
+  if (lower == 'aeronave por asignar' || lower == 'aeronave verificada') {
+    return '';
+  }
+  return normalized;
+}
+
+String _deepAircraftLabel(
+  dynamic value, {
+  String parentKey = '',
+  int depth = 0,
+}) {
+  if (depth > 6 || value == null) return '';
+
+  if (value is Map) {
+    final map = Map<String, dynamic>.from(value);
+    final contextualLabel = _contextualAircraftLabel(map, parentKey: parentKey);
+    if (contextualLabel.isNotEmpty) return contextualLabel;
+
+    for (final entry in map.entries) {
+      final nested = _deepAircraftLabel(
+        entry.value,
+        parentKey: entry.key,
+        depth: depth + 1,
+      );
+      if (nested.isNotEmpty) return nested;
+    }
+  }
+
+  if (value is List) {
+    for (final item in value) {
+      final nested = _deepAircraftLabel(
+        item,
+        parentKey: parentKey,
+        depth: depth + 1,
+      );
+      if (nested.isNotEmpty) return nested;
+    }
+  }
+
+  return '';
+}
+
+String _contextualAircraftLabel(
+  Map<String, dynamic> map, {
+  required String parentKey,
+}) {
+  final direct = _meaningfulAircraftLabel(
+    _firstText([
+      map['aircraft'],
+      map['aircraft_name'],
+      map['aircraft_model'],
+      map['selected_aircraft_model'],
+      map['selected_aircraft_name'],
+      map['requested_aircraft'],
+    ]),
+  );
+  if (direct.isNotEmpty) return direct;
+
+  final normalizedParent = parentKey.trim().toLowerCase();
+  final aircraftContext =
+      normalizedParent.contains('aircraft') ||
+      normalizedParent.contains('quote') ||
+      normalizedParent.contains('match') ||
+      normalizedParent.contains('option') ||
+      normalizedParent.contains('selected');
+
+  final hasAircraftSignals =
+      _hasValue(map['aircraft']) ||
+      _hasValue(map['aircraft_name']) ||
+      _hasValue(map['aircraft_model']) ||
+      _hasValue(map['selected_aircraft_model']) ||
+      _hasValue(map['selected_aircraft_name']) ||
+      _hasValue(map['registration']) ||
+      _hasValue(map['matricula']) ||
+      _hasValue(map['capacity']);
+
+  if (aircraftContext || hasAircraftSignals) {
+    return _meaningfulAircraftLabel(
+      _firstText([
+        map['model'],
+        map['name'],
+        map['registration'],
+        map['matricula'],
+      ]),
+    );
+  }
+
+  return '';
 }
 
 String _aircraftCapacityLabel(
