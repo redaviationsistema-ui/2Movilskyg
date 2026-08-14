@@ -1169,23 +1169,41 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> respondCrewAssignment({
-    required String assignmentId,
+    required String operationId,
     required String status,
     String reason = '',
-  }) {
+  }) async {
     final payload = _crewAssignmentResponsePayload(status, reason);
-    return postFirstAvailable(
-      [
-        '/sobrecargo/operations/$assignmentId/respond',
-        '/sobrecargo/assignments/$assignmentId/respond',
-        '/sobrecargo/operations/$assignmentId/assignment-response',
-        '/crew/assignments/$assignmentId/respond',
-        '/sobrecargo/asignaciones/$assignmentId/responder',
-        '/admin/crew-assignments/$assignmentId/respond',
-      ],
-      authenticated: true,
-      body: payload,
-    );
+    final paths = [
+      '/sobrecargo/operations/$operationId/respond',
+      '/sobrecargo/assignments/$operationId/respond',
+      '/sobrecargo/operations/$operationId/assignment-response',
+      '/crew/assignments/$operationId/respond',
+      '/sobrecargo/asignaciones/$operationId/responder',
+      '/admin/crew-assignments/$operationId/respond',
+    ];
+    ApiException? lastError;
+
+    for (final path in paths) {
+      try {
+        final response = await _send(
+          baseUrl,
+          path,
+          method: 'POST',
+          authenticated: true,
+          body: payload,
+        );
+        return _decode(response, baseUrl);
+      } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error, null)) rethrow;
+        lastError = error;
+      } catch (_) {
+        rethrow;
+      }
+    }
+
+    throw lastError ??
+        const ApiException('No fue posible completar la solicitud.');
   }
 
   Future<Map<String, dynamic>> updateCrewOperationStep({

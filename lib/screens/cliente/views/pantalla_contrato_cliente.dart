@@ -653,8 +653,6 @@ class _ClientContractScreenState extends State<ClientContractScreen>
       _drawnSignatureController.isNotEmpty;
 
   Future<void> _signAndContinue() async {
-    // Flutter nunca declara una firma como valida. La firma dibujada solo
-    // expresa consentimiento visual; DocuSign y el backend son la autoridad.
     await _openExternalSignature();
   }
 

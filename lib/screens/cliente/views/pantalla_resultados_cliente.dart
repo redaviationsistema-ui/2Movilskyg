@@ -338,7 +338,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
     final quoteId = _quoteIdentity(quote);
     final selectedId = _quoteIdentity(selected);
 
-    if (quoteId != null && selectedId != null) {
+    if (quoteId.isNotEmpty && selectedId.isNotEmpty) {
       return quoteId == selectedId;
     }
 
@@ -478,6 +478,7 @@ class _ResultsSummaryBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mobile = MediaQuery.sizeOf(context).width < 390;
     final segmentLabels = _segmentLabels();
     final completeSegments =
         routes
@@ -490,10 +491,15 @@ class _ResultsSummaryBand extends StatelessWidget {
             .length;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
+      padding: EdgeInsets.fromLTRB(
+        mobile ? 12 : 16,
+        mobile ? 12 : 15,
+        mobile ? 12 : 12,
+        mobile ? 12 : 15,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF101C2D),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(mobile ? 18 : 24),
         border: Border.all(color: Colors.white.withValues(alpha: .08)),
       ),
       child: Column(
@@ -502,63 +508,72 @@ class _ResultsSummaryBand extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: mobile ? 38 : 44,
+                height: mobile ? 38 : 44,
                 decoration: BoxDecoration(
                   color: const Color(0xFFD8B15D).withValues(alpha: .1),
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(mobile ? 13 : 15),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
                   color: const Color(0xFFD8B15D),
-                  size: 19,
+                  size: mobile ? 17 : 19,
                 ),
               ),
-              const SizedBox(width: 11),
-              const Expanded(
+              SizedBox(width: mobile ? 9 : 11),
+              Expanded(
                 child: Text(
                   'Tu itinerario',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: mobile ? 15 : 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: mobile ? 6 : 8),
               TextButton(
                 onPressed: onModify,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFFD8B15D),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: mobile ? 10 : 12,
+                    vertical: mobile ? 8 : 10,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   side: BorderSide(
                     color: const Color(0xFFD8B15D).withValues(alpha: .5),
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(mobile ? 14 : 16),
                   ),
                 ),
-                child: const Text(
+                child: Text(
                   'Modificar',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: mobile ? 10.5 : 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 13),
+          SizedBox(height: mobile ? 9 : 13),
           ...segmentLabels.indexed.map(
             (entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 7),
+              padding: EdgeInsets.only(bottom: mobile ? 5 : 7),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 58,
+                    width: mobile ? 50 : 58,
                     child: Text(
                       'Tramo ${entry.$1 + 1}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Color(0xFFD8B15D),
-                        fontSize: 11,
+                        fontSize: mobile ? 10 : 11,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -568,9 +583,9 @@ class _ResultsSummaryBand extends StatelessWidget {
                       entry.$2,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 14,
+                        fontSize: mobile ? 12.5 : 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -580,14 +595,14 @@ class _ResultsSummaryBand extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(left: 58, top: 1),
+            padding: EdgeInsets.only(left: mobile ? 50 : 58, top: 1),
             child: Text(
               '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}  •  $completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: .62),
-                fontSize: 12,
+                fontSize: mobile ? 11 : 12,
                 fontWeight: FontWeight.w700,
               ),
             ),

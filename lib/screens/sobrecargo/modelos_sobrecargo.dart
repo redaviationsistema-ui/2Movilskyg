@@ -110,19 +110,22 @@ class CrewAssignment {
           json['crew_status_label'],
         ]) ??
         '';
-    final rawStatus =
-        _resolveMissionStatus(
-          operationStatus: operationStatus,
-          crewLifecycleStatus: crewLifecycleStatus,
-          timeline: timeline,
-        ) ??
+    final assignmentResponseStatus =
         _firstString([
           json['response_status'],
           json['assignment_response'],
           json['response'],
         ]) ??
-        'Pendiente';
-
+        '';
+    final rawStatus =
+        _resolveMissionStatus(
+          operationStatus: operationStatus,
+          crewLifecycleStatus: crewLifecycleStatus,
+          assignmentResponseStatus: assignmentResponseStatus,
+          timeline: timeline,
+        ) ??
+        assignmentResponseStatus;
+    final resolvedStatus = normalizeStatus(rawStatus);
     return CrewAssignment(
       id:
           _firstString([
@@ -177,7 +180,7 @@ class CrewAssignment {
           ]) ??
           (timeFromDeparture.isEmpty ? null : timeFromDeparture) ??
           'TBD',
-      status: normalizeStatus(rawStatus),
+      status: resolvedStatus,
       client:
           _firstString([
             json['client'],
@@ -224,7 +227,7 @@ class CrewAssignment {
     );
   }
 
-  String get backendId => operationId.isNotEmpty ? operationId : id;
+  String get resolvedOperationId => operationId.trim();
 
   bool get isFinalized {
     final normalized = status.toLowerCase();
@@ -292,7 +295,10 @@ class CrewAssignment {
 
   static String normalizeStatus(String value) {
     final normalized = value.trim().toLowerCase().replaceAll('_', ' ');
-    if (normalized.isEmpty || normalized == 'pending crew response') {
+    if (normalized.isEmpty ||
+        normalized == 'pending crew response' ||
+        normalized == 'pending confirmation' ||
+        normalized == 'pending_confirmation') {
       return 'Pendiente';
     }
     if ([
@@ -728,6 +734,7 @@ String? _latestTimelineStatus(List<Map<String, dynamic>> timeline) {
 String? _resolveMissionStatus({
   required String operationStatus,
   required String crewLifecycleStatus,
+  required String assignmentResponseStatus,
   required List<Map<String, dynamic>> timeline,
 }) {
   final timelineStatuses =
@@ -747,6 +754,34 @@ String? _resolveMissionStatus({
     RegExp(r'[_-]+'),
     ' ',
   );
+  final normalizedAssignmentResponse = assignmentResponseStatus
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[_-]+'), ' ');
+
+  final crewPreflightStatus = switch (normalizedCrew) {
+    'pending crew response' => 'Pendiente',
+    'pending confirmation' => 'Pendiente',
+    'crew confirmed' => 'Confirmado',
+    'crew declined' => 'Rechazado',
+    'crew change requested' => 'Solicitar revision',
+    _ => '',
+  };
+  if (crewPreflightStatus.isNotEmpty) return crewPreflightStatus;
+
+  final assignmentResponse = switch (normalizedAssignmentResponse) {
+    'confirmado' => 'Confirmado',
+    'accepted' => 'Confirmado',
+    'aceptado' => 'Confirmado',
+    'rejected' => 'Rechazado',
+    'rechazado' => 'Rechazado',
+    'declined' => 'Rechazado',
+    'solicitar revision' => 'Solicitar revision',
+    'requested changes' => 'Solicitar revision',
+    'review requested' => 'Solicitar revision',
+    _ => '',
+  };
+  if (assignmentResponse.isNotEmpty) return assignmentResponse;
 
   final hasCheckin =
       timelineStatuses.contains('crew checkin') ||
@@ -792,7 +827,6 @@ String? _resolveMissionStatus({
   if (hasCheckin) return 'En aeropuerto/base';
 
   final lifecycleStatus = switch (normalizedCrew) {
-    'pending crew response' => 'Pendiente',
     'crew confirmed' => 'Confirmado',
     'crew declined' => 'Rechazado',
     'crew change requested' => 'Solicitar revision',

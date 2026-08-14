@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element
+
 part of 'pantalla_espacio_sobrecargo.dart';
 
 class _AssignmentCard extends StatelessWidget {

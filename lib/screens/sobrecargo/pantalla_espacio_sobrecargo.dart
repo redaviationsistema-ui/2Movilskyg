@@ -93,6 +93,10 @@ enum CrewPortalTab {
   settings,
 }
 
+String resolveCrewAssignmentStatusForPayload(Map<String, dynamic> payload) {
+  return CrewAssignment.fromJson(payload).status;
+}
+
 class CrewPortalScreen extends StatefulWidget {
   const CrewPortalScreen({super.key, required this.initialTab});
 
@@ -181,7 +185,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       setState(() {
         _isLoading = true;
       });
-      _showSyncMessage('Sincronizando con admin...', persist: true);
     }
 
     var loadedAnyResource = false;
@@ -406,11 +409,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
       if (loadedAnyResource && !silent) {
         _logCrewSnapshot();
-        final elapsed = (syncStopwatch.elapsedMilliseconds / 1000)
-            .toStringAsFixed(1);
-        if (missedResources.isEmpty) {
-          _showSyncMessage('Sincronizado con admin en ${elapsed}s.');
-        } else {
+        if (missedResources.isNotEmpty) {
+          final elapsed = (syncStopwatch.elapsedMilliseconds / 1000)
+              .toStringAsFixed(1);
           _showSyncMessage(
             'Sincronizado parcial en ${elapsed}s. Revisa: ${missedResources.join(', ')}.',
           );
@@ -533,8 +534,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
   String? get _currentIncidentOperationId {
     for (final assignment in _assignments) {
-      final backendId = assignment.backendId.trim();
-      if (backendId.isNotEmpty) return backendId;
+      final operationId = assignment.resolvedOperationId;
+      if (operationId.isNotEmpty) return operationId;
     }
     return null;
   }
@@ -671,13 +672,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
               compact ? 14 : 18,
               compact ? 28 : 36,
             ),
-            children: [
-              if (_syncMessage.isNotEmpty) ...[
-                _StatusBanner(message: _syncMessage, isLoading: _isLoading),
-                const SizedBox(height: 14),
-              ],
-              _bodyForTab(),
-            ],
+            children: [_bodyForTab()],
           ),
         ),
       ),
@@ -819,12 +814,20 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     try {
       await _submitCrewAssignmentResponse(item, status: status);
       await _loadPortal();
+      final refreshed = _assignments
+          .where(
+            (candidate) =>
+                candidate.id == item.id ||
+                candidate.operationId == item.operationId,
+          )
+          .cast<CrewAssignment?>()
+          .firstWhere((candidate) => candidate != null, orElse: () => null);
       _showSyncMessage('Admin actualizado.');
-    } catch (_) {
+    } on ApiException catch (error) {
       setState(() {
         item.status = oldStatus;
       });
-      _showSyncMessage('No se pudo sincronizar la respuesta.');
+      _showSyncMessage(_assignmentResponseErrorMessage(error));
     }
   }
 
@@ -920,23 +923,18 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     required String status,
     String reason = '',
   }) async {
-    ApiException? lastError;
-
-    for (final id in _candidateCrewIds(item)) {
-      try {
-        await _api.respondCrewAssignment(
-          assignmentId: id,
-          status: status,
-          reason: reason,
-        );
-        return;
-      } on ApiException catch (error) {
-        lastError = error;
-      }
+    final operationId = item.resolvedOperationId;
+    if (operationId.isEmpty) {
+      throw const ApiException(
+        'No se encontró la operación asociada a esta asignación.',
+      );
     }
 
-    throw lastError ??
-        const ApiException('No se pudo sincronizar la respuesta.');
+    await _api.respondCrewAssignment(
+      operationId: operationId,
+      status: status,
+      reason: reason,
+    );
   }
 
   Future<void> _submitCrewOperationStep(
@@ -945,7 +943,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   ) async {
     ApiException? lastError;
 
-    for (final id in _candidateCrewIds(item)) {
+    for (final id in {item.resolvedOperationId, item.id.trim()}) {
+      if (id.isEmpty) continue;
       try {
         await _api.updateCrewOperationStep(
           assignmentId: id,
@@ -962,12 +961,12 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         const ApiException('No se pudo avanzar el flujo operativo.');
   }
 
-  List<String> _candidateCrewIds(CrewAssignment item) {
-    return {
-      item.backendId.trim(),
-      item.operationId.trim(),
-      item.id.trim(),
-    }.where((value) => value.isNotEmpty).toList();
+  String _assignmentResponseErrorMessage(ApiException error) {
+    final backendMessage = error.message.trim();
+    if (backendMessage.isEmpty) {
+      return 'No se pudo sincronizar la respuesta.';
+    }
+    return 'No fue posible confirmar disponibilidad.\n\n$backendMessage';
   }
 
   Future<void> _createAvailabilityBlock() async {
@@ -1232,7 +1231,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     _showSyncMessage('Sincronizando incidencia...', persist: true);
     try {
       await _api.createCrewIncident(
-        assignmentId: assignment.backendId,
+        assignmentId: assignment.resolvedOperationId,
         title: incident.title,
         description: description.trim(),
         evidence: evidence,

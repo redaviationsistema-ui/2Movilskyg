@@ -451,7 +451,6 @@ class ReservationProvider extends ChangeNotifier {
           'route_signature = ${previewPayload['route_signature'] ?? ''}',
         );
         debugPrint('headers = Authorization, Content-Type: application/json');
-        debugPrint('payload = $previewPayload');
         debugPrint('========================================');
         return true;
       }());
