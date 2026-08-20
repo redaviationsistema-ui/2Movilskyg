@@ -15,6 +15,7 @@ class RoleDashboardScaffold extends StatelessWidget {
     required this.roleLabel,
     required this.body,
     this.palette = const RoleDashboardPalette(),
+    this.headerAction,
   });
 
   final String title;
@@ -22,6 +23,7 @@ class RoleDashboardScaffold extends StatelessWidget {
   final String roleLabel;
   final Widget body;
   final RoleDashboardPalette palette;
+  final Widget? headerAction;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +59,7 @@ class RoleDashboardScaffold extends StatelessWidget {
                   subtitle: subtitle,
                   roleLabel: roleLabel,
                   palette: palette,
+                  action: headerAction,
                 ),
               ),
               Expanded(
@@ -84,12 +87,14 @@ class _HeaderCard extends StatelessWidget {
     required this.subtitle,
     required this.roleLabel,
     required this.palette,
+    this.action,
   });
 
   final String title;
   final String subtitle;
   final String roleLabel;
   final RoleDashboardPalette palette;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +170,7 @@ class _HeaderCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (action != null) action!,
               if (!isWide)
                 IconButton(
                   tooltip: 'Abrir menu',

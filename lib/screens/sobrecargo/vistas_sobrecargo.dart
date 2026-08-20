@@ -1,5 +1,297 @@
 part of 'pantalla_espacio_sobrecargo.dart';
 
+class _CrewNotificationButton extends StatelessWidget {
+  const _CrewNotificationButton({
+    required this.unread,
+    required this.onPressed,
+  });
+
+  final int unread;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip:
+          unread == 0 ? 'Notificaciones' : '$unread notificaciones sin leer',
+      onPressed: onPressed,
+      icon: Badge(
+        isLabelVisible: unread > 0,
+        label: Text(unread > 99 ? '99+' : '$unread'),
+        child: const Icon(
+          Icons.notifications_none_rounded,
+          color: Color(0xFFE2BD79),
+        ),
+      ),
+    );
+  }
+}
+
+class _CrewCompactHomeView extends StatelessWidget {
+  const _CrewCompactHomeView({
+    required this.assignments,
+    required this.incidents,
+    required this.documents,
+    required this.currentStatus,
+    required this.baseLabel,
+    required this.profileState,
+    required this.workflow,
+    required this.onOpenMissions,
+    required this.onOpenAvailability,
+    required this.onOpenDocuments,
+    required this.onOpenIncidents,
+  });
+
+  final List<CrewAssignment> assignments;
+  final List<CrewIncident> incidents;
+  final List<CrewDocument> documents;
+  final String currentStatus;
+  final String baseLabel;
+  final String profileState;
+  final Map<String, dynamic> workflow;
+  final VoidCallback onOpenMissions;
+  final VoidCallback onOpenAvailability;
+  final VoidCallback onOpenDocuments;
+  final VoidCallback onOpenIncidents;
+
+  @override
+  Widget build(BuildContext context) {
+    final active =
+        assignments.where((item) => !item.isFinalized).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    final operation = active.firstOrNull;
+    if (operation == null) {
+      return _InfoTile(
+        icon: Icons.flight_takeoff_rounded,
+        title: 'No tienes vuelos asignados por ahora',
+        subtitle: 'Te avisaremos cuando tengas una nueva operación.',
+        action: FilledButton.icon(
+          onPressed: onOpenAvailability,
+          icon: const Icon(Icons.event_available_rounded),
+          label: const Text('Ver disponibilidad'),
+        ),
+      );
+    }
+
+    final workflowChecklists = _asList(workflow['checklists']);
+    final workflowItems =
+        workflowChecklists
+            .expand((checklist) => _asList(checklist['items']))
+            .toList();
+    final completedItems =
+        workflowItems
+            .where(
+              (item) =>
+                  item['status'] == 'completed' ||
+                  item['status'] == 'not_applicable',
+            )
+            .length;
+    final progress =
+        workflowItems.isEmpty
+            ? operation.persistedChecklistProgress
+            : ((completedItems / workflowItems.length) * 100).round();
+    final allowedActions = _asList(workflow['allowed_actions']);
+    final backendLabel =
+        allowedActions.isEmpty
+            ? ''
+            : '${allowedActions.first['label'] ?? ''}'.trim();
+    final cta =
+        backendLabel.isNotEmpty
+            ? _friendlyHomeAction(backendLabel)
+            : operation.canRespondToAssignment
+            ? 'Confirmar mi vuelo'
+            : progress < 100
+            ? 'Continuar preparación'
+            : 'Ver mi vuelo';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _OperationalStrip(
+          title: operation.route,
+          subtitle:
+              '${operation.code} · ${_compactCrewDate(operation.date)} · ${operation.showTime}',
+          status: operation.status,
+        ),
+        const SizedBox(height: 14),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  operation.aircraft,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Presentación: ${operation.showTime} · Pasajeros: ${operation.passengers}',
+                ),
+                const SizedBox(height: 14),
+                Semantics(
+                  label: 'Tareas completadas: $progress por ciento',
+                  child: LinearProgressIndicator(value: progress / 100),
+                ),
+                const SizedBox(height: 8),
+                Text('$progress% completado'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 54,
+                  child: FilledButton.icon(
+                    onPressed: onOpenMissions,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(cta),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _friendlyHomeAction(String label) {
+  final value = label.toLowerCase().replaceAll('_', ' ');
+  if (value.contains('checkin') || value.contains('check-in')) {
+    return 'Confirmar llegada';
+  }
+  if (value.contains('cabin') || value.contains('cabina')) {
+    return 'Preparar cabina';
+  }
+  if (value.contains('passenger') || value.contains('pasaj')) {
+    return 'Recibir pasajeros';
+  }
+  if (value.contains('report') || value.contains('reporte')) {
+    return 'Enviar reporte final';
+  }
+  if (value.contains('photo') || value.contains('foto')) {
+    return 'Registrar fotografías';
+  }
+  return 'Ver mi vuelo';
+}
+
+String _compactCrewDate(DateTime value) {
+  const months = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
+  return '${value.day} ${months[value.month - 1]} ${value.year}';
+}
+
+class _CrewAccountView extends StatelessWidget {
+  const _CrewAccountView({
+    required this.profileForm,
+    required this.configForm,
+    required this.documents,
+    required this.assignments,
+    required this.incidents,
+    required this.onProfileChanged,
+    required this.onSaveProfile,
+    required this.onConfigChanged,
+    required this.onSaveConfig,
+    required this.onCreateDocument,
+    required this.onDocumentStatusChanged,
+    required this.onOpenOperation,
+  });
+
+  final Map<String, dynamic> profileForm;
+  final Map<String, dynamic> configForm;
+  final List<CrewDocument> documents;
+  final List<CrewAssignment> assignments;
+  final List<CrewIncident> incidents;
+  final void Function(String, dynamic) onProfileChanged;
+  final VoidCallback onSaveProfile;
+  final void Function(String, dynamic) onConfigChanged;
+  final VoidCallback onSaveConfig;
+  final void Function(CrewDocument, File?) onCreateDocument;
+  final void Function(CrewDocument, String) onDocumentStatusChanged;
+  final ValueChanged<CrewAssignment> onOpenOperation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _CrewAccountSection(
+          icon: Icons.person_rounded,
+          title: 'Mi perfil e idiomas',
+          child: _ProfileView(
+            form: profileForm,
+            onChanged: onProfileChanged,
+            onSave: onSaveProfile,
+          ),
+        ),
+        _CrewAccountSection(
+          icon: Icons.tune_rounded,
+          title: 'Preferencias',
+          child: _SettingsView(
+            form: configForm,
+            onChanged: onConfigChanged,
+            onSave: onSaveConfig,
+          ),
+        ),
+        _CrewAccountSection(
+          icon: Icons.folder_copy_rounded,
+          title: 'Mis documentos',
+          child: _DocumentsView(
+            documents: documents,
+            onCreate: onCreateDocument,
+            onStatusChanged: onDocumentStatusChanged,
+          ),
+        ),
+        _CrewAccountSection(
+          icon: Icons.history_rounded,
+          title: 'Historial de vuelos',
+          child: _HistoryView(
+            assignments: assignments,
+            incidents: incidents,
+            onOpenOperation: onOpenOperation,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CrewAccountSection extends StatelessWidget {
+  const _CrewAccountSection({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: Icon(icon),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        children: [Padding(padding: const EdgeInsets.all(14), child: child)],
+      ),
+    );
+  }
+}
+
 class _CrewCommandHero extends StatelessWidget {
   const _CrewCommandHero({
     required this.status,
@@ -295,6 +587,8 @@ class _CrewHeroButton extends StatelessWidget {
   }
 }
 
+// Kept temporarily as the legacy composition reference while Crew rolls out.
+// ignore: unused_element
 class _DashboardView extends StatelessWidget {
   const _DashboardView({
     required this.assignments,
@@ -303,7 +597,6 @@ class _DashboardView extends StatelessWidget {
     required this.currentStatus,
     required this.baseLabel,
     required this.profileState,
-    required this.onScan,
     required this.onOpenMissions,
     required this.onOpenAvailability,
     required this.onOpenDocuments,
@@ -316,7 +609,6 @@ class _DashboardView extends StatelessWidget {
   final String currentStatus;
   final String baseLabel;
   final String profileState;
-  final VoidCallback onScan;
   final VoidCallback onOpenMissions;
   final VoidCallback onOpenAvailability;
   final VoidCallback onOpenDocuments;
@@ -341,8 +633,7 @@ class _DashboardView extends StatelessWidget {
         documents.isEmpty
             ? 0
             : ((approvedDocuments / documents.length) * 100).round();
-    final checklistProgress =
-        nextMission == null ? 0 : _checklistProgress(nextMission.status);
+    final checklistProgress = nextMission?.persistedChecklistProgress ?? 0;
     final operationalStatus = _operationalStatus(currentStatus, nextMission);
     final readiness = _readinessScore(
       documentsValidity: documentsValidity,
@@ -582,29 +873,6 @@ class _DashboardView extends StatelessWidget {
     }
   }
 
-  int _checklistProgress(String status) {
-    switch (status) {
-      case 'Pendiente':
-        return 36;
-      case 'Confirmado':
-        return 58;
-      case 'Preparacion':
-        return 78;
-      case 'En aeropuerto/base':
-        return 82;
-      case 'Cabina revisada':
-        return 88;
-      case 'Pasajeros recibidos':
-        return 92;
-      case 'En servicio':
-        return 94;
-      case 'Finalizada':
-        return 100;
-      default:
-        return 0;
-    }
-  }
-
   String _operationalStatus(String currentStatus, CrewAssignment? assignment) {
     if (assignment == null) {
       return currentStatus.trim().isNotEmpty
@@ -699,18 +967,21 @@ class _DashboardView extends StatelessWidget {
     CrewAssignment? assignment, {
     required int documentsValidity,
   }) {
-    final progress =
-        assignment == null ? 0 : _checklistProgress(assignment.status);
-    final inRoute = assignment != null && progress >= 58;
-    final inMission = assignment != null && progress >= 94;
-    final closed = assignment?.status == 'Finalizada';
     return [
       _TimelineItem(label: 'Asignada', done: assignment != null),
-      _TimelineItem(label: 'Preparacion', done: progress >= 55),
+      _TimelineItem(
+        label: 'Preparacion',
+        done: assignment?.isChecklistCompleted('preparation') == true,
+      ),
       _TimelineItem(label: 'Documentacion', done: documentsValidity >= 100),
-      _TimelineItem(label: 'En ruta', done: inRoute),
-      _TimelineItem(label: 'En mision', done: inMission),
-      _TimelineItem(label: 'Cierre', done: closed),
+      _TimelineItem(
+        label: 'Pre-vuelo',
+        done: assignment?.isChecklistCompleted('preflight') == true,
+      ),
+      _TimelineItem(
+        label: 'Post-vuelo',
+        done: assignment?.isChecklistCompleted('postflight') == true,
+      ),
     ];
   }
 
@@ -1656,7 +1927,8 @@ class _MissionList extends StatefulWidget {
     required this.onAccept,
     required this.onReject,
     required this.onRequestChange,
-    required this.onAdvance,
+    required this.onOpenOperation,
+    required this.isSaving,
   });
 
   final List<CrewAssignment> assignments;
@@ -1664,7 +1936,8 @@ class _MissionList extends StatefulWidget {
   final ValueChanged<CrewAssignment> onAccept;
   final ValueChanged<CrewAssignment> onReject;
   final ValueChanged<CrewAssignment> onRequestChange;
-  final void Function(CrewAssignment, CrewMissionAction) onAdvance;
+  final ValueChanged<CrewAssignment> onOpenOperation;
+  final bool isSaving;
 
   @override
   State<_MissionList> createState() => _MissionListState();
@@ -1672,7 +1945,6 @@ class _MissionList extends StatefulWidget {
 
 class _MissionListState extends State<_MissionList> {
   String? _selectedAssignmentId;
-  String _expandedStageId = 'availability';
 
   @override
   Widget build(BuildContext context) {
@@ -1690,9 +1962,6 @@ class _MissionListState extends State<_MissionList> {
     final selected = _selectedAssignment(activeAssignments);
     final primaryAction = _primaryActionFor(selected);
     final secondaryActions = _secondaryActionsFor(selected);
-    final stages =
-        selected == null ? const <_MissionStage>[] : _buildStages(selected);
-    final progress = _buildProgress(stages);
     final actionTitle =
         selected == null
             ? 'Acciones principales'
@@ -1713,29 +1982,36 @@ class _MissionListState extends State<_MissionList> {
         if (selected != null) ...[
           const SizedBox(height: 14),
           _MissionHero(assignment: selected),
-          const SizedBox(height: 14),
-          _ActionCard(
-            title: actionTitle,
-            subtitle: _primaryDetail(selected),
-            icon: Icons.assignment_turned_in_rounded,
-            button: primaryAction?.label ?? 'Sin accion',
-            titleColor: const Color(0xFFFF3B30),
-            titleFontSize: selected.canRespondToAssignment ? 24 : 22,
-            titleFontWeight: FontWeight.bold,
-            subtitleStyle: TextStyle(
-              color: const Color(0xFF4B5563),
-              fontSize: selected.canRespondToAssignment ? 16 : 15,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-            buttonHeight: 56,
-            buttonRadius: 18,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-            onPressed:
-                primaryAction == null
-                    ? () {}
-                    : () => _runPrimaryAction(selected, primaryAction),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => widget.onOpenOperation(selected),
+            icon: const Icon(Icons.route_rounded),
+            label: const Text('Continuar con mi vuelo'),
           ),
+          const SizedBox(height: 14),
+          if (primaryAction != null)
+            _ActionCard(
+              title: actionTitle,
+              subtitle: _primaryDetail(selected),
+              icon: Icons.assignment_turned_in_rounded,
+              button: primaryAction.label,
+              titleColor: const Color(0xFFFF3B30),
+              titleFontSize: selected.canRespondToAssignment ? 24 : 22,
+              titleFontWeight: FontWeight.bold,
+              subtitleStyle: TextStyle(
+                color: const Color(0xFF4B5563),
+                fontSize: selected.canRespondToAssignment ? 16 : 15,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+              buttonHeight: 56,
+              buttonRadius: 18,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+              onPressed:
+                  widget.isSaving
+                      ? null
+                      : () => _runPrimaryAction(selected, primaryAction),
+            ),
           if (secondaryActions.isNotEmpty) ...[
             const SizedBox(height: 14),
             _MissionSecondaryActions(
@@ -1744,16 +2020,12 @@ class _MissionListState extends State<_MissionList> {
             ),
           ],
           const SizedBox(height: 14),
-          _MissionChecklistCard(
-            stages: stages,
-            expandedStageId: _expandedStageId,
-            onToggle:
-                (stageId) => setState(() {
-                  _expandedStageId = _expandedStageId == stageId ? '' : stageId;
-                }),
+          const _InfoTile(
+            icon: Icons.verified_rounded,
+            title: 'Progreso del vuelo',
+            subtitle:
+                'Consulta tus tareas, fotografías y los pasos que tienes pendientes.',
           ),
-          const SizedBox(height: 14),
-          _MissionProgressCard(items: progress),
         ],
       ],
     );
@@ -1777,13 +2049,7 @@ class _MissionListState extends State<_MissionList> {
         kind: _MissionActionKind.accept,
       );
     }
-    final nextAction = assignment.nextAction;
-    if (nextAction == null) return null;
-    return _MissionPrimaryAction(
-      label: nextAction.label,
-      kind: _MissionActionKind.advance,
-      missionAction: nextAction,
-    );
+    return null;
   }
 
   List<_MissionSecondaryAction> _secondaryActionsFor(
@@ -1842,12 +2108,6 @@ class _MissionListState extends State<_MissionList> {
       case _MissionActionKind.requestChange:
         widget.onRequestChange(assignment);
         break;
-      case _MissionActionKind.advance:
-        final missionAction = action.missionAction;
-        if (missionAction != null) {
-          widget.onAdvance(assignment, missionAction);
-        }
-        break;
     }
   }
 
@@ -1865,11 +2125,12 @@ class _MissionListState extends State<_MissionList> {
       case _MissionActionKind.requestChange:
         widget.onRequestChange(assignment);
         break;
-      case _MissionActionKind.advance:
-        break;
     }
   }
 
+  // Legacy presentation helper kept temporarily for binary-compatible hot reload;
+  // it is no longer rendered or used as a source of operational truth.
+  // ignore: unused_element
   List<_MissionStage> _buildStages(CrewAssignment assignment) {
     final missionState = assignment.status.trim();
     return [
@@ -2030,6 +2291,7 @@ class _MissionListState extends State<_MissionList> {
     ];
   }
 
+  // ignore: unused_element
   List<_MissionProgressItem> _buildProgress(List<_MissionStage> stages) {
     const baseSteps = [
       ('availability', 'Disponibilidad'),
@@ -2064,18 +2326,13 @@ class _MissionListState extends State<_MissionList> {
   }
 }
 
-enum _MissionActionKind { accept, reject, requestChange, advance }
+enum _MissionActionKind { accept, reject, requestChange }
 
 class _MissionPrimaryAction {
-  const _MissionPrimaryAction({
-    required this.label,
-    required this.kind,
-    this.missionAction,
-  });
+  const _MissionPrimaryAction({required this.label, required this.kind});
 
   final String label;
   final _MissionActionKind kind;
-  final CrewMissionAction? missionAction;
 }
 
 class _MissionSecondaryAction {
@@ -2168,7 +2425,7 @@ class _MissionSelectorStrip extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.code,
+                    item.route,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -2181,7 +2438,7 @@ class _MissionSelectorStrip extends StatelessWidget {
                   const SizedBox(height: 6),
                   Expanded(
                     child: Text(
-                      item.route,
+                      '${item.aircraft} · ${item.showTime}',
                       maxLines: compact ? 3 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -2242,18 +2499,19 @@ class _MissionHero extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        assignment.code,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFB7791F),
-                          fontSize: compact ? 11 : 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
+                      if (assignment.code != 'OPS')
+                        Text(
+                          'Folio: ${assignment.code}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFFB7791F),
+                            fontSize: compact ? 11 : 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
+                      if (assignment.code != 'OPS') const SizedBox(height: 4),
                       Text(
                         assignment.route,
                         maxLines: compact ? 2 : 3,
@@ -2423,6 +2681,7 @@ class _MissionInfoRow extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MissionProgressCard extends StatelessWidget {
   const _MissionProgressCard({required this.items});
 
@@ -2586,6 +2845,7 @@ class _MissionSecondaryActions extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MissionChecklistCard extends StatelessWidget {
   const _MissionChecklistCard({
     required this.stages,
@@ -2791,8 +3051,9 @@ class _CalendarView extends StatefulWidget {
     required this.onDateSelected,
     required this.onBlockFormChanged,
     required this.onBlock,
-    required this.onAdvance,
+    required this.onOpenOperation,
     required this.onAccept,
+    required this.isSaving,
   });
 
   final DateTime selectedDate;
@@ -2804,8 +3065,9 @@ class _CalendarView extends StatefulWidget {
   final ValueChanged<DateTime> onDateSelected;
   final void Function(String, dynamic) onBlockFormChanged;
   final VoidCallback onBlock;
-  final void Function(CrewAssignment, CrewMissionAction) onAdvance;
+  final ValueChanged<CrewAssignment> onOpenOperation;
   final ValueChanged<CrewAssignment> onAccept;
+  final bool isSaving;
 
   @override
   State<_CalendarView> createState() => _CalendarViewState();
@@ -3012,25 +3274,25 @@ class _CalendarViewState extends State<_CalendarView> {
           ),
         ),
         ...dayItems.map((item) {
-          final nextAction = item.nextAction;
           return _CalendarFlightCard(
             item: item,
             actions:
                 item.canRespondToAssignment
                     ? [
                       FilledButton.icon(
-                        onPressed: () => widget.onAccept(item),
+                        onPressed:
+                            widget.isSaving
+                                ? null
+                                : () => widget.onAccept(item),
                         icon: const Icon(Icons.check_rounded),
                         label: const Text('Confirmar vuelo'),
                       ),
                     ]
-                    : nextAction == null
-                    ? const []
                     : [
-                      FilledButton.icon(
-                        onPressed: () => widget.onAdvance(item, nextAction),
-                        icon: Icon(nextAction.icon),
-                        label: Text(nextAction.label),
+                      OutlinedButton.icon(
+                        onPressed: () => widget.onOpenOperation(item),
+                        icon: const Icon(Icons.route_rounded),
+                        label: const Text('Abrir operación'),
                       ),
                     ],
           );
@@ -3885,13 +4147,11 @@ class _ProfileView extends StatelessWidget {
 class _DocumentsView extends StatelessWidget {
   const _DocumentsView({
     required this.documents,
-    required this.onUpload,
     required this.onCreate,
     required this.onStatusChanged,
   });
 
   final List<CrewDocument> documents;
-  final VoidCallback onUpload;
   final void Function(CrewDocument, File?) onCreate;
   final void Function(CrewDocument, String) onStatusChanged;
 
@@ -3899,12 +4159,10 @@ class _DocumentsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _ActionCard(
-          title: 'Subir certificado, licencia o PDF',
-          subtitle: 'Los documentos quedan pendientes de revision admin.',
-          icon: Icons.upload_file_rounded,
-          button: 'Subir archivo',
-          onPressed: onUpload,
+        const _InfoTile(
+          icon: Icons.info_outline_rounded,
+          title: 'Mis documentos',
+          subtitle: 'Consulta y actualiza la información de tus documentos.',
         ),
         const SizedBox(height: 14),
         _DocumentComposer(onCreate: onCreate),
@@ -3925,19 +4183,11 @@ class _IncidentsView extends StatelessWidget {
     required this.assignments,
     required this.incidents,
     required this.onCreate,
-    required this.onAddEvidence,
-    required this.onAddComment,
-    required this.onMarkAttended,
-    required this.onEscalate,
   });
 
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
   final ValueChanged<CrewAssignment> onCreate;
-  final ValueChanged<CrewIncident> onAddEvidence;
-  final ValueChanged<CrewIncident> onAddComment;
-  final ValueChanged<CrewIncident> onMarkAttended;
-  final ValueChanged<CrewIncident> onEscalate;
 
   @override
   Widget build(BuildContext context) {
@@ -3952,28 +4202,25 @@ class _IncidentsView extends StatelessWidget {
           icon: Icons.add_alert_rounded,
           button: 'Nueva incidencia',
           onPressed:
-              assignments.isEmpty ? () {} : () => onCreate(assignments.first),
+              assignments.isEmpty ? null : () => onCreate(assignments.first),
         ),
         const SizedBox(height: 14),
-        ...incidents.map(
-          (item) => _IncidentTile(
-            incident: item,
-            onAddEvidence: () => onAddEvidence(item),
-            onAddComment: () => onAddComment(item),
-            onMarkAttended: () => onMarkAttended(item),
-            onEscalate: () => onEscalate(item),
-          ),
-        ),
+        ...incidents.map((item) => _IncidentTile(incident: item)),
       ],
     );
   }
 }
 
 class _HistoryView extends StatelessWidget {
-  const _HistoryView({required this.assignments, required this.incidents});
+  const _HistoryView({
+    required this.assignments,
+    required this.incidents,
+    required this.onOpenOperation,
+  });
 
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
+  final ValueChanged<CrewAssignment> onOpenOperation;
 
   @override
   Widget build(BuildContext context) {
@@ -3984,16 +4231,6 @@ class _HistoryView extends StatelessWidget {
         _MetricGrid(
           metrics: [
             _Metric('Vuelos completados', '${completed.length}', Icons.flight),
-            _Metric(
-              'Horas estimadas',
-              '${completed.length * 4} h',
-              Icons.timer,
-            ),
-            _Metric(
-              'Rating',
-              completed.isEmpty ? 'Sin dato' : '4.9',
-              Icons.star,
-            ),
             _Metric('Incidencias', '${incidents.length}', Icons.report),
           ],
         ),
@@ -4005,7 +4242,21 @@ class _HistoryView extends StatelessWidget {
             subtitle: 'El historial se generara automaticamente.',
           )
         else
-          ...completed.map((item) => _AssignmentCard(item: item)),
+          ...completed.map(
+            (item) => Column(
+              children: [
+                _AssignmentCard(item: item),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => onOpenOperation(item),
+                    icon: const Icon(Icons.history_rounded),
+                    label: const Text('Ver tareas y reporte del vuelo'),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -4026,9 +4277,11 @@ class _PaymentsView extends StatelessWidget {
         _MetricGrid(
           metrics: [
             _Metric('Servicios', '$completed', Icons.room_service_rounded),
-            const _Metric('Bonos', 'USD 40', Icons.add_card_rounded),
-            const _Metric('Penalizaciones', 'USD 0', Icons.gpp_maybe_rounded),
-            const _Metric('Corte mensual', 'USD 260', Icons.payments_rounded),
+            _Metric(
+              'Pagos registrados',
+              '${payments.length}',
+              Icons.receipt_long_rounded,
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -4188,7 +4441,6 @@ class _DocumentComposerState extends State<_DocumentComposer> {
   final _expiration = TextEditingController();
   final _note = TextEditingController();
   String _category = 'Certificacion';
-  File? _file;
 
   @override
   void dispose() {
@@ -4234,23 +4486,9 @@ class _DocumentComposerState extends State<_DocumentComposer> {
           decoration: const InputDecoration(labelText: 'Nota'),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _file == null
-                    ? 'Sin archivo adjunto'
-                    : _file!.path.split(Platform.pathSeparator).last,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: _pickFile,
-              icon: const Icon(Icons.attach_file_rounded),
-              label: const Text('Adjuntar'),
-            ),
-          ],
+        const Text(
+          'Se registrará únicamente la referencia y sus metadatos.',
+          style: TextStyle(color: Color(0xFF5F6975)),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -4263,16 +4501,6 @@ class _DocumentComposerState extends State<_DocumentComposer> {
         ),
       ],
     );
-  }
-
-  Future<void> _pickFile() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-    );
-    final path = result?.files.single.path;
-    if (path == null) return;
-    setState(() => _file = File(path));
   }
 
   void _submit() {
@@ -4288,14 +4516,13 @@ class _DocumentComposerState extends State<_DocumentComposer> {
                 : _expiration.text.trim(),
         category: _category,
         note: _note.text.trim(),
-        localPath: _file?.path ?? '',
+        localPath: '',
       ),
-      _file,
+      null,
     );
     _name.clear();
     _expiration.clear();
     _note.clear();
-    setState(() => _file = null);
   }
 }
 
@@ -4360,19 +4587,9 @@ class _DocumentTile extends StatelessWidget {
 }
 
 class _IncidentTile extends StatelessWidget {
-  const _IncidentTile({
-    required this.incident,
-    required this.onAddEvidence,
-    required this.onAddComment,
-    required this.onMarkAttended,
-    required this.onEscalate,
-  });
+  const _IncidentTile({required this.incident});
 
   final CrewIncident incident;
-  final VoidCallback onAddEvidence;
-  final VoidCallback onAddComment;
-  final VoidCallback onMarkAttended;
-  final VoidCallback onEscalate;
 
   @override
   Widget build(BuildContext context) {
@@ -4415,31 +4632,29 @@ class _IncidentTile extends StatelessWidget {
                 ),
           ],
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: onAddEvidence,
-                icon: const Icon(Icons.attach_file_rounded),
-                label: const Text('Evidencia'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onAddComment,
-                icon: const Icon(Icons.comment_rounded),
-                label: const Text('Comentar'),
-              ),
-              FilledButton.icon(
-                onPressed: onMarkAttended,
-                icon: const Icon(Icons.task_alt_rounded),
-                label: const Text('Atendida'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onEscalate,
-                icon: const Icon(Icons.priority_high_rounded),
-                label: const Text('Escalar'),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  () => showDialog<void>(
+                    context: context,
+                    builder:
+                        (context) => AlertDialog(
+                          title: Text(incident.title),
+                          content: Text(
+                            '${incident.assignment}\nPrioridad: ${incident.priority}\nEstado: ${incident.status}\n\n${incident.description}',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cerrar'),
+                            ),
+                          ],
+                        ),
+                  ),
+              icon: const Icon(Icons.visibility_rounded),
+              label: const Text('Ver detalle'),
+            ),
           ),
         ],
       ),

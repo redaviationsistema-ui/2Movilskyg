@@ -1212,82 +1212,90 @@ class ApiClient {
     String note = '',
   }) async {
     final normalizedNote = note.trim();
-    final stepVariants = switch (step) {
-      'checkin' => const ['checkin'],
-      'cabin_ready' => const ['cabin-ready', 'cabin_ready'],
-      'passengers_ready' => const ['passengers-ready', 'passengers_ready'],
-      'service_started' => const [
-        'start-service',
-        'service-started',
-        'service_started',
-      ],
-      'service_finalized' => const [
-        'finalize-service',
-        'service-finalized',
-        'service_finalized',
-        'complete-service',
-        'complete_service',
-        'completed',
-      ],
-      _ => [step],
-    };
-
-    final statusHints = switch (step) {
-      'checkin' => const ['crew_enroute'],
-      'cabin_ready' => const ['cabin_ready', 'cabin ready'],
-      'passengers_ready' => const ['passengers_ready', 'passengers ready'],
-      'service_started' => const [
-        'service_started',
-        'service started',
-        'crew_active',
-      ],
-      'service_finalized' => const [
-        'completed',
-        'service_finalized',
-        'service finalized',
-        'crew_completed',
-        'finalizada',
-      ],
-      _ => [step],
-    };
-
-    ApiException? lastError;
-
-    for (final pathStep in stepVariants) {
-      final paths = [
-        '/sobrecargo/operations/$assignmentId/$pathStep',
-        '/sobrecargo/assignments/$assignmentId/$pathStep',
-        '/crew/operations/$assignmentId/$pathStep',
-        '/crew/assignments/$assignmentId/$pathStep',
-        '/sobrecargo/operations/$assignmentId/steps/$pathStep',
-        '/sobrecargo/assignments/$assignmentId/steps/$pathStep',
-        '/crew/operations/$assignmentId/steps/$pathStep',
-        '/crew/assignments/$assignmentId/steps/$pathStep',
-      ];
-
-      for (final statusHint in statusHints) {
-        try {
-          return await writeFirstAvailable(
-            paths,
-            authenticated: true,
-            body: {
-              'step': step,
-              'status': statusHint,
-              'crew_status': statusHint,
-              'workflow_status': statusHint,
-              if (normalizedNote.isNotEmpty) 'note': normalizedNote,
-              if (normalizedNote.isNotEmpty) 'notes': normalizedNote,
-              if (normalizedNote.isNotEmpty) 'comment': normalizedNote,
-            },
-          );
-        } on ApiException catch (error) {
-          lastError = error;
-        }
-      }
+    final base = '/sobrecargo/operations/$assignmentId';
+    if (step == 'checkin') {
+      return post(
+        '$base/checkin',
+        authenticated: true,
+        body: {
+          'fit_to_operate': true,
+          if (normalizedNote.isNotEmpty) 'note': normalizedNote,
+        },
+      );
     }
+    if (step == 'cabin_ready') {
+      return post(
+        '$base/cabin-ready',
+        authenticated: true,
+        body: {if (normalizedNote.isNotEmpty) 'note': normalizedNote},
+      );
+    }
+    if (step == 'passengers_ready') {
+      return post(
+        '$base/passengers-ready',
+        authenticated: true,
+        body: {if (normalizedNote.isNotEmpty) 'note': normalizedNote},
+      );
+    }
+    final target = switch (step) {
+      'service_started' => 'in_flight',
+      'service_finalized' => 'landed',
+      _ => step,
+    };
+    return post(
+      '$base/transition',
+      authenticated: true,
+      body: {
+        'status': target,
+        if (normalizedNote.isNotEmpty) 'notes': normalizedNote,
+      },
+    );
+  }
 
-    throw lastError ??
-        const ApiException('No fue posible completar la solicitud.');
+  Future<Map<String, dynamic>> getCrewOperationWorkflow(String operationId) {
+    return get(
+      '/sobrecargo/operations/$operationId/workflow',
+      authenticated: true,
+    );
+  }
+
+  Future<Map<String, dynamic>> updateCrewChecklistItem({
+    required String operationId,
+    required String checklistType,
+    required String itemId,
+    required String status,
+    String notes = '',
+  }) {
+    return put(
+      '/sobrecargo/operations/$operationId/checklists/$checklistType/items/$itemId',
+      authenticated: true,
+      body: {'status': status, 'notes': notes.trim()},
+    );
+  }
+
+  Future<Map<String, dynamic>> uploadCrewChecklistEvidence({
+    required String operationId,
+    required String checklistType,
+    required String itemId,
+    required File file,
+  }) {
+    return postMultipart(
+      '/sobrecargo/operations/$operationId/checklists/$checklistType/items/$itemId/evidence',
+      authenticated: true,
+      fields: const {},
+      files: {'file': file},
+    );
+  }
+
+  Future<Map<String, dynamic>> submitCrewFinalReport({
+    required String operationId,
+    required Map<String, dynamic> report,
+  }) {
+    return post(
+      '/sobrecargo/operations/$operationId/report',
+      authenticated: true,
+      body: report,
+    );
   }
 
   Future<Map<String, dynamic>> createCrewAvailabilityBlock({
@@ -1411,21 +1419,26 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> createCrewIncident({
-    required String assignmentId,
-    required String title,
+    required String operationId,
+    required String crewId,
     required String description,
+    String category = 'otro',
+    String priority = 'media',
+    String phase = 'Pre-vuelo',
     File? evidence,
   }) {
     return postMultipartFirstAvailable(
-      const ['/crew/incidents', '/sobrecargo/incidencias'],
+      const ['/crew-operation-incidents'],
       authenticated: true,
       fields: {
-        'assignment_id': assignmentId,
-        'title': title,
+        'crew_operation_id': operationId,
+        'crew_id': crewId,
+        'category': category,
+        'priority': priority,
+        'phase': phase,
         'description': description,
-        'status': 'open',
       },
-      files: {if (evidence != null) 'evidence': evidence},
+      files: {if (evidence != null) 'files[]': evidence},
     );
   }
 
@@ -1482,7 +1495,8 @@ class ApiClient {
       'response': response,
       'status': crewStatus.isEmpty ? response : crewStatus,
       'crew_status': crewStatus,
-      if (trimmedReason.isNotEmpty) 'reason': trimmedReason,
+      if (response == 'Rechazado') 'reject_reason': 'other',
+      if (trimmedReason.isNotEmpty) 'comment': trimmedReason,
       if (trimmedReason.isNotEmpty) 'reject_reason': trimmedReason,
       if (trimmedReason.isNotEmpty) 'comment': trimmedReason,
     };
@@ -1733,7 +1747,9 @@ class ApiClient {
     }
     http.StreamedResponse streamedResponse;
     try {
-      streamedResponse = await request.send().timeout(_multipartTimeout);
+      streamedResponse = await _httpClient
+          .send(request)
+          .timeout(_multipartTimeout);
     } on TimeoutException catch (error) {
       throw ApiException(
         'La carga de archivos excedio el tiempo de espera. Verifica tu conexion e intenta de nuevo.',

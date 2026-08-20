@@ -239,7 +239,7 @@ class _ActionCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final String button;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color titleColor;
   final double? titleFontSize;
   final FontWeight titleFontWeight;
@@ -389,11 +389,13 @@ class _InfoTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -444,6 +446,7 @@ class _InfoTile extends StatelessWidget {
                       height: 1.3,
                     ),
                   ),
+                  if (action != null) ...[const SizedBox(height: 12), action!],
                 ],
               ),
             ),

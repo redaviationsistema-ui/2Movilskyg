@@ -12,6 +12,7 @@ class CrewAssignment {
   CrewAssignment({
     required this.id,
     required this.operationId,
+    required this.flightRequestId,
     required this.code,
     required this.route,
     required this.provider,
@@ -28,10 +29,12 @@ class CrewAssignment {
     this.origin = '',
     this.destination = '',
     this.rejectReason = '',
+    this.checklists = const [],
   });
 
   final String id;
   final String operationId;
+  final String flightRequestId;
   final String code;
   final String route;
   final String provider;
@@ -48,6 +51,7 @@ class CrewAssignment {
   final String destination;
   String status;
   String rejectReason;
+  final List<Map<String, dynamic>> checklists;
 
   factory CrewAssignment.fromJson(Map<String, dynamic> json) {
     final detail = _asMap(
@@ -129,9 +133,17 @@ class CrewAssignment {
     return CrewAssignment(
       id:
           _firstString([
-            json['id'],
+            _asMap(json['assignment'])['id'],
             json['assignment_id'],
             json['crew_assignment_id'],
+            json['id'],
+            json['request_id'],
+          ]) ??
+          '',
+      flightRequestId:
+          _firstString([
+            json['flight_request_id'],
+            detail['flight_request_id'],
             json['request_id'],
           ]) ??
           '',
@@ -224,7 +236,28 @@ class CrewAssignment {
             detail['crew_decline_reason'],
           ]) ??
           '',
+      checklists: _asList(detail['checklists'] ?? json['checklists']),
     );
+  }
+
+  int get persistedChecklistProgress {
+    final items =
+        checklists.expand((checklist) => _asList(checklist['items'])).toList();
+    if (items.isEmpty) return 0;
+    final completed =
+        items
+            .where(
+              (item) =>
+                  ['completed', 'not_applicable'].contains(item['status']),
+            )
+            .length;
+    return ((completed / items.length) * 100).round();
+  }
+
+  bool isChecklistCompleted(String type) {
+    final matches = checklists.where((item) => item['type'] == type).toList();
+    return matches.isNotEmpty &&
+        matches.every((item) => item['status'] == 'completed');
   }
 
   String get resolvedOperationId => operationId.trim();
@@ -537,21 +570,6 @@ class CrewPaymentRecord {
           'Pendiente',
     );
   }
-
-  static const demo = [
-    CrewPaymentRecord(
-      concept: 'Servicio completado',
-      assignment: 'RSK-2318',
-      amount: 'USD 220',
-      status: 'Pendiente corte',
-    ),
-    CrewPaymentRecord(
-      concept: 'Bono servicio VIP',
-      assignment: 'RSK-2318',
-      amount: 'USD 40',
-      status: 'Autorizado',
-    ),
-  ];
 }
 
 class CrewBlock {

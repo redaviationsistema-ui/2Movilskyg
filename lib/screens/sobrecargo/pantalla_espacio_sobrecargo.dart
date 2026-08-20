@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:web_socket_channel/io.dart';
@@ -19,6 +18,8 @@ import '../shared/widgets/contenedor_espacio_rol.dart';
 part 'modelos_sobrecargo.dart';
 part 'widgets_sobrecargo.dart';
 part 'vistas_sobrecargo.dart';
+part 'operacion_sobrecargo.dart';
+part 'notificaciones_sobrecargo.dart';
 
 class CrewWorkspaceScreen extends StatelessWidget {
   const CrewWorkspaceScreen({super.key});
@@ -37,43 +38,30 @@ class CrewWorkspaceScreen extends StatelessWidget {
       title: userName.isEmpty ? 'Sobrecargo' : userName,
       items: [
         const RoleWorkspaceItem(
-          label: 'Centro Operativo',
-          shortLabel: 'Centro',
+          label: 'Inicio',
+          shortLabel: 'Inicio',
           icon: Icons.dashboard_customize_rounded,
           screen: CrewPortalScreen(initialTab: CrewPortalTab.dashboard),
         ),
         const RoleWorkspaceItem(
-          label: 'Misiones',
-          shortLabel: 'Misiones',
+          label: 'Mi vuelo',
+          shortLabel: 'Mi vuelo',
           icon: Icons.assignment_turned_in_rounded,
           screen: CrewPortalScreen(initialTab: CrewPortalTab.missions),
         ),
 
         const RoleWorkspaceItem(
           label: 'Mi disponibilidad',
-          shortLabel: 'Disponible',
+          shortLabel: 'Disponibilidad',
           icon: Icons.event_available_rounded,
           screen: CrewPortalScreen(initialTab: CrewPortalTab.availability),
         ),
 
         const RoleWorkspaceItem(
-          label: 'Incidencias',
-          shortLabel: 'Incid.',
-          icon: Icons.report_problem_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.incidents),
-        ),
-        const RoleWorkspaceItem(
-          label: 'Historial',
-          shortLabel: 'Hist.',
-          icon: Icons.history_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.history),
-        ),
-
-        const RoleWorkspaceItem(
-          label: 'Ajustes',
-          shortLabel: 'Config',
-          icon: Icons.settings_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.settings),
+          label: 'Cuenta',
+          shortLabel: 'Cuenta',
+          icon: Icons.account_circle_rounded,
+          screen: CrewPortalScreen(initialTab: CrewPortalTab.account),
         ),
       ],
     );
@@ -88,9 +76,11 @@ enum CrewPortalTab {
   profile,
   documents,
   incidents,
+  notifications,
   history,
   payments,
   settings,
+  account,
 }
 
 String resolveCrewAssignmentStatusForPayload(Map<String, dynamic> payload) {
@@ -120,6 +110,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   final List<CrewPaymentRecord> _payments = [];
   final List<CrewBlock> _blocks = [];
   final List<CrewAvailabilityRecord> _availability = [];
+  Map<String, dynamic> _activeWorkflow = const {};
   List<CrewAvailabilityStatus> _availabilityStatuses = [
     ...CrewAvailabilityStatus.defaults,
   ];
@@ -129,6 +120,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   Timer? _autoRefreshTimer;
   bool _isLoading = false;
   bool _availabilityLoading = false;
+  bool _assignmentSaving = false;
+  bool _incidentSaving = false;
+  int _unreadNotifications = 0;
   String _syncMessage = '';
   String _storedOperationalStatus = '';
   DateTime _selectedDate = DateTime.now();
@@ -194,8 +188,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       final assignmentsFuture = _api.getCrewAssignments();
       final profileFuture = _api.getCrewProfile();
       final documentsFuture = _api.getCrewDocuments();
-      final incidentsFuture = _api.getCrewIncidents(
-        operationId: _currentIncidentOperationId,
+      final incidentsFuture = _api.getCrewIncidents();
+      final notificationsFuture = _api.get(
+        '/notifications',
+        authenticated: true,
+        query: const {'per_page': '1'},
       );
 
       Future<Map<String, dynamic>?> captureResource(
@@ -219,6 +216,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         captureResource('perfil', profileFuture),
         captureResource('documentos', documentsFuture),
         captureResource('incidencias', incidentsFuture),
+        captureResource('notificaciones', notificationsFuture),
       ]);
 
       final dashboardData = results[0];
@@ -226,6 +224,17 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       final profileData = results[2];
       final documentsData = results[3];
       final incidentsData = results[4];
+      final notificationsData = results[5];
+
+      if (notificationsData != null) {
+        final source = _payloadSource(notificationsData);
+        if (mounted) {
+          setState(() {
+            _unreadNotifications =
+                int.tryParse('${source['unread_count'] ?? 0}') ?? 0;
+          });
+        }
+      }
 
       _logCrewPayload('dashboard', dashboardData);
       _logCrewPayload('assignments', assignmentsData);
@@ -252,6 +261,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           });
         }
         loadedAnyResource = true;
+        await _loadActiveWorkflowForHome();
       }
 
       if (profileData != null) {
@@ -532,14 +542,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     _channel = null;
   }
 
-  String? get _currentIncidentOperationId {
-    for (final assignment in _assignments) {
-      final operationId = assignment.resolvedOperationId;
-      if (operationId.isNotEmpty) return operationId;
-    }
-    return null;
-  }
-
   String get _resolvedOperationalStatus {
     if (_assignments.any((item) => item.status == 'En servicio')) {
       return 'En vuelo';
@@ -661,8 +663,20 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       child: RoleDashboardScaffold(
         title: _title,
         subtitle:
-            'Misiones, disponibilidad, documentos, incidencias y contexto operativo.',
+            widget.initialTab == CrewPortalTab.dashboard
+                ? 'Tu estado y siguiente acción.'
+                : widget.initialTab == CrewPortalTab.missions
+                ? 'Aquí puedes preparar, atender y finalizar tu operación.'
+                : widget.initialTab == CrewPortalTab.availability
+                ? 'Indica qué días puedes trabajar.'
+                : widget.initialTab == CrewPortalTab.account
+                ? 'Perfil, documentos y preferencias.'
+                : 'Información operativa.',
         roleLabel: 'Sobrecargo',
+        headerAction: _CrewNotificationButton(
+          unread: _unreadNotifications,
+          onPressed: () => _openLocalTab(CrewPortalTab.notifications),
+        ),
         body: RefreshIndicator(
           onRefresh: _refreshPortal,
           child: ListView(
@@ -682,9 +696,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   String get _title {
     switch (widget.initialTab) {
       case CrewPortalTab.dashboard:
-        return 'Centro Operativo';
+        return 'Inicio';
       case CrewPortalTab.missions:
-        return 'Misiones activas';
+        return 'Mi vuelo';
       case CrewPortalTab.calendar:
         return 'Operacion del dia';
       case CrewPortalTab.availability:
@@ -695,19 +709,23 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         return 'Documentos';
       case CrewPortalTab.incidents:
         return 'Incidencias';
+      case CrewPortalTab.notifications:
+        return 'Notificaciones';
       case CrewPortalTab.history:
         return 'Historial de servicio';
       case CrewPortalTab.payments:
         return 'Pagos y comisiones';
       case CrewPortalTab.settings:
         return 'Ajustes';
+      case CrewPortalTab.account:
+        return 'Cuenta';
     }
   }
 
   Widget _bodyForTab() {
     switch (widget.initialTab) {
       case CrewPortalTab.dashboard:
-        return _DashboardView(
+        return _CrewCompactHomeView(
           assignments: _assignments,
           incidents: _incidents,
           documents: _documents,
@@ -717,20 +735,44 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
               _profileForm['profileState']?.toString().trim().isNotEmpty == true
                   ? _profileForm['profileState'].toString().trim()
                   : 'Sin validar',
-          onScan: _scanOperationCode,
+          workflow: _activeWorkflow,
           onOpenMissions: () => _openLocalTab(CrewPortalTab.missions),
           onOpenAvailability: () => _openLocalTab(CrewPortalTab.availability),
           onOpenDocuments: () => _openLocalTab(CrewPortalTab.documents),
           onOpenIncidents: () => _openLocalTab(CrewPortalTab.incidents),
         );
       case CrewPortalTab.missions:
-        return _MissionList(
-          assignments: _assignments,
-          coordinationLabel: _coordinationLabel,
-          onAccept: (item) => _respondAssignment(item, 'Confirmado'),
-          onReject: _rejectAssignment,
-          onRequestChange: _requestAssignmentChange,
-          onAdvance: _advanceAssignmentStep,
+        final active = _assignments.where((item) => !item.isFinalized).toList();
+        return Column(
+          children: [
+            _MissionList(
+              assignments: _assignments,
+              coordinationLabel: _coordinationLabel,
+              onAccept: (item) => _respondAssignment(item, 'Confirmado'),
+              onReject: _rejectAssignment,
+              onRequestChange: _requestAssignmentChange,
+              onOpenOperation: _openOperation,
+              isSaving: _assignmentSaving,
+            ),
+            if (active.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _ActionCard(
+                title: 'Reportar un problema',
+                subtitle:
+                    'Utiliza esta opción si ocurrió algo que el administrador deba conocer.',
+                icon: Icons.report_problem_rounded,
+                button: 'Reportar un problema',
+                onPressed:
+                    _incidentSaving
+                        ? null
+                        : () => _createIncident(active.first),
+              ),
+              if (_incidents.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ..._incidents.map((item) => _IncidentTile(incident: item)),
+              ],
+            ],
+          ],
         );
       case CrewPortalTab.calendar:
         return _CalendarView(
@@ -743,8 +785,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           onDateSelected: (date) => setState(() => _selectedDate = date),
           onBlockFormChanged: _updateAgendaBlockField,
           onBlock: _createAvailabilityBlock,
-          onAdvance: _advanceAssignmentStep,
+          onOpenOperation: _openOperation,
           onAccept: (item) => _respondAssignment(item, 'Confirmado'),
+          isSaving: _assignmentSaving,
         );
       case CrewPortalTab.availability:
         return _AvailabilityView(
@@ -772,7 +815,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       case CrewPortalTab.documents:
         return _DocumentsView(
           documents: _documents,
-          onUpload: _uploadDocument,
           onCreate: _createDocumentDetailed,
           onStatusChanged: _updateDocumentStatus,
         );
@@ -781,13 +823,15 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           assignments: _assignments,
           incidents: _incidents,
           onCreate: _createIncident,
-          onAddEvidence: _addIncidentEvidence,
-          onAddComment: _addIncidentComment,
-          onMarkAttended: _markIncidentAttended,
-          onEscalate: _escalateIncident,
         );
+      case CrewPortalTab.notifications:
+        return const CrewNotificationsView();
       case CrewPortalTab.history:
-        return _HistoryView(assignments: _assignments, incidents: _incidents);
+        return _HistoryView(
+          assignments: _assignments,
+          incidents: _incidents,
+          onOpenOperation: _openOperation,
+        );
       case CrewPortalTab.payments:
         return _PaymentsView(payments: _payments, assignments: _assignments);
       case CrewPortalTab.settings:
@@ -795,6 +839,21 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           form: _configForm,
           onChanged: _updateConfigField,
           onSave: _saveConfig,
+        );
+      case CrewPortalTab.account:
+        return _CrewAccountView(
+          profileForm: _profileForm,
+          configForm: _configForm,
+          documents: _documents,
+          assignments: _assignments,
+          incidents: _incidents,
+          onProfileChanged: _updateProfileField,
+          onSaveProfile: _saveProfile,
+          onConfigChanged: _updateConfigField,
+          onSaveConfig: _saveConfig,
+          onCreateDocument: _createDocumentDetailed,
+          onDocumentStatusChanged: _updateDocumentStatus,
+          onOpenOperation: _openOperation,
         );
     }
   }
@@ -805,33 +864,55 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     );
   }
 
+  Future<void> _loadActiveWorkflowForHome() async {
+    final active = _assignments.where(
+      (item) => !item.isFinalized && item.resolvedOperationId.isNotEmpty,
+    );
+    if (active.isEmpty) {
+      if (mounted) setState(() => _activeWorkflow = const {});
+      return;
+    }
+    try {
+      final response = await _api.getCrewOperationWorkflow(
+        active.first.resolvedOperationId,
+      );
+      final workflow =
+          response['data'] is Map
+              ? Map<String, dynamic>.from(response['data'])
+              : response;
+      if (mounted) setState(() => _activeWorkflow = workflow);
+    } catch (_) {
+      if (mounted) setState(() => _activeWorkflow = const {});
+    }
+  }
+
+  void _openOperation(CrewAssignment assignment) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => CrewOperationView(assignment: assignment),
+          ),
+        )
+        .then((_) => _refreshPortal());
+  }
+
   Future<void> _respondAssignment(CrewAssignment item, String status) async {
-    final oldStatus = item.status;
-    setState(() {
-      item.status = CrewAssignment.normalizeStatus(status);
-    });
+    if (_assignmentSaving) return;
+    setState(() => _assignmentSaving = true);
     _showSyncMessage('Enviando respuesta a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(item, status: status);
       await _loadPortal();
-      final refreshed = _assignments
-          .where(
-            (candidate) =>
-                candidate.id == item.id ||
-                candidate.operationId == item.operationId,
-          )
-          .cast<CrewAssignment?>()
-          .firstWhere((candidate) => candidate != null, orElse: () => null);
       _showSyncMessage('Admin actualizado.');
     } on ApiException catch (error) {
-      setState(() {
-        item.status = oldStatus;
-      });
       _showSyncMessage(_assignmentResponseErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _assignmentSaving = false);
     }
   }
 
   Future<void> _rejectAssignment(CrewAssignment item) async {
+    if (_assignmentSaving) return;
     final reason = await _TextDialog.show(
       context,
       title: 'Motivo de rechazo',
@@ -840,11 +921,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     );
     if (reason == null || reason.trim().isEmpty) return;
 
-    final oldStatus = item.status;
-    setState(() {
-      item.status = 'Rechazada';
-      item.rejectReason = reason.trim();
-    });
+    setState(() => _assignmentSaving = true);
     _showSyncMessage('Enviando rechazo a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(
@@ -854,15 +931,15 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       );
       await _loadPortal();
       _showSyncMessage('Rechazo sincronizado con admin.');
-    } catch (_) {
-      setState(() {
-        item.status = oldStatus;
-      });
+    } catch (error) {
       _showSyncMessage('No se pudo sincronizar el rechazo.');
+    } finally {
+      if (mounted) setState(() => _assignmentSaving = false);
     }
   }
 
   Future<void> _requestAssignmentChange(CrewAssignment item) async {
+    if (_assignmentSaving) return;
     final reason = await _TextDialog.show(
       context,
       title: 'Solicitar revision',
@@ -871,11 +948,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     );
     if (reason == null || reason.trim().isEmpty) return;
 
-    final oldStatus = item.status;
-    setState(() {
-      item.status = 'Solicitar revision';
-      item.rejectReason = reason.trim();
-    });
+    setState(() => _assignmentSaving = true);
     _showSyncMessage('Solicitando revision a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(
@@ -886,35 +959,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       await _loadPortal();
       _showSyncMessage('Revision enviada a admin.');
     } catch (_) {
-      setState(() {
-        item.status = oldStatus;
-      });
       _showSyncMessage('No se pudo solicitar la revision.');
-    }
-  }
-
-  Future<void> _advanceAssignmentStep(
-    CrewAssignment item,
-    CrewMissionAction action,
-  ) async {
-    final oldStatus = item.status;
-    setState(() {
-      item.status = action.nextStatus;
-    });
-    _showSyncMessage(
-      'Actualizando ${action.label.toLowerCase()}...',
-      persist: true,
-    );
-
-    try {
-      await _submitCrewOperationStep(item, action);
-      await _loadPortal();
-      _showSyncMessage('${action.label} sincronizado.');
-    } catch (_) {
-      setState(() {
-        item.status = oldStatus;
-      });
-      _showSyncMessage('No se pudo avanzar el flujo operativo.');
+    } finally {
+      if (mounted) setState(() => _assignmentSaving = false);
     }
   }
 
@@ -937,30 +984,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     );
   }
 
-  Future<void> _submitCrewOperationStep(
-    CrewAssignment item,
-    CrewMissionAction action,
-  ) async {
-    ApiException? lastError;
-
-    for (final id in {item.resolvedOperationId, item.id.trim()}) {
-      if (id.isEmpty) continue;
-      try {
-        await _api.updateCrewOperationStep(
-          assignmentId: id,
-          step: action.step,
-          note: action.note,
-        );
-        return;
-      } on ApiException catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ??
-        const ApiException('No se pudo avanzar el flujo operativo.');
-  }
-
   String _assignmentResponseErrorMessage(ApiException error) {
     final backendMessage = error.message.trim();
     if (backendMessage.isEmpty) {
@@ -970,7 +993,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _createAvailabilityBlock() async {
-    final state = _agendaBlockForm['state']?.toString().trim() ?? '';
     final blockType = _agendaBlockForm['blockType']?.toString().trim() ?? '';
     final reason = _agendaBlockForm['reason']?.toString().trim() ?? '';
     if (blockType.isEmpty) {
@@ -989,18 +1011,6 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       0,
     );
     final endsAt = startsAt.add(const Duration(hours: 23, minutes: 59));
-    final block = CrewBlock(
-      date: startsAt,
-      state: _availabilityLabel(_normalizeAvailabilityKey(state)),
-      blockType: blockType,
-      reason: reason,
-    );
-
-    setState(() {
-      _blocks.add(block);
-      _agendaBlockForm['reason'] = '';
-      _agendaBlockForm['blockType'] = '';
-    });
     _showSyncMessage('Sincronizando bloqueo de agenda...', persist: true);
     try {
       await _api.createCrewAvailabilityBlock(
@@ -1008,9 +1018,14 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         endsAt: endsAt,
         reason: '$blockType | $reason',
       );
+      setState(() {
+        _agendaBlockForm['reason'] = '';
+        _agendaBlockForm['blockType'] = '';
+      });
+      await _loadAvailability(_selectedDate, silent: true);
       _showSyncMessage('Disponibilidad actualizada.');
-    } catch (_) {
-      _showSyncMessage('Bloqueo guardado localmente.');
+    } catch (error) {
+      _showSyncMessage('No se pudo guardar el bloqueo: $error');
     }
   }
 
@@ -1088,21 +1103,27 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
     _showSyncMessage('Guardando perfil de vuelo...', persist: true);
     try {
-      await _api.post(
+      await _api.put(
         '/sobrecargo/profile',
         body: {
           'name': _profileForm['name'],
           'base': _profileForm['base'],
-          'languages': _profileForm['languages'],
+          'languages':
+              _profileForm['languages']
+                  .toString()
+                  .split(',')
+                  .map((value) => value.trim())
+                  .where((value) => value.isNotEmpty)
+                  .toList(),
           'experience': _profileForm['experience'],
-          'coverage': _profileForm['coverage'],
           'profile_state': _profileForm['profileState'],
         },
         authenticated: true,
       );
+      await _loadPortal(silent: true);
       _showSyncMessage('Perfil actualizado.');
-    } catch (_) {
-      _showSyncMessage('Perfil guardado localmente.');
+    } catch (error) {
+      _showSyncMessage('No se pudo guardar el perfil: $error');
     }
   }
 
@@ -1113,7 +1134,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   Future<void> _saveConfig() async {
     _showSyncMessage('Guardando preferencias...', persist: true);
     try {
-      await _api.post(
+      await _api.put(
         '/sobrecargo/profile',
         body: {
           'preferences': {
@@ -1128,8 +1149,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         authenticated: true,
       );
       _showSyncMessage('Preferencias sincronizadas.');
-    } catch (_) {
-      _showSyncMessage('Preferencias guardadas localmente.');
+    } catch (error) {
+      _showSyncMessage('No se pudieron guardar las preferencias: $error');
     }
   }
 
@@ -1137,184 +1158,213 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     CrewDocument document,
     File? file,
   ) async {
-    setState(() {
-      _documents.insert(0, document);
-    });
     _showSyncMessage('Sincronizando documento...', persist: true);
     try {
-      if (file != null) {
-        await _api.postMultipart(
-          '/sobrecargo/documents',
-          authenticated: true,
-          fields: {
-            'name': document.title,
-            'category': document.category,
+      await _api.post(
+        '/sobrecargo/documents',
+        authenticated: true,
+        body: {
+          'document_name': document.title,
+          'category': document.category,
+          if (document.expiration.trim().isNotEmpty &&
+              document.expiration != 'Por validar')
             'expires_at': document.expiration,
-            'note': document.note,
-            'status': document.status,
-          },
-          files: {'document': file},
-        );
-      } else {
-        await _api.post(
-          '/sobrecargo/documents',
-          authenticated: true,
-          body: {
-            'name': document.title,
-            'category': document.category,
-            'expires_at': document.expiration,
-            'note': document.note,
-            'status': document.status,
-          },
-        );
-      }
+          'note': document.note,
+        },
+      );
+      await _loadPortal(silent: true);
       _showSyncMessage('Documento enviado a admin.');
-    } catch (_) {
-      _showSyncMessage('Documento guardado localmente.');
+    } catch (error) {
+      _showSyncMessage('No se pudo registrar el documento: $error');
     }
   }
 
   void _updateDocumentStatus(CrewDocument document, String status) {
-    setState(() {
-      document.status = status;
-    });
-    _showSyncMessage('Estado documental actualizado localmente.');
-  }
-
-  Future<void> _uploadDocument() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+    _showSyncMessage(
+      'La validacion documental corresponde a administracion. Estado actual: ${document.status}.',
     );
-    final path = result?.files.single.path;
-    if (path == null) return;
-    setState(() {
-      _documents.insert(
-        0,
-        CrewDocument(
-          title: result!.files.single.name,
-          status: 'Pendiente',
-          expiration: 'Por validar',
-          category: 'Certificacion',
-          localPath: path,
-        ),
-      );
-    });
-    _showSyncMessage('Documento agregado para revision.');
   }
 
   Future<void> _createIncident(CrewAssignment assignment) async {
-    final description = await _TextDialog.show(
-      context,
-      title: 'Nueva incidencia',
-      label: 'Descripcion',
-      initial: 'Detalle operativo',
+    if (_incidentSaving) return;
+    final crewId = context.read<AuthProvider>().user?.id ?? '';
+    final description = TextEditingController();
+    var category = 'otro';
+    var priority = 'media';
+    var phase = 'Pre-vuelo';
+    final incident = await showDialog<Map<String, String>>(
+      context: context,
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setDialogState) => AlertDialog(
+                  title: const Text('Nueva incidencia'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: category,
+                          decoration: const InputDecoration(labelText: 'Tipo'),
+                          items:
+                              const [
+                                    'catering',
+                                    'cabina',
+                                    'cliente',
+                                    'seguridad',
+                                    'horario',
+                                    'coordinacion',
+                                    'otro',
+                                  ]
+                                  .map(
+                                    (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              (value) => setDialogState(
+                                () => category = value ?? category,
+                              ),
+                        ),
+                        DropdownButtonFormField<String>(
+                          initialValue: priority,
+                          decoration: const InputDecoration(
+                            labelText: 'Prioridad',
+                          ),
+                          items:
+                              const ['baja', 'media', 'alta', 'critica']
+                                  .map(
+                                    (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              (value) => setDialogState(
+                                () => priority = value ?? priority,
+                              ),
+                        ),
+                        DropdownButtonFormField<String>(
+                          initialValue: phase,
+                          decoration: const InputDecoration(labelText: 'Fase'),
+                          items:
+                              const ['Pre-vuelo', 'En vuelo', 'Post-vuelo']
+                                  .map(
+                                    (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              (value) =>
+                                  setDialogState(() => phase = value ?? phase),
+                        ),
+                        TextField(
+                          controller: description,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Descripción *',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        if (description.text.trim().isEmpty) return;
+                        Navigator.pop(context, {
+                          'description': description.text.trim(),
+                          'category': category,
+                          'priority': priority,
+                          'phase': phase,
+                        });
+                      },
+                      child: const Text('Continuar'),
+                    ),
+                  ],
+                ),
+          ),
     );
-    if (description == null || description.trim().isEmpty) return;
+    description.dispose();
+    if (incident == null) return;
+    if (!mounted) return;
 
-    final picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
+    final evidenceChoice = await showModalBottomSheet<String>(
+      context: context,
+      builder:
+          (context) => SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.camera_alt),
+                  title: const Text('Tomar foto'),
+                  onTap: () => Navigator.pop(context, 'camera'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('Elegir imagen'),
+                  onTap: () => Navigator.pop(context, 'gallery'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf),
+                  title: const Text('Elegir PDF'),
+                  onTap: () => Navigator.pop(context, 'file'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.skip_next),
+                  title: const Text('Continuar sin evidencia'),
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
     );
-    final evidence = picked == null ? null : File(picked.path);
-    final incident = CrewIncident(
-      title: 'Incidencia ${assignment.code}',
-      assignment: assignment.code,
-      status: 'Abierta',
-      evidence:
-          evidence?.path.split(Platform.pathSeparator).last ?? 'Sin evidencia',
-    );
-
-    setState(() {
-      _incidents.insert(0, incident);
-    });
+    File? evidence;
+    if (evidenceChoice == 'camera' || evidenceChoice == 'gallery') {
+      final picked = await _picker.pickImage(
+        source:
+            evidenceChoice == 'camera'
+                ? ImageSource.camera
+                : ImageSource.gallery,
+        imageQuality: 88,
+      );
+      if (picked != null) evidence = File(picked.path);
+    } else if (evidenceChoice == 'file') {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      );
+      final path = picked?.files.single.path;
+      if (path != null) evidence = File(path);
+    }
     _showSyncMessage('Sincronizando incidencia...', persist: true);
+    setState(() => _incidentSaving = true);
     try {
       await _api.createCrewIncident(
-        assignmentId: assignment.resolvedOperationId,
-        title: incident.title,
-        description: description.trim(),
+        operationId: assignment.resolvedOperationId,
+        crewId: crewId,
+        description: incident['description']!,
+        category: incident['category']!,
+        priority: incident['priority']!,
+        phase: incident['phase']!,
         evidence: evidence,
       );
+      await _loadPortal(silent: true);
       _showSyncMessage('Incidencia enviada a admin.');
-    } catch (_) {
-      _showSyncMessage('Incidencia guardada localmente.');
+    } catch (error) {
+      _showSyncMessage('No se pudo crear la incidencia: $error');
+    } finally {
+      if (mounted) setState(() => _incidentSaving = false);
     }
-  }
-
-  Future<void> _addIncidentEvidence(CrewIncident incident) async {
-    final picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
-    );
-    if (picked == null) return;
-    setState(() {
-      incident.evidence = picked.path.split(Platform.pathSeparator).last;
-    });
-    _showSyncMessage('Evidencia agregada a incidencia.');
-  }
-
-  Future<void> _addIncidentComment(CrewIncident incident) async {
-    final comment = await _TextDialog.show(
-      context,
-      title: 'Agregar comentario',
-      label: 'Comentario',
-      initial: 'Actualizacion operativa',
-    );
-    if (comment == null || comment.trim().isEmpty) return;
-    setState(() {
-      incident.comments = [comment.trim(), ...incident.comments];
-    });
-    _showSyncMessage('Comentario agregado.');
-  }
-
-  void _markIncidentAttended(CrewIncident incident) {
-    setState(() {
-      incident.status = 'Atendida';
-    });
-    _showSyncMessage('Incidencia marcada como atendida.');
-  }
-
-  Future<void> _escalateIncident(CrewIncident incident) async {
-    setState(() {
-      incident.status = 'Escalada';
-      incident.priority = 'Alta';
-    });
-    _showSyncMessage('Escalando incidencia a admin...', persist: true);
-    try {
-      await _api.post(
-        '/sobrecargo/incidents/escalate',
-        authenticated: true,
-        body: {
-          'title': incident.title,
-          'assignment': incident.assignment,
-          'comment': 'Escalada desde app movil de sobrecargo.',
-        },
-      );
-      _showSyncMessage('Incidencia escalada.');
-    } catch (_) {
-      _showSyncMessage('Incidencia escalada localmente.');
-    }
-  }
-
-  Future<void> _scanOperationCode() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.72,
-          child: MobileScanner(
-            onDetect: (capture) {
-              final value = capture.barcodes.first.rawValue;
-              if (value == null) return;
-              Navigator.pop(context);
-              _showSyncMessage('Codigo operativo leido: $value');
-            },
-          ),
-        );
-      },
-    );
   }
 
   List<Map<String, dynamic>> _asList(dynamic value) {
