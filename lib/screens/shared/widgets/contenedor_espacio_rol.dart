@@ -9,19 +9,23 @@ class RoleWorkspaceShellScope extends InheritedWidget {
     required super.child,
     required this.openDrawer,
     required this.selectIndex,
+    required this.selectSection,
   });
 
   final VoidCallback openDrawer;
   final ValueChanged<int> selectIndex;
+  final void Function(int workspaceIndex, {Object? section}) selectSection;
 
   static RoleWorkspaceShellScope? maybeOf(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<RoleWorkspaceShellScope>();
+    return context
+        .dependOnInheritedWidgetOfExactType<RoleWorkspaceShellScope>();
   }
 
   @override
   bool updateShouldNotify(RoleWorkspaceShellScope oldWidget) {
     return openDrawer != oldWidget.openDrawer ||
-        selectIndex != oldWidget.selectIndex;
+        selectIndex != oldWidget.selectIndex ||
+        selectSection != oldWidget.selectSection;
   }
 }
 
@@ -39,6 +43,32 @@ class RoleWorkspaceItem {
   });
 }
 
+class RoleWorkspaceDrawerItem {
+  const RoleWorkspaceDrawerItem({
+    required this.label,
+    required this.section,
+    this.enabled = true,
+    this.status = RoleWorkspaceDrawerItemStatus.pending,
+  });
+
+  final String label;
+  final Object section;
+  final bool enabled;
+  final RoleWorkspaceDrawerItemStatus status;
+}
+
+class RoleWorkspaceDrawerGroup {
+  const RoleWorkspaceDrawerGroup({
+    required this.workspaceIndex,
+    required this.items,
+  });
+
+  final int workspaceIndex;
+  final List<RoleWorkspaceDrawerItem> items;
+}
+
+enum RoleWorkspaceDrawerItemStatus { pending, completed, blocked }
+
 class RoleWorkspaceShell extends StatefulWidget {
   const RoleWorkspaceShell({
     super.key,
@@ -47,6 +77,11 @@ class RoleWorkspaceShell extends StatefulWidget {
     required this.title,
     required this.items,
     this.initialIndex = 0,
+    this.bodyBuilder,
+    this.drawerGroups = const [],
+    this.activeSection,
+    this.onSelectSection,
+    this.userPhone,
   });
 
   final String branchLabel;
@@ -54,6 +89,11 @@ class RoleWorkspaceShell extends StatefulWidget {
   final String title;
   final List<RoleWorkspaceItem> items;
   final int initialIndex;
+  final Widget Function(int selectedIndex)? bodyBuilder;
+  final List<RoleWorkspaceDrawerGroup> drawerGroups;
+  final Object? activeSection;
+  final void Function(int workspaceIndex, {Object? section})? onSelectSection;
+  final String? userPhone;
 
   @override
   State<RoleWorkspaceShell> createState() => _RoleWorkspaceShellState();
@@ -74,7 +114,10 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
     final auth = context.watch<AuthProvider>();
     final isWide = MediaQuery.of(context).size.width >= 960;
     final currentItem = widget.items[_selectedIndex];
+    final currentBody =
+        widget.bodyBuilder?.call(_selectedIndex) ?? currentItem.screen;
     final userEmail = auth.user?.email ?? 'sin correo';
+    final userPhone = auth.user?.phone.trim();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -87,9 +130,13 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                 roleLabel: widget.roleLabel,
                 title: widget.title,
                 userEmail: userEmail,
+                userPhone: userPhone,
                 items: widget.items,
+                groups: widget.drawerGroups,
                 selectedIndex: _selectedIndex,
+                activeSection: widget.activeSection,
                 onSelect: _selectIndex,
+                onSelectSection: _selectSection,
                 onLogout: auth.signOut,
               ),
       body: Builder(
@@ -97,6 +144,7 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
           return RoleWorkspaceShellScope(
             openDrawer: () => Scaffold.of(scaffoldContext).openDrawer(),
             selectIndex: _selectIndex,
+            selectSection: _selectSection,
             child: SafeArea(
               child:
                   isWide
@@ -107,6 +155,7 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                             roleLabel: widget.roleLabel,
                             title: widget.title,
                             userEmail: userEmail,
+                            userPhone: userPhone,
                             items: widget.items,
                             selectedIndex: _selectedIndex,
                             onSelect: _selectIndex,
@@ -131,10 +180,13 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                                   ),
                                 );
                               },
-                              child: KeyedSubtree(
-                                key: ValueKey(currentItem.label),
-                                child: currentItem.screen,
-                              ),
+                              child:
+                                  widget.bodyBuilder != null
+                                      ? currentBody
+                                      : KeyedSubtree(
+                                        key: ValueKey(currentItem.label),
+                                        child: currentBody,
+                                      ),
                             ),
                           ),
                         ],
@@ -160,10 +212,13 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                                   ),
                                 );
                               },
-                              child: KeyedSubtree(
-                                key: ValueKey(currentItem.label),
-                                child: currentItem.screen,
-                              ),
+                              child:
+                                  widget.bodyBuilder != null
+                                      ? currentBody
+                                      : KeyedSubtree(
+                                        key: ValueKey(currentItem.label),
+                                        child: currentBody,
+                                      ),
                             ),
                           ),
                           _WorkspaceBottomNav(
@@ -184,6 +239,16 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
     setState(() {
       _selectedIndex = index;
     });
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
+  void _selectSection(int workspaceIndex, {Object? section}) {
+    setState(() {
+      _selectedIndex = workspaceIndex;
+    });
+    widget.onSelectSection?.call(workspaceIndex, section: section);
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     }
@@ -297,6 +362,7 @@ class _WorkspaceSidebar extends StatelessWidget {
     required this.roleLabel,
     required this.title,
     required this.userEmail,
+    required this.userPhone,
     required this.items,
     required this.selectedIndex,
     required this.onSelect,
@@ -307,6 +373,7 @@ class _WorkspaceSidebar extends StatelessWidget {
   final String roleLabel;
   final String title;
   final String userEmail;
+  final String? userPhone;
   final List<RoleWorkspaceItem> items;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
@@ -332,6 +399,7 @@ class _WorkspaceSidebar extends StatelessWidget {
             roleLabel: roleLabel,
             title: title,
             userEmail: userEmail,
+            userPhone: userPhone,
           ),
           const SizedBox(height: 20),
           Expanded(
@@ -374,15 +442,19 @@ class _WorkspaceSidebar extends StatelessWidget {
   }
 }
 
-class _WorkspaceDrawer extends StatelessWidget {
+class _WorkspaceDrawer extends StatefulWidget {
   const _WorkspaceDrawer({
     required this.branchLabel,
     required this.roleLabel,
     required this.title,
     required this.userEmail,
+    required this.userPhone,
     required this.items,
+    required this.groups,
     required this.selectedIndex,
+    required this.activeSection,
     required this.onSelect,
+    required this.onSelectSection,
     required this.onLogout,
   });
 
@@ -390,65 +462,197 @@ class _WorkspaceDrawer extends StatelessWidget {
   final String roleLabel;
   final String title;
   final String userEmail;
+  final String? userPhone;
   final List<RoleWorkspaceItem> items;
+  final List<RoleWorkspaceDrawerGroup> groups;
   final int selectedIndex;
+  final Object? activeSection;
   final ValueChanged<int> onSelect;
+  final void Function(int workspaceIndex, {Object? section}) onSelectSection;
   final VoidCallback onLogout;
 
+  @override
+  State<_WorkspaceDrawer> createState() => _WorkspaceDrawerState();
+}
+
+class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
   @override
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: const Color(0xFF0C1B2A),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _WorkspaceIdentityCard(
-                branchLabel: branchLabel,
-                roleLabel: roleLabel,
-                title: title,
-                userEmail: userEmail,
-              ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
+        child: RoleWorkspaceDrawerContent(
+          branchLabel: widget.branchLabel,
+          roleLabel: widget.roleLabel,
+          title: widget.title,
+          userEmail: widget.userEmail,
+          userPhone: widget.userPhone,
+          items: widget.items,
+          groups: widget.groups,
+          selectedIndex: widget.selectedIndex,
+          activeSection: widget.activeSection,
+          onSelect: widget.onSelect,
+          onSelectSection: widget.onSelectSection,
+          onLogout: widget.onLogout,
+        ),
+      ),
+    );
+  }
+}
+
+class RoleWorkspaceDrawerContent extends StatefulWidget {
+  const RoleWorkspaceDrawerContent({
+    super.key,
+    required this.branchLabel,
+    required this.roleLabel,
+    required this.title,
+    required this.userEmail,
+    required this.userPhone,
+    required this.items,
+    required this.groups,
+    required this.selectedIndex,
+    required this.activeSection,
+    required this.onSelect,
+    required this.onSelectSection,
+    required this.onLogout,
+  });
+
+  final String branchLabel;
+  final String roleLabel;
+  final String title;
+  final String userEmail;
+  final String? userPhone;
+  final List<RoleWorkspaceItem> items;
+  final List<RoleWorkspaceDrawerGroup> groups;
+  final int selectedIndex;
+  final Object? activeSection;
+  final ValueChanged<int> onSelect;
+  final void Function(int workspaceIndex, {Object? section}) onSelectSection;
+  final VoidCallback onLogout;
+
+  @override
+  State<RoleWorkspaceDrawerContent> createState() =>
+      _RoleWorkspaceDrawerContentState();
+}
+
+class _RoleWorkspaceDrawerContentState
+    extends State<RoleWorkspaceDrawerContent> {
+  int? _expandedGroupIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandedGroupIndex = _initialExpandedGroup();
+  }
+
+  @override
+  void didUpdateWidget(covariant RoleWorkspaceDrawerContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final preferred = _initialExpandedGroup();
+    if (preferred != null && preferred != _expandedGroupIndex) {
+      _expandedGroupIndex = preferred;
+    }
+  }
+
+  int? _initialExpandedGroup() {
+    for (final group in widget.groups) {
+      if (group.items.any((item) => item.section == widget.activeSection)) {
+        return group.workspaceIndex;
+      }
+    }
+    return widget.groups.any(
+          (group) => group.workspaceIndex == widget.selectedIndex,
+        )
+        ? widget.selectedIndex
+        : null;
+  }
+
+  RoleWorkspaceDrawerGroup? _groupFor(int workspaceIndex) {
+    for (final group in widget.groups) {
+      if (group.workspaceIndex == workspaceIndex) return group;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _WorkspaceIdentityCard(
+            branchLabel: widget.branchLabel,
+            roleLabel: widget.roleLabel,
+            title: widget.title,
+            userEmail: widget.userEmail,
+            userPhone: widget.userPhone,
+          ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: ListView(
+              children:
+                  widget.items.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final item = entry.value;
+                    final group = _groupFor(index);
+                    if (group == null) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _WorkspaceNavTile(
+                          label: item.label,
+                          icon: item.icon,
+                          isSelected: index == widget.selectedIndex,
+                          onTap: () => widget.onSelect(index),
+                        ),
+                      );
+                    }
+
+                    final hasActiveChild = group.items.any(
+                      (child) => child.section == widget.activeSection,
+                    );
+                    final isExpanded = _expandedGroupIndex == index;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _WorkspaceNavTile(
+                      child: _WorkspaceNavGroup(
                         label: item.label,
                         icon: item.icon,
-                        isSelected: index == selectedIndex,
-                        onTap: () => onSelect(index),
+                        isSelected:
+                            index == widget.selectedIndex || hasActiveChild,
+                        isExpanded: isExpanded,
+                        items: group.items,
+                        activeSection: widget.activeSection,
+                        onToggle: () {
+                          setState(() {
+                            _expandedGroupIndex = isExpanded ? null : index;
+                          });
+                        },
+                        onSelectItem:
+                            (child) => widget.onSelectSection(
+                              index,
+                              section: child.section,
+                            ),
                       ),
                     );
-                  },
-                ),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: onLogout,
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text('Cerrar sesion'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.16),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+                  }).toList(),
+            ),
           ),
-        ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: widget.onLogout,
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Cerrar sesion'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -460,12 +664,14 @@ class _WorkspaceIdentityCard extends StatelessWidget {
     required this.roleLabel,
     required this.title,
     required this.userEmail,
+    required this.userPhone,
   });
 
   final String branchLabel;
   final String roleLabel;
   final String title;
   final String userEmail;
+  final String? userPhone;
 
   @override
   Widget build(BuildContext context) {
@@ -483,6 +689,16 @@ class _WorkspaceIdentityCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            'PERFIL SOBRECARGO',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 14),
           Container(
             width: 52,
             height: 52,
@@ -530,6 +746,16 @@ class _WorkspaceIdentityCard extends StatelessWidget {
               height: 1.35,
             ),
           ),
+          if ((userPhone ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              userPhone!.trim(),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.66),
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -584,6 +810,200 @@ class _WorkspaceNavTile extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceNavGroup extends StatelessWidget {
+  const _WorkspaceNavGroup({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.isExpanded,
+    required this.items,
+    required this.activeSection,
+    required this.onToggle,
+    required this.onSelectItem,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final bool isExpanded;
+  final List<RoleWorkspaceDrawerItem> items;
+  final Object? activeSection;
+  final VoidCallback onToggle;
+  final ValueChanged<RoleWorkspaceDrawerItem> onSelectItem;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFFE0B86E) : Colors.transparent,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color:
+                    isSelected
+                        ? Colors.transparent
+                        : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? const Color(0xFF10253A) : Colors.white,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color:
+                          isSelected ? const Color(0xFF10253A) : Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  isExpanded ? '˅' : '>',
+                  style: TextStyle(
+                    color: isSelected ? const Color(0xFF10253A) : Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 10, 12, 8),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 2,
+                    margin: const EdgeInsets.only(top: 4, bottom: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8FA7BC).withValues(alpha: 0.34),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      children:
+                          items.map((item) {
+                            final isActive = item.section == activeSection;
+                            return _WorkspaceNavSubtile(
+                              label: item.label,
+                              isActive: isActive,
+                              enabled: item.enabled,
+                              status: item.status,
+                              onTap:
+                                  item.enabled
+                                      ? () => onSelectItem(item)
+                                      : null,
+                            );
+                          }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _WorkspaceNavSubtile extends StatelessWidget {
+  const _WorkspaceNavSubtile({
+    required this.label,
+    required this.isActive,
+    required this.enabled,
+    required this.status,
+    this.onTap,
+  });
+
+  final String label;
+  final bool isActive;
+  final bool enabled;
+  final RoleWorkspaceDrawerItemStatus status;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor =
+        status == RoleWorkspaceDrawerItemStatus.blocked
+            ? Colors.white.withValues(alpha: 0.34)
+            : isActive
+            ? const Color(0xFFE0B86E)
+            : status == RoleWorkspaceDrawerItemStatus.completed
+            ? Colors.white.withValues(alpha: 0.92)
+            : Colors.white.withValues(alpha: 0.88);
+    final indicatorColor =
+        status == RoleWorkspaceDrawerItemStatus.blocked
+            ? Colors.white.withValues(alpha: 0.28)
+            : isActive
+            ? const Color(0xFFE0B86E)
+            : status == RoleWorkspaceDrawerItemStatus.completed
+            ? const Color(0xFFE7EEF6)
+            : Colors.white.withValues(alpha: 0.72);
+    final indicatorLabel =
+        status == RoleWorkspaceDrawerItemStatus.blocked
+            ? '🔒'
+            : isActive
+            ? '●'
+            : status == RoleWorkspaceDrawerItemStatus.completed
+            ? '✓'
+            : '○';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 18,
+                child: Text(
+                  indicatorLabel,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: indicatorColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -23,8 +23,60 @@ part 'vistas_sobrecargo.dart';
 part 'operacion_sobrecargo.dart';
 part 'notificaciones_sobrecargo.dart';
 
-class CrewWorkspaceScreen extends StatelessWidget {
+enum CrewWorkspaceSection {
+  home,
+  missionOverview,
+  missionValidation,
+  missionPreparation,
+  missionChecklist,
+  missionTracking,
+  missionEvidence,
+  missionIncidents,
+  missionClosure,
+  availabilityStatus,
+  availabilityCalendar,
+  availabilityRegister,
+  accountHome,
+  accountProfile,
+  accountDocuments,
+  accountHistory,
+  accountPayments,
+  accountSettings,
+}
+
+class CrewWorkspaceNavigationSnapshot {
+  const CrewWorkspaceNavigationSnapshot({
+    required this.activeSection,
+    required this.drawerGroups,
+  });
+
+  final CrewWorkspaceSection activeSection;
+  final List<RoleWorkspaceDrawerGroup> drawerGroups;
+}
+
+class CrewWorkspaceScreen extends StatefulWidget {
   const CrewWorkspaceScreen({super.key});
+
+  @override
+  State<CrewWorkspaceScreen> createState() => _CrewWorkspaceScreenState();
+}
+
+class _CrewWorkspaceScreenState extends State<CrewWorkspaceScreen> {
+  static const Widget _portalPlaceholder = SizedBox.shrink();
+  CrewWorkspaceSection _activeSection = CrewWorkspaceSection.home;
+  List<RoleWorkspaceDrawerGroup> _drawerGroups = const [];
+  CrewWorkspaceSection? _drawerSectionRequest;
+  int _drawerSectionRequestId = 0;
+
+  CrewPortalTab _tabForIndex(int index) {
+    return switch (index) {
+      0 => CrewPortalTab.dashboard,
+      1 => CrewPortalTab.missions,
+      2 => CrewPortalTab.availability,
+      3 => CrewPortalTab.account,
+      _ => CrewPortalTab.dashboard,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,35 +90,98 @@ class CrewWorkspaceScreen extends StatelessWidget {
       branchLabel: userName.isEmpty ? 'Sobrecargo' : userName,
       roleLabel: 'Sobrecargo',
       title: userName.isEmpty ? 'Sobrecargo' : userName,
+      activeSection: _activeSection,
+      drawerGroups: _drawerGroups,
+      onSelectSection: _handleDrawerSectionSelection,
+      bodyBuilder:
+          (selectedIndex) => CrewPortalScreen(
+            key: const ValueKey('crew-portal-workspace'),
+            initialTab: _tabForIndex(selectedIndex),
+            onNavigationChanged: _handleNavigationChanged,
+            drawerSectionRequest: _drawerSectionRequest,
+            drawerSectionRequestId: _drawerSectionRequestId,
+          ),
       items: [
         const RoleWorkspaceItem(
           label: 'Inicio',
           shortLabel: 'Inicio',
           icon: Icons.dashboard_customize_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.dashboard),
+          screen: _portalPlaceholder,
         ),
         const RoleWorkspaceItem(
           label: 'Mi vuelo',
           shortLabel: 'Mi vuelo',
           icon: Icons.assignment_turned_in_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.missions),
+          screen: _portalPlaceholder,
         ),
 
         const RoleWorkspaceItem(
           label: 'Mi disponibilidad',
           shortLabel: 'Disponibilidad',
           icon: Icons.event_available_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.availability),
+          screen: _portalPlaceholder,
         ),
 
         const RoleWorkspaceItem(
           label: 'Cuenta',
           shortLabel: 'Cuenta',
           icon: Icons.account_circle_rounded,
-          screen: CrewPortalScreen(initialTab: CrewPortalTab.account),
+          screen: _portalPlaceholder,
         ),
       ],
     );
+  }
+
+  void _handleNavigationChanged(CrewWorkspaceNavigationSnapshot snapshot) {
+    if (!mounted) return;
+    final changed =
+        _activeSection != snapshot.activeSection ||
+        !_sameDrawerGroups(_drawerGroups, snapshot.drawerGroups);
+    if (!changed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _activeSection = snapshot.activeSection;
+        _drawerGroups = snapshot.drawerGroups;
+      });
+    });
+  }
+
+  void _handleDrawerSectionSelection(int workspaceIndex, {Object? section}) {
+    if (section is! CrewWorkspaceSection) return;
+    if (!mounted) return;
+    setState(() {
+      _activeSection = section;
+      _drawerSectionRequest = section;
+      _drawerSectionRequestId++;
+    });
+  }
+
+  bool _sameDrawerGroups(
+    List<RoleWorkspaceDrawerGroup> current,
+    List<RoleWorkspaceDrawerGroup> next,
+  ) {
+    if (identical(current, next)) return true;
+    if (current.length != next.length) return false;
+    for (var i = 0; i < current.length; i++) {
+      final currentGroup = current[i];
+      final nextGroup = next[i];
+      if (currentGroup.workspaceIndex != nextGroup.workspaceIndex ||
+          currentGroup.items.length != nextGroup.items.length) {
+        return false;
+      }
+      for (var j = 0; j < currentGroup.items.length; j++) {
+        final currentItem = currentGroup.items[j];
+        final nextItem = nextGroup.items[j];
+        if (currentItem.label != nextItem.label ||
+            currentItem.section != nextItem.section ||
+            currentItem.enabled != nextItem.enabled ||
+            currentItem.status != nextItem.status) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 }
 
@@ -90,9 +205,18 @@ String resolveCrewAssignmentStatusForPayload(Map<String, dynamic> payload) {
 }
 
 class CrewPortalScreen extends StatefulWidget {
-  const CrewPortalScreen({super.key, required this.initialTab});
+  const CrewPortalScreen({
+    super.key,
+    required this.initialTab,
+    this.onNavigationChanged,
+    this.drawerSectionRequest,
+    this.drawerSectionRequestId = 0,
+  });
 
   final CrewPortalTab initialTab;
+  final ValueChanged<CrewWorkspaceNavigationSnapshot>? onNavigationChanged;
+  final CrewWorkspaceSection? drawerSectionRequest;
+  final int drawerSectionRequestId;
 
   @override
   State<CrewPortalScreen> createState() => _CrewPortalScreenState();
@@ -149,6 +273,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     'reason': '',
   };
   CrewPortalTab _currentTab = CrewPortalTab.dashboard;
+  CrewPortalTab? _previousTabBeforeNotifications;
+  _AvailabilityFocusSection _availabilityFocus =
+      _AvailabilityFocusSection.status;
 
   @override
   void initState() {
@@ -159,6 +286,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     unawaited(_connectLiveAssignments());
     _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
       unawaited(_refreshPortal(silent: true));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _emitNavigationSnapshot();
     });
   }
 
@@ -182,6 +312,18 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTab != widget.initialTab) {
       _currentTab = widget.initialTab;
+      if (_currentTab == CrewPortalTab.availability) {
+        _availabilityFocus = _AvailabilityFocusSection.status;
+      }
+      _emitNavigationSnapshot();
+    }
+    if (oldWidget.drawerSectionRequestId != widget.drawerSectionRequestId &&
+        widget.drawerSectionRequest != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.drawerSectionRequest != null) {
+          openDrawerSection(widget.drawerSectionRequest!);
+        }
+      });
     }
   }
 
@@ -449,6 +591,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       if (!silent && mounted) {
         setState(() => _isLoading = false);
       }
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _emitNavigationSnapshot();
+        });
+      }
     }
   }
 
@@ -687,7 +834,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         roleLabel: 'Sobrecargo',
         headerAction: _CrewNotificationButton(
           unread: _unreadNotifications,
-          onPressed: () => _openLocalTab(CrewPortalTab.notifications),
+          onPressed: _openNotifications,
         ),
         body: RefreshIndicator(
           onRefresh: _refreshPortal,
@@ -803,6 +950,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         );
       case CrewPortalTab.availability:
         return _AvailabilityView(
+          focusSection: _availabilityFocus,
           selectedDate: _selectedDate,
           assignments: _assignments,
           records: _availability,
@@ -837,7 +985,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           onCreate: _createIncident,
         );
       case CrewPortalTab.notifications:
-        return const CrewNotificationsView();
+        return CrewNotificationsView(onClose: _closeNotifications);
       case CrewPortalTab.history:
         return _HistoryView(
           assignments: _assignments,
@@ -859,6 +1007,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           documents: _documents,
           assignments: _assignments,
           incidents: _incidents,
+          activeSection: _currentTab,
           onProfileChanged: _updateProfileField,
           onSaveProfile: _saveProfile,
           onConfigChanged: _updateConfigField,
@@ -866,19 +1015,45 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           onCreateDocument: _createDocumentDetailed,
           onDocumentStatusChanged: _updateDocumentStatus,
           onOpenOperation: _openOperation,
+          onOpenSection: _openLocalTab,
         );
     }
   }
 
+  void _openNotifications() {
+    if (_currentTab != CrewPortalTab.notifications) {
+      _previousTabBeforeNotifications = _currentTab;
+    }
+    _openLocalTab(CrewPortalTab.notifications);
+  }
+
+  void _closeNotifications() {
+    final target = _previousTabBeforeNotifications ?? CrewPortalTab.dashboard;
+    _previousTabBeforeNotifications = null;
+    _openLocalTab(target);
+  }
+
   void _openLocalTab(CrewPortalTab tab) {
+    if (tab != CrewPortalTab.notifications) {
+      _previousTabBeforeNotifications = null;
+    }
+    if (tab == CrewPortalTab.availability) {
+      _availabilityFocus = _AvailabilityFocusSection.status;
+    }
     final workspaceIndex = _workspaceIndexForTab(tab);
     final shellScope = RoleWorkspaceShellScope.maybeOf(context);
     if (workspaceIndex != null && shellScope != null) {
       shellScope.selectIndex(workspaceIndex);
+      if (tab != CrewPortalTab.notifications) {
+        _emitNavigationSnapshot();
+      }
       return;
     }
     if (_currentTab == tab) return;
     setState(() => _currentTab = tab);
+    if (tab != CrewPortalTab.notifications) {
+      _emitNavigationSnapshot();
+    }
   }
 
   int? _workspaceIndexForTab(CrewPortalTab tab) {
@@ -919,13 +1094,291 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _openOperation(CrewAssignment assignment) {
+    final auth = context.read<AuthProvider>();
+    final userName =
+        auth.user?.name.trim().isNotEmpty == true
+            ? auth.user!.name.trim()
+            : auth.displayName.trim();
     Navigator.of(context)
         .push(
           MaterialPageRoute(
-            builder: (_) => CrewOperationView(assignment: assignment),
+            builder:
+                (_) => CrewOperationView(
+                  assignment: assignment,
+                  drawerBranchLabel: userName.isEmpty ? 'Sobrecargo' : userName,
+                  drawerTitle: userName.isEmpty ? 'Sobrecargo' : userName,
+                  drawerUserEmail: auth.user?.email ?? 'sin correo',
+                  drawerUserPhone: auth.user?.phone,
+                  drawerItems: _workspaceDrawerItems,
+                  drawerGroups: _drawerGroupsForShell,
+                  onSelectDrawerSection: openDrawerSection,
+                  onLogout: auth.signOut,
+                ),
           ),
         )
         .then((_) => _refreshPortal());
+  }
+
+  void openDrawerSection(CrewWorkspaceSection section) {
+    switch (section) {
+      case CrewWorkspaceSection.home:
+        _setDrawerTab(CrewPortalTab.dashboard);
+        break;
+      case CrewWorkspaceSection.missionOverview:
+        _setDrawerTab(CrewPortalTab.missions);
+        break;
+      case CrewWorkspaceSection.missionValidation:
+        unawaited(_openOperationFromDrawer(stepId: 'validation'));
+        break;
+      case CrewWorkspaceSection.missionPreparation:
+        unawaited(_openOperationFromDrawer(stepId: 'preparation'));
+        break;
+      case CrewWorkspaceSection.missionChecklist:
+        unawaited(_openOperationFromDrawer(stepId: 'checklist'));
+        break;
+      case CrewWorkspaceSection.missionTracking:
+        unawaited(_openOperationFromDrawer(stepId: 'tracking'));
+        break;
+      case CrewWorkspaceSection.missionEvidence:
+        unawaited(_openOperationFromDrawer(stepId: _bestEvidenceStepId()));
+        break;
+      case CrewWorkspaceSection.missionIncidents:
+        unawaited(_openOperationFromDrawer(openIncidentOnLoad: true));
+        break;
+      case CrewWorkspaceSection.missionClosure:
+        unawaited(_openOperationFromDrawer(stepId: 'closure'));
+        break;
+      case CrewWorkspaceSection.availabilityStatus:
+        setState(() {
+          _availabilityFocus = _AvailabilityFocusSection.status;
+          _currentTab = CrewPortalTab.availability;
+        });
+        _emitNavigationSnapshot();
+        break;
+      case CrewWorkspaceSection.availabilityCalendar:
+        _setDrawerTab(CrewPortalTab.calendar);
+        break;
+      case CrewWorkspaceSection.availabilityRegister:
+        setState(() {
+          _availabilityFocus = _AvailabilityFocusSection.register;
+          _currentTab = CrewPortalTab.availability;
+        });
+        _emitNavigationSnapshot();
+        break;
+      case CrewWorkspaceSection.accountHome:
+        _setDrawerTab(CrewPortalTab.account);
+        break;
+      case CrewWorkspaceSection.accountProfile:
+        _setDrawerTab(CrewPortalTab.profile);
+        break;
+      case CrewWorkspaceSection.accountDocuments:
+        _setDrawerTab(CrewPortalTab.documents);
+        break;
+      case CrewWorkspaceSection.accountHistory:
+        _setDrawerTab(CrewPortalTab.history);
+        break;
+      case CrewWorkspaceSection.accountPayments:
+        _setDrawerTab(CrewPortalTab.payments);
+        break;
+      case CrewWorkspaceSection.accountSettings:
+        _setDrawerTab(CrewPortalTab.settings);
+        break;
+    }
+  }
+
+  void _setDrawerTab(CrewPortalTab tab) {
+    setState(() {
+      _currentTab = tab;
+      if (tab == CrewPortalTab.availability) {
+        _availabilityFocus = _AvailabilityFocusSection.status;
+      }
+    });
+    _emitNavigationSnapshot();
+  }
+
+  Future<void> _openOperationFromDrawer({
+    String? stepId,
+    bool openIncidentOnLoad = false,
+  }) async {
+    _setDrawerTab(CrewPortalTab.missions);
+    final auth = context.read<AuthProvider>();
+    final userName =
+        auth.user?.name.trim().isNotEmpty == true
+            ? auth.user!.name.trim()
+            : auth.displayName.trim();
+    final assignment = _activeAssignment;
+    if (assignment == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No hay una operación activa para abrir desde el menú.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder:
+                (_) => CrewOperationView(
+                  assignment: assignment,
+                  drawerBranchLabel: userName.isEmpty ? 'Sobrecargo' : userName,
+                  drawerTitle: userName.isEmpty ? 'Sobrecargo' : userName,
+                  drawerUserEmail: auth.user?.email ?? 'sin correo',
+                  drawerUserPhone: auth.user?.phone,
+                  drawerItems: _workspaceDrawerItems,
+                  drawerGroups: _drawerGroupsForShell,
+                  onSelectDrawerSection: openDrawerSection,
+                  onLogout: auth.signOut,
+                  initialStepId: stepId,
+                  openIncidentOnLoad: openIncidentOnLoad,
+                ),
+          ),
+        )
+        .then((_) => _refreshPortal());
+  }
+
+  CrewAssignment? get _activeAssignment {
+    final activeAssignments =
+        _assignments.where((item) => !item.isFinalized).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    return activeAssignments.firstOrNull;
+  }
+
+  List<RoleWorkspaceItem> get _workspaceDrawerItems => const [
+    RoleWorkspaceItem(
+      label: 'Inicio',
+      shortLabel: 'Inicio',
+      icon: Icons.dashboard_customize_rounded,
+      screen: SizedBox.shrink(),
+    ),
+    RoleWorkspaceItem(
+      label: 'Mi vuelo',
+      shortLabel: 'Mi vuelo',
+      icon: Icons.assignment_turned_in_rounded,
+      screen: SizedBox.shrink(),
+    ),
+    RoleWorkspaceItem(
+      label: 'Mi disponibilidad',
+      shortLabel: 'Disponibilidad',
+      icon: Icons.event_available_rounded,
+      screen: SizedBox.shrink(),
+    ),
+    RoleWorkspaceItem(
+      label: 'Cuenta',
+      shortLabel: 'Cuenta',
+      icon: Icons.account_circle_rounded,
+      screen: SizedBox.shrink(),
+    ),
+  ];
+
+  String _bestEvidenceStepId() {
+    final activeAssignment = _activeAssignment;
+    if (activeAssignment == null || _activeWorkflow.isEmpty) {
+      return 'checklist';
+    }
+    final currentStepId =
+        CrewOperationFlowSnapshot.fromPayload(
+          workflow: _activeWorkflow,
+          canRespondToAssignment: activeAssignment.canRespondToAssignment,
+        ).currentStepId;
+    if (currentStepId == 'preparation' ||
+        currentStepId == 'checklist' ||
+        currentStepId == 'closure') {
+      return currentStepId;
+    }
+    return 'checklist';
+  }
+
+  CrewWorkspaceSection get _activeWorkspaceSection {
+    switch (_currentTab) {
+      case CrewPortalTab.dashboard:
+        return CrewWorkspaceSection.home;
+      case CrewPortalTab.missions:
+      case CrewPortalTab.incidents:
+        return CrewWorkspaceSection.missionOverview;
+      case CrewPortalTab.calendar:
+        return CrewWorkspaceSection.availabilityCalendar;
+      case CrewPortalTab.availability:
+        return _availabilityFocus == _AvailabilityFocusSection.register
+            ? CrewWorkspaceSection.availabilityRegister
+            : CrewWorkspaceSection.availabilityStatus;
+      case CrewPortalTab.profile:
+        return CrewWorkspaceSection.accountProfile;
+      case CrewPortalTab.documents:
+        return CrewWorkspaceSection.accountDocuments;
+      case CrewPortalTab.history:
+        return CrewWorkspaceSection.accountHistory;
+      case CrewPortalTab.payments:
+        return CrewWorkspaceSection.accountPayments;
+      case CrewPortalTab.settings:
+        return CrewWorkspaceSection.accountSettings;
+      case CrewPortalTab.account:
+        return CrewWorkspaceSection.accountHome;
+      case CrewPortalTab.notifications:
+        return _previousTabBeforeNotifications == CrewPortalTab.account
+            ? CrewWorkspaceSection.accountHome
+            : CrewWorkspaceSection.missionOverview;
+    }
+  }
+
+  List<RoleWorkspaceDrawerGroup> get _drawerGroupsForShell {
+    return [
+      const RoleWorkspaceDrawerGroup(
+        workspaceIndex: 2,
+        items: [
+          RoleWorkspaceDrawerItem(
+            label: 'Estado actual',
+            section: CrewWorkspaceSection.availabilityStatus,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Calendario',
+            section: CrewWorkspaceSection.availabilityCalendar,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Registrar disponibilidad',
+            section: CrewWorkspaceSection.availabilityRegister,
+          ),
+        ],
+      ),
+      const RoleWorkspaceDrawerGroup(
+        workspaceIndex: 3,
+        items: [
+          RoleWorkspaceDrawerItem(
+            label: 'Perfil',
+            section: CrewWorkspaceSection.accountProfile,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Documentos',
+            section: CrewWorkspaceSection.accountDocuments,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Historial',
+            section: CrewWorkspaceSection.accountHistory,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Pagos',
+            section: CrewWorkspaceSection.accountPayments,
+          ),
+          RoleWorkspaceDrawerItem(
+            label: 'Configuración',
+            section: CrewWorkspaceSection.accountSettings,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  void _emitNavigationSnapshot() {
+    widget.onNavigationChanged?.call(
+      CrewWorkspaceNavigationSnapshot(
+        activeSection: _activeWorkspaceSection,
+        drawerGroups: _drawerGroupsForShell,
+      ),
+    );
   }
 
   Future<void> _respondAssignment(CrewAssignment item, String status) async {

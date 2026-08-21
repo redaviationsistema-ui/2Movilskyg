@@ -45,24 +45,21 @@ class CrewOperationFlowSnapshot {
     final trackingEvents = _mapList(workflow['tracking_events']);
     final finalReportAvailable = workflow['final_report'] is Map;
 
-    Map<String, dynamic>? checklistByType(String type) {
+    List<Map<String, dynamic>> checklistsByType(String type) {
       final normalizedType = normalizeCrewChecklistType(type);
-      for (final checklist in checklists) {
-        if (normalizeCrewChecklistType(checklist['type']) == normalizedType) {
-          return checklist;
-        }
-      }
-      return null;
+      return checklists.where((checklist) {
+        return normalizeCrewChecklistType(checklist['type']) == normalizedType;
+      }).toList();
     }
 
-    final preparationSummary = CrewOperationChecklistSummary.fromChecklist(
-      checklistByType('preparation'),
+    final preparationSummary = CrewOperationChecklistSummary.fromChecklists(
+      checklistsByType('preparation'),
     );
-    final preflightSummary = CrewOperationChecklistSummary.fromChecklist(
-      checklistByType('preflight'),
+    final preflightSummary = CrewOperationChecklistSummary.fromChecklists(
+      checklistsByType('preflight'),
     );
-    final postflightSummary = CrewOperationChecklistSummary.fromChecklist(
-      checklistByType('postflight'),
+    final postflightSummary = CrewOperationChecklistSummary.fromChecklists(
+      checklistsByType('postflight'),
     );
 
     final assignmentConfirmed =
@@ -162,7 +159,18 @@ class CrewOperationChecklistSummary {
   static CrewOperationChecklistSummary fromChecklist(
     Map<String, dynamic>? checklist,
   ) {
-    final items = _mapList(checklist?['items']);
+    return fromChecklists(
+      checklist == null ? const <Map<String, dynamic>>[] : [checklist],
+    );
+  }
+
+  static CrewOperationChecklistSummary fromChecklists(
+    List<Map<String, dynamic>> checklists,
+  ) {
+    final items = <Map<String, dynamic>>[];
+    for (final checklist in checklists) {
+      items.addAll(_mapList(checklist['items']));
+    }
     final requiredItems =
         items.where((item) => item['is_required'] != false).toList();
     final resolved = items.where(_isResolvedStatus).length;

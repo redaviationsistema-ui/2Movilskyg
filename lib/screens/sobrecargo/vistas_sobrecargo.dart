@@ -216,6 +216,7 @@ class _CrewAccountView extends StatelessWidget {
     required this.documents,
     required this.assignments,
     required this.incidents,
+    required this.activeSection,
     required this.onProfileChanged,
     required this.onSaveProfile,
     required this.onConfigChanged,
@@ -223,6 +224,7 @@ class _CrewAccountView extends StatelessWidget {
     required this.onCreateDocument,
     required this.onDocumentStatusChanged,
     required this.onOpenOperation,
+    required this.onOpenSection,
   });
 
   final Map<String, dynamic> profileForm;
@@ -230,6 +232,7 @@ class _CrewAccountView extends StatelessWidget {
   final List<CrewDocument> documents;
   final List<CrewAssignment> assignments;
   final List<CrewIncident> incidents;
+  final CrewPortalTab activeSection;
   final void Function(String, dynamic) onProfileChanged;
   final VoidCallback onSaveProfile;
   final void Function(String, dynamic) onConfigChanged;
@@ -237,73 +240,138 @@ class _CrewAccountView extends StatelessWidget {
   final void Function(CrewDocument, File?) onCreateDocument;
   final void Function(CrewDocument, String) onDocumentStatusChanged;
   final ValueChanged<CrewAssignment> onOpenOperation;
+  final ValueChanged<CrewPortalTab> onOpenSection;
 
   @override
   Widget build(BuildContext context) {
+    if (activeSection == CrewPortalTab.account) {
+      return _CrewAccountHome(
+        onOpenSection: onOpenSection,
+        onLogout: () => context.read<AuthProvider>().signOut(),
+      );
+    }
+
+    Widget child;
+    switch (activeSection) {
+      case CrewPortalTab.profile:
+        child = _ProfileView(
+          form: profileForm,
+          onChanged: onProfileChanged,
+          onSave: onSaveProfile,
+        );
+        break;
+      case CrewPortalTab.documents:
+        child = _DocumentsView(
+          documents: documents,
+          onCreate: onCreateDocument,
+          onStatusChanged: onDocumentStatusChanged,
+        );
+        break;
+      case CrewPortalTab.history:
+        child = _HistoryView(
+          assignments: assignments,
+          incidents: incidents,
+          onOpenOperation: onOpenOperation,
+        );
+        break;
+      case CrewPortalTab.payments:
+        child = _PaymentsView(payments: const [], assignments: assignments);
+        break;
+      case CrewPortalTab.settings:
+        child = _SettingsView(
+          form: configForm,
+          onChanged: onConfigChanged,
+          onSave: onSaveConfig,
+        );
+        break;
+      default:
+        child = const SizedBox.shrink();
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _CrewAccountSection(
-          icon: Icons.person_rounded,
-          title: 'Mi perfil e idiomas',
-          child: _ProfileView(
-            form: profileForm,
-            onChanged: onProfileChanged,
-            onSave: onSaveProfile,
-          ),
+        TextButton.icon(
+          onPressed: () => onOpenSection(CrewPortalTab.account),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Volver a Cuenta'),
         ),
-        _CrewAccountSection(
-          icon: Icons.tune_rounded,
-          title: 'Preferencias',
-          child: _SettingsView(
-            form: configForm,
-            onChanged: onConfigChanged,
-            onSave: onSaveConfig,
-          ),
-        ),
-        _CrewAccountSection(
-          icon: Icons.folder_copy_rounded,
-          title: 'Mis documentos',
-          child: _DocumentsView(
-            documents: documents,
-            onCreate: onCreateDocument,
-            onStatusChanged: onDocumentStatusChanged,
-          ),
-        ),
-        _CrewAccountSection(
-          icon: Icons.history_rounded,
-          title: 'Historial de vuelos',
-          child: _HistoryView(
-            assignments: assignments,
-            incidents: incidents,
-            onOpenOperation: onOpenOperation,
-          ),
-        ),
+        const SizedBox(height: 8),
+        child,
       ],
     );
   }
 }
 
-class _CrewAccountSection extends StatelessWidget {
-  const _CrewAccountSection({
-    required this.icon,
-    required this.title,
-    required this.child,
-  });
+class _CrewAccountHome extends StatelessWidget {
+  const _CrewAccountHome({required this.onOpenSection, required this.onLogout});
 
-  final IconData icon;
-  final String title;
-  final Widget child;
+  final ValueChanged<CrewPortalTab> onOpenSection;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Icon(icon),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-        children: [Padding(padding: const EdgeInsets.all(14), child: child)],
+    final items = [
+      (
+        Icons.person_rounded,
+        'Mi perfil',
+        'Datos personales',
+        CrewPortalTab.profile,
       ),
+      (
+        Icons.folder_copy_rounded,
+        'Mis documentos',
+        'Documentos y vigencias',
+        CrewPortalTab.documents,
+      ),
+      (
+        Icons.history_rounded,
+        'Historial de operaciones',
+        'Ver operaciones anteriores',
+        CrewPortalTab.history,
+      ),
+      (
+        Icons.payments_rounded,
+        'Pagos',
+        'Consultar información',
+        CrewPortalTab.payments,
+      ),
+      (
+        Icons.tune_rounded,
+        'Configuración',
+        'Preferencias',
+        CrewPortalTab.settings,
+      ),
+    ];
+
+    return Column(
+      children: [
+        ...items.map(
+          (item) => Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              leading: Icon(item.$1),
+              title: Text(
+                item.$2,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: Text(item.$3),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => onOpenSection(item.$4),
+            ),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.logout_rounded),
+            title: const Text(
+              'Cerrar sesión',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            onTap: onLogout,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3452,8 +3520,11 @@ class _CalendarFlightCard extends StatelessWidget {
   }
 }
 
+enum _AvailabilityFocusSection { status, register }
+
 class _AvailabilityView extends StatefulWidget {
   const _AvailabilityView({
+    required this.focusSection,
     required this.selectedDate,
     required this.assignments,
     required this.records,
@@ -3467,6 +3538,7 @@ class _AvailabilityView extends StatefulWidget {
     required this.onRequestChange,
   });
 
+  final _AvailabilityFocusSection focusSection;
   final DateTime selectedDate;
   final List<CrewAssignment> assignments;
   final List<CrewAvailabilityRecord> records;
@@ -3485,6 +3557,8 @@ class _AvailabilityView extends StatefulWidget {
 
 class _AvailabilityViewState extends State<_AvailabilityView> {
   late final TextEditingController _commentController;
+  final GlobalKey _summaryKey = GlobalKey();
+  final GlobalKey _editorKey = GlobalKey();
   String _selectedStatus = 'DISPONIBLE';
 
   @override
@@ -3503,6 +3577,11 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
         oldRecord?.statusKey != newRecord?.statusKey ||
         oldRecord?.comment != newRecord?.comment) {
       _syncEditor();
+    }
+    if (oldWidget.focusSection != widget.focusSection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToFocusSection();
+      });
     }
   }
 
@@ -3538,6 +3617,20 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
     _commentController.text = record?.comment ?? '';
   }
 
+  Future<void> _scrollToFocusSection() async {
+    final targetContext =
+        widget.focusSection == _AvailabilityFocusSection.register
+            ? _editorKey.currentContext
+            : _summaryKey.currentContext;
+    if (targetContext == null) return;
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.of(context).size.width < 430;
@@ -3565,7 +3658,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           status: widget.isLoading ? 'Actualizando...' : 'Sincronizado',
         ),
         const SizedBox(height: 14),
-        _availabilitySummary(),
+        KeyedSubtree(key: _summaryKey, child: _availabilitySummary()),
         const SizedBox(height: 14),
         _availabilityQuickActions(locked),
         const SizedBox(height: 14),
@@ -3604,10 +3697,13 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
         ),
         const SizedBox(height: 14),
-        if (locked)
-          _operationEditor(operation, selectedRecord)
-        else
-          _availabilityEditor(selectedRecord),
+        KeyedSubtree(
+          key: _editorKey,
+          child:
+              locked
+                  ? _operationEditor(operation, selectedRecord)
+                  : _availabilityEditor(selectedRecord),
+        ),
         if (activity.isNotEmpty) ...[
           const SizedBox(height: 18),
           Container(

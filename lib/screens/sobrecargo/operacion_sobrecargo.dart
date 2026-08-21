@@ -1,9 +1,32 @@
 part of 'pantalla_espacio_sobrecargo.dart';
 
 class CrewOperationView extends StatefulWidget {
-  const CrewOperationView({super.key, required this.assignment});
+  const CrewOperationView({
+    super.key,
+    required this.assignment,
+    this.drawerBranchLabel,
+    this.drawerTitle,
+    this.drawerUserEmail,
+    this.drawerItems,
+    this.drawerGroups,
+    this.onSelectDrawerSection,
+    this.onLogout,
+    this.initialStepId,
+    this.openIncidentOnLoad = false,
+    this.drawerUserPhone,
+  });
 
   final CrewAssignment assignment;
+  final String? drawerBranchLabel;
+  final String? drawerTitle;
+  final String? drawerUserEmail;
+  final String? drawerUserPhone;
+  final List<RoleWorkspaceItem>? drawerItems;
+  final List<RoleWorkspaceDrawerGroup>? drawerGroups;
+  final ValueChanged<CrewWorkspaceSection>? onSelectDrawerSection;
+  final VoidCallback? onLogout;
+  final String? initialStepId;
+  final bool openIncidentOnLoad;
 
   @override
   State<CrewOperationView> createState() => _CrewOperationViewState();
@@ -25,6 +48,108 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   String _selectedTrackingId = '';
   final Set<String> _expandedChecklistGroupIds = <String>{};
   final Set<String> _expandedChecklistItemIds = <String>{};
+  bool _didAutoOpenIncident = false;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  AuthProvider get _auth => context.read<AuthProvider>();
+
+  String get _resolvedDrawerName {
+    final provided = widget.drawerTitle?.trim() ?? '';
+    if (provided.isNotEmpty) return provided;
+    final userName =
+        _auth.user?.name.trim().isNotEmpty == true
+            ? _auth.user!.name.trim()
+            : _auth.displayName.trim();
+    return userName.isEmpty ? 'Sobrecargo' : userName;
+  }
+
+  String get _resolvedDrawerEmail =>
+      widget.drawerUserEmail?.trim().isNotEmpty == true
+          ? widget.drawerUserEmail!.trim()
+          : (_auth.user?.email ?? 'sin correo');
+
+  String? get _resolvedDrawerPhone {
+    final provided = widget.drawerUserPhone?.trim() ?? '';
+    if (provided.isNotEmpty) return provided;
+    final fallback = _auth.user?.phone.trim() ?? '';
+    return fallback.isEmpty ? null : fallback;
+  }
+
+  List<RoleWorkspaceItem> get _resolvedDrawerItems =>
+      widget.drawerItems ??
+      const [
+        RoleWorkspaceItem(
+          label: 'Inicio',
+          shortLabel: 'Inicio',
+          icon: Icons.dashboard_customize_rounded,
+          screen: SizedBox.shrink(),
+        ),
+        RoleWorkspaceItem(
+          label: 'Mi vuelo',
+          shortLabel: 'Mi vuelo',
+          icon: Icons.assignment_turned_in_rounded,
+          screen: SizedBox.shrink(),
+        ),
+        RoleWorkspaceItem(
+          label: 'Mi disponibilidad',
+          shortLabel: 'Disponibilidad',
+          icon: Icons.event_available_rounded,
+          screen: SizedBox.shrink(),
+        ),
+        RoleWorkspaceItem(
+          label: 'Cuenta',
+          shortLabel: 'Cuenta',
+          icon: Icons.account_circle_rounded,
+          screen: SizedBox.shrink(),
+        ),
+      ];
+
+  List<RoleWorkspaceDrawerGroup> get _resolvedDrawerGroups =>
+      widget.drawerGroups ??
+      const [
+        RoleWorkspaceDrawerGroup(
+          workspaceIndex: 2,
+          items: [
+            RoleWorkspaceDrawerItem(
+              label: 'Estado actual',
+              section: CrewWorkspaceSection.availabilityStatus,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Calendario',
+              section: CrewWorkspaceSection.availabilityCalendar,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Registrar disponibilidad',
+              section: CrewWorkspaceSection.availabilityRegister,
+            ),
+          ],
+        ),
+        RoleWorkspaceDrawerGroup(
+          workspaceIndex: 3,
+          items: [
+            RoleWorkspaceDrawerItem(
+              label: 'Perfil',
+              section: CrewWorkspaceSection.accountProfile,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Documentos',
+              section: CrewWorkspaceSection.accountDocuments,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Historial',
+              section: CrewWorkspaceSection.accountHistory,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Pagos',
+              section: CrewWorkspaceSection.accountPayments,
+            ),
+            RoleWorkspaceDrawerItem(
+              label: 'Configuración',
+              section: CrewWorkspaceSection.accountSettings,
+            ),
+          ],
+        ),
+      ];
 
   List<Map<String, dynamic>> _list(dynamic value) =>
       value is List
@@ -52,19 +177,80 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       case 'refresh':
         await _load();
         return;
-      case 'notifications':
-        if (!mounted) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const CrewPortalScreen(
-              initialTab: CrewPortalTab.notifications,
-            ),
-          ),
-        );
-        return;
       case 'report':
         await _showReport(actionId: 'appbar:report');
         return;
+    }
+  }
+
+  Future<void> _handleDrawerSectionSelection(
+    CrewWorkspaceSection section,
+  ) async {
+    Navigator.of(context).pop();
+    switch (section) {
+      case CrewWorkspaceSection.home:
+      case CrewWorkspaceSection.availabilityStatus:
+      case CrewWorkspaceSection.availabilityCalendar:
+      case CrewWorkspaceSection.availabilityRegister:
+      case CrewWorkspaceSection.accountHome:
+      case CrewWorkspaceSection.accountProfile:
+      case CrewWorkspaceSection.accountDocuments:
+      case CrewWorkspaceSection.accountHistory:
+      case CrewWorkspaceSection.accountPayments:
+      case CrewWorkspaceSection.accountSettings:
+        if (mounted) Navigator.of(context).pop();
+        widget.onSelectDrawerSection?.call(section);
+        return;
+      case CrewWorkspaceSection.missionOverview:
+        if (mounted) Navigator.of(context).pop();
+        return;
+      case CrewWorkspaceSection.missionValidation:
+        await _focusStepSection('validation');
+        return;
+      case CrewWorkspaceSection.missionPreparation:
+        await _focusStepSection('preparation');
+        return;
+      case CrewWorkspaceSection.missionChecklist:
+        await _focusStepSection('checklist');
+        return;
+      case CrewWorkspaceSection.missionTracking:
+        await _focusStepSection('tracking');
+        return;
+      case CrewWorkspaceSection.missionEvidence:
+        await _focusStepSection(_bestEvidenceStepId());
+        return;
+      case CrewWorkspaceSection.missionIncidents:
+        await _showIncidentDialog(actionId: 'drawer:incident');
+        return;
+      case CrewWorkspaceSection.missionClosure:
+        await _focusStepSection('closure');
+        return;
+    }
+  }
+
+  String _bestEvidenceStepId() {
+    if (_currentStepId == 'preparation' ||
+        _currentStepId == 'checklist' ||
+        _currentStepId == 'closure') {
+      return _currentStepId;
+    }
+    return 'checklist';
+  }
+
+  CrewWorkspaceSection get _activeDrawerSection {
+    switch (_currentStepId) {
+      case 'validation':
+        return CrewWorkspaceSection.missionValidation;
+      case 'preparation':
+        return CrewWorkspaceSection.missionPreparation;
+      case 'checklist':
+        return CrewWorkspaceSection.missionChecklist;
+      case 'tracking':
+        return CrewWorkspaceSection.missionTracking;
+      case 'closure':
+        return CrewWorkspaceSection.missionClosure;
+      default:
+        return CrewWorkspaceSection.missionOverview;
     }
   }
 
@@ -120,6 +306,14 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         _workflow = source;
         _syncSelections();
       });
+      if (widget.openIncidentOnLoad && !_didAutoOpenIncident) {
+        _didAutoOpenIncident = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            unawaited(_showIncidentDialog(actionId: 'drawer:incident'));
+          }
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
@@ -143,9 +337,13 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                     complete: false,
                   ),
     );
+    final requestedStepId = widget.initialStepId;
+    final hasRequestedStep =
+        requestedStepId != null &&
+        steps.any((step) => step.id == requestedStepId);
     if (_selectedStepId.isEmpty ||
         !steps.any((step) => step.id == _selectedStepId)) {
-      _selectedStepId = current.id;
+      _selectedStepId = hasRequestedStep ? requestedStepId : current.id;
     }
 
     final validGroupIds = <String>{};
@@ -409,7 +607,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       );
       await _load();
       if (mounted) {
-        final refreshedChecklist = _checklistOfType(checklistType);
+        final refreshedChecklist = _mergedChecklistOfType(checklistType);
         final refreshedSummary = _summaryForChecklist(refreshedChecklist);
         final completedChecklist =
             previousSummary.pending > 0 && refreshedSummary.pending == 0;
@@ -911,14 +1109,22 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     return raw.startsWith('/') ? '$origin$raw' : '$origin/$raw';
   }
 
-  Map<String, dynamic>? _checklistOfType(String type) {
+  List<Map<String, dynamic>> _checklistsOfType(String type) {
     final normalizedType = normalizeCrewChecklistType(type);
-    for (final checklist in _allChecklists) {
-      if (normalizeCrewChecklistType(checklist['type']) == normalizedType) {
-        return checklist;
-      }
+    return _allChecklists.where((checklist) {
+      return normalizeCrewChecklistType(checklist['type']) == normalizedType;
+    }).toList();
+  }
+
+  Map<String, dynamic>? _mergedChecklistOfType(String type) {
+    final matches = _checklistsOfType(type);
+    if (matches.isEmpty) return null;
+    final first = matches.first;
+    final mergedItems = <Map<String, dynamic>>[];
+    for (final checklist in matches) {
+      mergedItems.addAll(_itemsForChecklist(checklist));
     }
-    return null;
+    return {...first, 'type': type, 'items': mergedItems};
   }
 
   List<Map<String, dynamic>> _itemsForChecklist(
@@ -980,11 +1186,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           : const {};
 
   Map<String, dynamic>? get _preparationChecklist =>
-      _checklistOfType('preparation');
+      _mergedChecklistOfType('preparation');
   Map<String, dynamic>? get _preflightChecklist =>
-      _checklistOfType('preflight');
+      _mergedChecklistOfType('preflight');
   Map<String, dynamic>? get _postflightChecklist =>
-      _checklistOfType('postflight');
+      _mergedChecklistOfType('postflight');
 
   _ChecklistSummary get _preparationSummary =>
       _summaryForChecklist(_preparationChecklist);
@@ -2711,49 +2917,85 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: Drawer(
+        backgroundColor: const Color(0xFF0C1B2A),
+        child: SafeArea(
+          child: RoleWorkspaceDrawerContent(
+            branchLabel: _resolvedDrawerName,
+            roleLabel: 'Sobrecargo',
+            title: _resolvedDrawerName,
+            userEmail: _resolvedDrawerEmail,
+            userPhone: _resolvedDrawerPhone,
+            items: _resolvedDrawerItems,
+            groups: _resolvedDrawerGroups,
+            selectedIndex: 1,
+            activeSection: _activeDrawerSection,
+            onSelect: (index) {
+              Navigator.of(context).pop();
+              if (index == 1) {
+                Navigator.of(context).pop();
+                return;
+              }
+              if (mounted) Navigator.of(context).pop();
+              final section = switch (index) {
+                0 => CrewWorkspaceSection.home,
+                2 => CrewWorkspaceSection.availabilityStatus,
+                3 => CrewWorkspaceSection.accountHome,
+                _ => CrewWorkspaceSection.home,
+              };
+              widget.onSelectDrawerSection?.call(section);
+            },
+            onSelectSection: (workspaceIndex, {Object? section}) {
+              if (section is! CrewWorkspaceSection) return;
+              unawaited(_handleDrawerSectionSelection(section));
+            },
+            onLogout: widget.onLogout ?? _auth.signOut,
+          ),
+        ),
+      ),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        leading: PopupMenuButton<String>(
-          tooltip: 'Abrir opciones',
-          icon: const Icon(Icons.more_vert_rounded),
-          onSelected: (value) => _handleOverflowAction(value),
-          itemBuilder:
-              (context) => [
-                const PopupMenuItem<String>(
-                  value: 'back',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.arrow_back_rounded),
-                    title: Text('Volver a Mi vuelo'),
-                  ),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'refresh',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.refresh_rounded),
-                    title: Text('Refrescar'),
-                  ),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'notifications',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.notifications_none_rounded),
-                    title: Text('Notificaciones'),
-                  ),
-                ),
-                if (_finalReport.isNotEmpty)
+        leading: IconButton(
+          tooltip: 'Abrir menú',
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Abrir opciones',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (value) => _handleOverflowAction(value),
+            itemBuilder:
+                (context) => [
                   const PopupMenuItem<String>(
-                    value: 'report',
+                    value: 'back',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.description_rounded),
-                      title: Text('Consultar reporte'),
+                      leading: Icon(Icons.arrow_back_rounded),
+                      title: Text('Volver a Mi vuelo'),
                     ),
                   ),
-              ],
-        ),
+                  const PopupMenuItem<String>(
+                    value: 'refresh',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.refresh_rounded),
+                      title: Text('Refrescar'),
+                    ),
+                  ),
+                  if (_finalReport.isNotEmpty)
+                    const PopupMenuItem<String>(
+                      value: 'report',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.description_rounded),
+                        title: Text('Consultar reporte'),
+                      ),
+                    ),
+                ],
+          ),
+        ],
         title: const Text('Mi vuelo'),
       ),
       body: Stack(

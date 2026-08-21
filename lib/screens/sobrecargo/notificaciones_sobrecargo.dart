@@ -1,9 +1,10 @@
 part of 'pantalla_espacio_sobrecargo.dart';
 
 class CrewNotificationsView extends StatefulWidget {
-  const CrewNotificationsView({super.key, this.api});
+  const CrewNotificationsView({super.key, this.api, this.onClose});
 
   final ApiClient? api;
+  final VoidCallback? onClose;
 
   @override
   State<CrewNotificationsView> createState() => _CrewNotificationsViewState();
@@ -164,6 +165,18 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.onClose != null) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: widget.onClose,
+              style: TextButton.styleFrom(foregroundColor: Colors.black),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Volver'),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         Row(
           children: [
             Expanded(
