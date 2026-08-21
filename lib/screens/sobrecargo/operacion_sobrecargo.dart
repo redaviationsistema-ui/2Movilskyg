@@ -2,6 +2,7 @@ part of 'pantalla_espacio_sobrecargo.dart';
 
 class CrewOperationView extends StatefulWidget {
   const CrewOperationView({super.key, required this.assignment});
+
   final CrewAssignment assignment;
 
   @override
@@ -11,10 +12,19 @@ class CrewOperationView extends StatefulWidget {
 class _CrewOperationViewState extends State<CrewOperationView> {
   final ApiClient _api = ApiClient.instance;
   final ImagePicker _picker = ImagePicker();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _primaryActionKey = GlobalKey();
+  final GlobalKey _stepContentKey = GlobalKey();
+
   Map<String, dynamic> _workflow = const {};
   bool _loading = true;
   bool _saving = false;
+  String? _busyActionId;
   String _error = '';
+  String _selectedStepId = '';
+  String _selectedTrackingId = '';
+  final Set<String> _expandedChecklistGroupIds = <String>{};
+  final Set<String> _expandedChecklistItemIds = <String>{};
 
   List<Map<String, dynamic>> _list(dynamic value) =>
       value is List
@@ -24,10 +34,48 @@ class _CrewOperationViewState extends State<CrewOperationView> {
               .toList()
           : const [];
 
+  void _setSavingState(bool saving, {String? actionId}) {
+    if (!mounted) return;
+    setState(() {
+      _saving = saving;
+      _busyActionId = saving ? actionId : null;
+    });
+  }
+
+  bool _isBusyAction(String actionId) => _saving && _busyActionId == actionId;
+
+  Widget _buttonIcon(
+    IconData icon, {
+    required bool busy,
+    Color? color,
+    double size = 18,
+  }) {
+    if (!busy) return Icon(icon, color: color, size: size);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CircularProgressIndicator(
+        strokeWidth: 2.2,
+        valueColor: AlwaysStoppedAnimation<Color>(
+          color ?? Theme.of(context).colorScheme.onPrimary,
+        ),
+      ),
+    );
+  }
+
+  String _buttonLabel(String label, {required bool busy, String? busyLabel}) =>
+      busy ? (busyLabel ?? 'Cargando...') : label;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -43,7 +91,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           response['data'] is Map
               ? Map<String, dynamic>.from(response['data'])
               : response;
-      if (mounted) setState(() => _workflow = source);
+      if (!mounted) return;
+      setState(() {
+        _workflow = source;
+        _syncSelections();
+      });
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
@@ -51,12 +103,139 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     }
   }
 
-  Future<void> _runAction(Map<String, dynamic> action) async {
+  void _syncSelections() {
+    final steps = _flow.steps;
+    final current = steps.firstWhere(
+      (step) => step.status == 'current',
+      orElse:
+          () =>
+              steps.isNotEmpty
+                  ? steps.first
+                  : const CrewOperationStepState(
+                    id: '',
+                    label: '',
+                    status: 'pending',
+                    available: false,
+                    complete: false,
+                  ),
+    );
+    if (_selectedStepId.isEmpty ||
+        !steps.any((step) => step.id == _selectedStepId)) {
+      _selectedStepId = current.id;
+    }
+
+    final validGroupIds = <String>{};
+    final validItemIds = <String>{};
+    for (final checklist in _allChecklists) {
+      final checklistType = '${checklist['type'] ?? ''}';
+      for (final group in _groupedChecklist(checklist)) {
+        validGroupIds.add(_checklistGroupId(checklistType, group.key));
+        for (final item in group.value) {
+          validItemIds.add(_checklistItemId(checklistType, item));
+        }
+      }
+    }
+    _expandedChecklistGroupIds.removeWhere((id) => !validGroupIds.contains(id));
+    _expandedChecklistItemIds.removeWhere((id) => !validItemIds.contains(id));
+
+    final currentChecklist = _checklistForStep(_selectedStepId);
+    if (currentChecklist != null) {
+      final checklistType = '${currentChecklist['type'] ?? ''}';
+      final groups = _groupedChecklist(currentChecklist);
+      final hasExpandedCurrentGroup = groups.any(
+        (group) => _expandedChecklistGroupIds.contains(
+          _checklistGroupId(checklistType, group.key),
+        ),
+      );
+      final currentItems = _itemsForChecklist(currentChecklist);
+      final hasExpandedCurrentItem = currentItems.any(
+        (item) => _expandedChecklistItemIds.contains(
+          _checklistItemId(checklistType, item),
+        ),
+      );
+
+      if (!hasExpandedCurrentGroup && groups.isNotEmpty) {
+        final preferredGroup = groups.firstWhere(
+          (group) => group.value.any((item) => !_isChecklistHandled(item)),
+          orElse: () => groups.first,
+        );
+        _expandedChecklistGroupIds.add(
+          _checklistGroupId(checklistType, preferredGroup.key),
+        );
+      }
+
+      if (!hasExpandedCurrentItem && currentItems.isNotEmpty) {
+        final preferredItem = currentItems.firstWhere(
+          (item) => !_isChecklistHandled(item),
+          orElse: () => currentItems.first,
+        );
+        _expandedChecklistItemIds.add(
+          _checklistItemId(checklistType, preferredItem),
+        );
+      }
+    }
+
+    final milestones = _flow.trackingMilestones;
+    if (_selectedTrackingId.isEmpty ||
+        !milestones.any((item) => item.id == _selectedTrackingId)) {
+      final preferred = milestones.firstWhere(
+        (item) => item.state == 'current',
+        orElse:
+            () => milestones.firstWhere(
+              (item) => item.state == 'pending',
+              orElse:
+                  () =>
+                      milestones.isEmpty
+                          ? const CrewOperationTrackingMilestone(
+                            id: '',
+                            label: '',
+                            detail: '',
+                            state: 'pending',
+                            timestamp: '',
+                            action: null,
+                          )
+                          : milestones.first,
+            ),
+      );
+      _selectedTrackingId = preferred.id;
+    }
+  }
+
+  Future<void> _confirmAssignment({
+    String actionId = 'confirm_assignment',
+  }) async {
     if (_saving) return;
-    setState(() => _saving = true);
+    _setSavingState(true, actionId: actionId);
     try {
-      final type = '${action['type'] ?? ''}';
+      await _api.respondCrewAssignment(
+        operationId: widget.assignment.id,
+        status: 'Confirmado',
+      );
+      await _load();
+      _showMessage('Vuelo confirmado con operaciones.');
+    } catch (error) {
+      _showMessage('$error');
+    } finally {
+      _setSavingState(false);
+    }
+  }
+
+  Future<void> _runAction(
+    Map<String, dynamic> action, {
+    String? actionId,
+  }) async {
+    if (_saving) return;
+    final busyId =
+        actionId ??
+        'workflow:${action['type'] ?? action['status'] ?? action['label'] ?? 'action'}';
+    try {
+      final type = '${action['type'] ?? ''}'.toLowerCase();
       final operationId = widget.assignment.resolvedOperationId;
+      if (type == 'submit_report') {
+        await _showReport(actionId: busyId);
+        return;
+      }
+      _setSavingState(true, actionId: busyId);
       if (type == 'checkin') {
         await _api.updateCrewOperationStep(
           assignmentId: operationId,
@@ -75,28 +254,22 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       } else if (type == 'transition') {
         await _api.updateCrewOperationStep(
           assignmentId: operationId,
-          step: '${action['status']}',
+          step: '${action['status'] ?? ''}',
         );
-      } else if (type == 'submit_report') {
-        await _showReport();
-        return;
       }
       await _load();
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
-      }
+      _showMessage('$error');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      _setSavingState(false);
     }
   }
 
   Future<void> _editItem(
     Map<String, dynamic> checklist,
-    Map<String, dynamic> item,
-  ) async {
+    Map<String, dynamic> item, {
+    String? actionId,
+  }) async {
     final notes = TextEditingController(text: '${item['notes'] ?? ''}');
     var status = '${item['status'] ?? 'pending'}';
     final result = await showModalBottomSheet<Map<String, String>>(
@@ -122,7 +295,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      if ('${item['description'] ?? ''}'.isNotEmpty)
+                      if ('${item['description'] ?? ''}'.trim().isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text('${item['description']}'),
@@ -137,7 +310,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                           ),
                           DropdownMenuItem(
                             value: 'completed',
-                            child: Text('Completado'),
+                            child: Text('Correcto'),
                           ),
                           DropdownMenuItem(
                             value: 'not_applicable',
@@ -175,36 +348,380 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     );
     notes.dispose();
     if (result == null) return;
-    setState(() => _saving = true);
+    await _saveChecklistItem(
+      checklist: checklist,
+      item: item,
+      status: result['status'] ?? 'pending',
+      notes: result['notes'] ?? '',
+      actionId: actionId,
+    );
+  }
+
+  Future<void> _saveChecklistItem({
+    required Map<String, dynamic> checklist,
+    required Map<String, dynamic> item,
+    required String status,
+    String notes = '',
+    String? actionId,
+  }) async {
+    if (_saving) return;
+    final previousSummary = _summaryForChecklist(checklist);
+    final previousStepId = _stepIdForChecklistType(
+      '${checklist['type'] ?? ''}',
+    );
+    final checklistType = '${checklist['type'] ?? ''}';
+    _setSavingState(
+      true,
+      actionId:
+          actionId ?? 'checklist:${checklist['type']}:${item['id']}:$status',
+    );
     try {
       await _api.updateCrewChecklistItem(
         operationId: widget.assignment.resolvedOperationId,
-        checklistType: '${checklist['type']}',
-        itemId: '${item['id']}',
-        status: result['status']!,
-        notes: result['notes'] ?? '',
+        checklistType: '${checklist['type'] ?? ''}',
+        itemId: '${item['id'] ?? ''}',
+        status: status,
+        notes: notes,
       );
       await _load();
-    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        final refreshedChecklist = _checklistOfType(checklistType);
+        final refreshedSummary = _summaryForChecklist(refreshedChecklist);
+        final completedChecklist =
+            previousSummary.pending > 0 && refreshedSummary.pending == 0;
+        if (completedChecklist) {
+          setState(() => _selectedStepId = _flow.currentStepId);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToPrimaryActionSection(fromStepId: previousStepId);
+          });
+        }
       }
+      _showMessage('Checklist actualizado.');
+    } catch (error) {
+      _showMessage('$error');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      _setSavingState(false);
+    }
+  }
+
+  Future<void> _reportChecklistFailure(
+    Map<String, dynamic> checklist,
+    Map<String, dynamic> item, {
+    String? actionId,
+  }) async {
+    final crewId = context.read<AuthProvider>().user?.id ?? '';
+    final description = TextEditingController(text: '${item['notes'] ?? ''}');
+    File? evidence;
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setSheetState) => Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    MediaQuery.viewInsetsOf(context).bottom + 24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Reportar falla',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text('${item['label'] ?? 'Elemento'}'),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: description,
+                        maxLines: 4,
+                        maxLength: 500,
+                        decoration: const InputDecoration(
+                          labelText: 'Describe el problema',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await _picker.pickImage(
+                                source: ImageSource.camera,
+                                imageQuality: 88,
+                              );
+                              if (picked == null) return;
+                              setSheetState(() => evidence = File(picked.path));
+                            },
+                            icon: const Icon(Icons.camera_alt_rounded),
+                            label: const Text('Tomar foto'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await _picker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 88,
+                              );
+                              if (picked == null) return;
+                              setSheetState(() => evidence = File(picked.path));
+                            },
+                            icon: const Icon(Icons.photo_library_rounded),
+                            label: const Text('Galería'),
+                          ),
+                        ],
+                      ),
+                      if (evidence != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            'Evidencia lista: ${evidence!.path.split('/').last}',
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed:
+                            description.text.trim().isEmpty
+                                ? null
+                                : () => Navigator.pop(context, true),
+                        child: const Text('Guardar reporte'),
+                      ),
+                    ],
+                  ),
+                ),
+          ),
+    );
+    final failureDescription = description.text.trim();
+    description.dispose();
+    if (result != true || failureDescription.isEmpty) return;
+
+    if (_saving) return;
+    _setSavingState(
+      true,
+      actionId: actionId ?? 'failure:${checklist['type']}:${item['id']}',
+    );
+    try {
+      await _api.createCrewIncident(
+        operationId: widget.assignment.resolvedOperationId,
+        crewId: crewId,
+        description:
+            '${item['label'] ?? 'Checklist'}: $failureDescription'.trim(),
+        category: 'cabina',
+        priority: item['critical'] == true ? 'alta' : 'media',
+        phase: _phaseForChecklist(checklist),
+        evidence: evidence,
+      );
+      await _api.updateCrewChecklistItem(
+        operationId: widget.assignment.resolvedOperationId,
+        checklistType: '${checklist['type'] ?? ''}',
+        itemId: '${item['id'] ?? ''}',
+        status: 'failed',
+        notes: failureDescription,
+      );
+      await _load();
+      _showMessage('Falla registrada para seguimiento.');
+    } catch (error) {
+      _showMessage('$error');
+    } finally {
+      _setSavingState(false);
+    }
+  }
+
+  Future<void> _showIncidentDialog({String actionId = 'incident'}) async {
+    final crewId = context.read<AuthProvider>().user?.id ?? '';
+    final description = TextEditingController();
+    String category = 'cabina';
+    String priority = 'media';
+    String phase = 'Pre-vuelo';
+    File? evidence;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setSheetState) => Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    MediaQuery.viewInsetsOf(context).bottom + 24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Reportar incidencia',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        initialValue: category,
+                        decoration: const InputDecoration(
+                          labelText: 'Categoría',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'cabina',
+                            child: Text('Cabina'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'seguridad',
+                            child: Text('Seguridad'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'servicio',
+                            child: Text('Servicio'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'operacion',
+                            child: Text('Operación'),
+                          ),
+                          DropdownMenuItem(value: 'otro', child: Text('Otro')),
+                        ],
+                        onChanged:
+                            (value) => setSheetState(
+                              () => category = value ?? category,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: priority,
+                        decoration: const InputDecoration(
+                          labelText: 'Prioridad',
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'baja', child: Text('Baja')),
+                          DropdownMenuItem(
+                            value: 'media',
+                            child: Text('Media'),
+                          ),
+                          DropdownMenuItem(value: 'alta', child: Text('Alta')),
+                          DropdownMenuItem(
+                            value: 'critica',
+                            child: Text('Crítica'),
+                          ),
+                        ],
+                        onChanged:
+                            (value) => setSheetState(
+                              () => priority = value ?? priority,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: phase,
+                        decoration: const InputDecoration(labelText: 'Fase'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Pre-vuelo',
+                            child: Text('Pre-vuelo'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Abordaje',
+                            child: Text('Abordaje'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'En vuelo',
+                            child: Text('En vuelo'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Post-vuelo',
+                            child: Text('Post-vuelo'),
+                          ),
+                        ],
+                        onChanged:
+                            (value) =>
+                                setSheetState(() => phase = value ?? phase),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: description,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: 'Descripción',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await _picker.pickImage(
+                            source: ImageSource.camera,
+                            imageQuality: 88,
+                          );
+                          if (picked == null) return;
+                          setSheetState(() => evidence = File(picked.path));
+                        },
+                        icon: const Icon(Icons.add_a_photo_rounded),
+                        label: Text(
+                          evidence == null
+                              ? 'Agregar evidencia'
+                              : 'Cambiar evidencia',
+                        ),
+                      ),
+                      if (evidence != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            evidence!.path.split('/').last,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed:
+                            description.text.trim().isEmpty
+                                ? null
+                                : () => Navigator.pop(context, true),
+                        child: const Text('Enviar incidencia'),
+                      ),
+                    ],
+                  ),
+                ),
+          ),
+    );
+    final message = description.text.trim();
+    description.dispose();
+    if (result != true || message.isEmpty) return;
+
+    if (_saving) return;
+    _setSavingState(true, actionId: actionId);
+    try {
+      await _api.createCrewIncident(
+        operationId: widget.assignment.resolvedOperationId,
+        crewId: crewId,
+        description: message,
+        category: category,
+        priority: priority,
+        phase: phase,
+        evidence: evidence,
+      );
+      _showMessage('Incidencia enviada a operaciones.');
+    } catch (error) {
+      _showMessage('$error');
+    } finally {
+      _setSavingState(false);
     }
   }
 
   Future<void> _pickEvidence(
     Map<String, dynamic> checklist,
     Map<String, dynamic> item,
-    ImageSource source,
-  ) async {
+    ImageSource source, {
+    String? actionId,
+  }) async {
     if (_saving) return;
     final picked = await _picker.pickImage(source: source, imageQuality: 88);
-    if (picked == null) return;
-    if (!mounted) return;
+    if (picked == null || !mounted) return;
     final decision = await showDialog<String>(
       context: context,
       builder:
@@ -246,182 +763,115 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       return;
     }
     if (decision != 'upload' || _saving) return;
-    setState(() => _saving = true);
-    _showEvidenceMessage('Subiendo fotografía...');
+    _setSavingState(
+      true,
+      actionId:
+          actionId ??
+          'evidence:${checklist['type']}:${item['id']}:${source.name}',
+    );
+    _showMessage('Subiendo fotografía...');
     try {
       await _api.uploadCrewChecklistEvidence(
         operationId: widget.assignment.resolvedOperationId,
-        checklistType: '${checklist['type']}',
-        itemId: '${item['id']}',
+        checklistType: '${checklist['type'] ?? ''}',
+        itemId: '${item['id'] ?? ''}',
         file: File(picked.path),
       );
       await _load();
-      _showEvidenceMessage('Fotografía registrada correctamente.');
+      _showMessage('Fotografía registrada correctamente.');
     } catch (error) {
-      _showEvidenceMessage(
-        'Error al subir la fotografía. Intenta nuevamente. $error',
-      );
+      _showMessage('Error al subir la fotografía. $error');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      _setSavingState(false);
     }
   }
 
-  void _showEvidenceMessage(String message) {
+  void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Widget _flightSummaryCard() {
-    final assignment = widget.assignment;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tu próximo vuelo',
-              style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              assignment.route,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              assignment.aircraft,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Divider(height: 28),
-            _summaryLine(
-              Icons.calendar_today_rounded,
-              'Fecha',
-              _compactCrewDate(assignment.date),
-            ),
-            _summaryLine(
-              Icons.schedule_rounded,
-              'Presentación',
-              assignment.showTime,
-            ),
-            _summaryLine(
-              Icons.groups_rounded,
-              'Pasajeros',
-              '${assignment.passengers}',
-            ),
-            if (assignment.origin.isNotEmpty)
-              _summaryLine(
-                Icons.flight_takeoff_rounded,
-                'Salida',
-                assignment.origin,
-              ),
-            if (assignment.destination.isNotEmpty)
-              _summaryLine(
-                Icons.flight_land_rounded,
-                'Llegada',
-                assignment.destination,
-              ),
-            _summaryLine(Icons.verified_rounded, 'Estado', assignment.status),
-            if (assignment.code.trim().isNotEmpty && assignment.code != 'OPS')
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Folio: ${assignment.code}',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+  String _token(dynamic value) {
+    return '$value'
+        .trim()
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replaceAll('-', ' ');
   }
 
-  Widget _summaryLine(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: Row(
-        children: [
-          Icon(icon, size: 19, color: const Color(0xFF385A72)),
-          const SizedBox(width: 10),
-          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
-          Expanded(child: Text(value, textAlign: TextAlign.right)),
-        ],
-      ),
-    );
+  bool _isChecklistResolved(Map<String, dynamic> item) {
+    final status = _token(item['status']);
+    return status == 'completed' || status == 'not applicable';
+  }
+
+  bool _isChecklistHandled(Map<String, dynamic> item) {
+    final status = _token(item['status']);
+    return _isChecklistResolved(item) || status == 'failed';
+  }
+
+  String _checklistStatusLabel(Map<String, dynamic> item) {
+    final status = _token(item['status']);
+    if (status == 'completed') return 'Registrado';
+    if (status == 'not applicable') return 'No aplica';
+    if (status == 'failed') return 'Falla reportada';
+    return 'Pendiente';
+  }
+
+  String _friendlyChecklistCategory(String value) {
+    switch (_token(value)) {
+      case 'personal':
+        return 'Documentación personal';
+      case 'logistics':
+        return 'Traslado y presentación';
+      case 'operation':
+        return 'Información del vuelo';
+      case 'passengers':
+        return 'Pasajeros';
+      case 'service':
+        return 'Servicio';
+      case 'cabin':
+        return 'Cabina';
+      case 'safety':
+        return 'Seguridad';
+      default:
+        return value.trim().isEmpty ? 'General' : _naturalizeText(value);
+    }
   }
 
   String _friendlyActionLabel(Map<String, dynamic> action) {
-    final type = '${action['type'] ?? ''}'.toLowerCase();
-    final status = '${action['status'] ?? ''}'.toLowerCase();
-    if (type == 'checkin') return 'Confirmar llegada al aeropuerto';
-    if (type == 'cabin_ready') return 'Confirmar cabina preparada';
-    if (type == 'passengers_ready') return 'Confirmar pasajeros a bordo';
-    if (type == 'submit_report') return 'Enviar reporte final';
-    if (status.contains('service_started')) return 'Iniciar servicio de vuelo';
-    if (status.contains('service_final')) return 'Completar cierre';
+    final type = _token(action['type']);
+    final status = _token(action['status']);
+    if (type == 'checkin') return 'Confirmar llegada';
+    if (type == 'cabin ready') return 'Cabina lista';
+    if (type == 'passengers ready') return 'Pasajeros a bordo';
+    if (type == 'submit report') return 'Enviar cierre';
+    if (status.contains('preparation')) return 'Iniciar preparación';
+    if (status.contains('preflight')) return 'Abrir checklist pre-vuelo';
+    if (status.contains('boarding')) return 'Registrar abordaje';
+    if (status.contains('in flight')) return 'Registrar despegue';
+    if (status.contains('landed')) return 'Registrar aterrizaje';
+    if (status.contains('postflight')) return 'Abrir post-vuelo';
     final label = '${action['label'] ?? ''}'.trim();
-    if (label.toLowerCase().contains('transition') ||
-        label.toLowerCase().contains('execute')) {
-      return 'Continuar con mi vuelo';
-    }
-    return label.isEmpty ? 'Continuar con mi vuelo' : _naturalizeText(label);
+    return label.isEmpty ? 'Continuar' : _naturalizeText(label);
   }
 
   IconData _friendlyActionIcon(Map<String, dynamic> action) {
-    final type = '${action['type'] ?? ''}'.toLowerCase();
+    final type = _token(action['type']);
+    final status = _token(action['status']);
     if (type == 'checkin') return Icons.location_on_rounded;
-    if (type == 'cabin_ready') return Icons.airline_seat_recline_normal_rounded;
-    if (type == 'passengers_ready') return Icons.groups_rounded;
-    if (type == 'submit_report') return Icons.send_rounded;
+    if (type == 'cabin ready') return Icons.airline_seat_recline_normal_rounded;
+    if (type == 'passengers ready') return Icons.groups_rounded;
+    if (type == 'submit report') return Icons.send_rounded;
+    if (status.contains('landed')) return Icons.flight_land_rounded;
+    if (status.contains('flight')) return Icons.flight_takeoff_rounded;
     return Icons.arrow_forward_rounded;
-  }
-
-  String _friendlyChecklistTitle(String type) {
-    switch (type.trim().toLowerCase()) {
-      case 'preparation':
-        return 'Preparación de cabina';
-      case 'preflight':
-        return 'Antes del vuelo';
-      case 'postflight':
-        return 'Después del vuelo';
-      default:
-        return 'Tareas del vuelo';
-    }
-  }
-
-  String _friendlyEventTitle(Map<String, dynamic> event) {
-    final value = '${event['title'] ?? event['status'] ?? ''}';
-    final normalized = value.toLowerCase().replaceAll('_', ' ');
-    if (normalized.contains('checkin') || normalized.contains('enroute')) {
-      return 'Llegué al aeropuerto';
-    }
-    if (normalized.contains('cabin') || normalized.contains('cabina')) {
-      return 'Cabina preparada';
-    }
-    if (normalized.contains('passenger') || normalized.contains('pasaj')) {
-      return 'Pasajeros a bordo';
-    }
-    if (normalized.contains('service started') ||
-        normalized.contains('active')) {
-      return 'Servicio de vuelo iniciado';
-    }
-    if (normalized.contains('completed') || normalized.contains('final')) {
-      return 'Vuelo finalizado';
-    }
-    return _naturalizeText(value);
   }
 
   String _naturalizeText(String value) {
     final cleaned = value.replaceAll('_', ' ').trim();
-    if (cleaned.isEmpty) return 'Actualización del vuelo';
+    if (cleaned.isEmpty) return 'Actualización';
     return '${cleaned[0].toUpperCase()}${cleaned.substring(1)}';
   }
 
@@ -435,6 +885,208 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     final origin = _api.backendOrigin;
     if (origin.isEmpty) return '';
     return raw.startsWith('/') ? '$origin$raw' : '$origin/$raw';
+  }
+
+  Map<String, dynamic>? _checklistOfType(String type) {
+    final normalizedType = normalizeCrewChecklistType(type);
+    for (final checklist in _allChecklists) {
+      if (normalizeCrewChecklistType(checklist['type']) == normalizedType) {
+        return checklist;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _itemsForChecklist(
+    Map<String, dynamic> checklist,
+  ) {
+    return _list(checklist['items']);
+  }
+
+  _ChecklistSummary _summaryForChecklist(Map<String, dynamic>? checklist) {
+    final items =
+        checklist == null
+            ? const <Map<String, dynamic>>[]
+            : _itemsForChecklist(checklist);
+    final resolved = items.where(_isChecklistResolved).length;
+    final handled = items.where(_isChecklistHandled).length;
+    final pending = items.length - handled;
+    return _ChecklistSummary(
+      total: items.length,
+      resolved: resolved,
+      handled: handled,
+      pending: pending,
+      isComplete: items.isNotEmpty && pending == 0,
+    );
+  }
+
+  List<MapEntry<String, List<Map<String, dynamic>>>> _groupedChecklist(
+    Map<String, dynamic>? checklist,
+  ) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final item
+        in checklist == null
+            ? const <Map<String, dynamic>>[]
+            : _itemsForChecklist(checklist)) {
+      final key = _friendlyChecklistCategory(
+        '${item['category'] ?? item['group'] ?? ''}',
+      );
+      groups.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(item);
+    }
+    return groups.entries.toList();
+  }
+
+  String _phaseForChecklist(Map<String, dynamic> checklist) {
+    switch (_token(checklist['type'])) {
+      case 'postflight':
+        return 'Post-vuelo';
+      case 'preflight':
+      case 'preparation':
+        return 'Pre-vuelo';
+      default:
+        return 'Operación';
+    }
+  }
+
+  List<Map<String, dynamic>> get _allChecklists =>
+      _list(_workflow['checklists']);
+  Map<String, dynamic> get _finalReport =>
+      _workflow['final_report'] is Map
+          ? Map<String, dynamic>.from(_workflow['final_report'])
+          : const {};
+
+  Map<String, dynamic>? get _preparationChecklist =>
+      _checklistOfType('preparation');
+  Map<String, dynamic>? get _preflightChecklist =>
+      _checklistOfType('preflight');
+  Map<String, dynamic>? get _postflightChecklist =>
+      _checklistOfType('postflight');
+
+  _ChecklistSummary get _preparationSummary =>
+      _summaryForChecklist(_preparationChecklist);
+  _ChecklistSummary get _preflightSummary =>
+      _summaryForChecklist(_preflightChecklist);
+  _ChecklistSummary get _postflightSummary =>
+      _summaryForChecklist(_postflightChecklist);
+
+  CrewOperationFlowSnapshot get _flow => CrewOperationFlowSnapshot.fromPayload(
+    workflow: _workflow,
+    canRespondToAssignment: widget.assignment.canRespondToAssignment,
+  );
+
+  String get _currentStepId {
+    if (_flow.steps.any((step) => step.id == _selectedStepId)) {
+      return _selectedStepId;
+    }
+    return _flow.currentStepId;
+  }
+
+  Map<String, dynamic>? _checklistForStep(String stepId) {
+    switch (stepId) {
+      case 'preparation':
+        return _preparationChecklist;
+      case 'checklist':
+        return _preflightChecklist;
+      case 'closure':
+        return _postflightChecklist;
+      default:
+        return null;
+    }
+  }
+
+  String _checklistGroupId(String checklistType, String label) =>
+      '${_token(checklistType)}::group::${_token(label)}';
+
+  String _stepIdForChecklistType(String checklistType) {
+    switch (_token(checklistType)) {
+      case 'preparation':
+        return 'preparation';
+      case 'preflight':
+        return 'checklist';
+      case 'postflight':
+        return 'closure';
+      default:
+        return '';
+    }
+  }
+
+  String _checklistItemId(String checklistType, Map<String, dynamic> item) =>
+      '${_token(checklistType)}::item::${item['id'] ?? item['code'] ?? item['label'] ?? ''}';
+
+  bool _isChecklistGroupExpanded(String checklistType, String label) =>
+      _expandedChecklistGroupIds.contains(
+        _checklistGroupId(checklistType, label),
+      );
+
+  bool _isChecklistItemExpanded(
+    String checklistType,
+    Map<String, dynamic> item,
+  ) =>
+      _expandedChecklistItemIds.contains(_checklistItemId(checklistType, item));
+
+  void _toggleChecklistGroup(String checklistType, String label) {
+    final id = _checklistGroupId(checklistType, label);
+    setState(() {
+      if (_expandedChecklistGroupIds.contains(id)) {
+        _expandedChecklistGroupIds.remove(id);
+      } else {
+        _expandedChecklistGroupIds.add(id);
+      }
+    });
+  }
+
+  void _toggleChecklistItem(String checklistType, Map<String, dynamic> item) {
+    final id = _checklistItemId(checklistType, item);
+    setState(() {
+      if (_expandedChecklistItemIds.contains(id)) {
+        _expandedChecklistItemIds.remove(id);
+      } else {
+        _expandedChecklistItemIds.add(id);
+      }
+    });
+  }
+
+  Future<void> _scrollToPrimaryActionSection({String fromStepId = ''}) async {
+    if (!mounted) return;
+    final targetContext = _primaryActionKey.currentContext;
+    if (targetContext != null) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+      );
+      return;
+    }
+
+    if (!_scrollController.hasClients) return;
+    final fallbackOffset =
+        _scrollController.offset > 320 ? _scrollController.offset - 320 : 0.0;
+    await _scrollController.animateTo(
+      fallbackOffset,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _focusStepSection(String stepId) async {
+    if (!mounted) return;
+    if (_selectedStepId != stepId) {
+      setState(() => _selectedStepId = stepId);
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final targetContext = _stepContentKey.currentContext;
+      if (targetContext != null) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+          alignment: 0.08,
+        );
+      }
+    });
   }
 
   Future<void> _showSavedEvidence(
@@ -495,11 +1147,8 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     );
   }
 
-  Future<void> _showReport() async {
-    final existing =
-        _workflow['final_report'] is Map
-            ? Map<String, dynamic>.from(_workflow['final_report'])
-            : const <String, dynamic>{};
+  Future<void> _showReport({String actionId = 'submit_report'}) async {
+    final existing = _finalReport;
     final notes = TextEditingController(
       text: '${existing['general_notes'] ?? ''}',
     );
@@ -660,137 +1309,429 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     passengers.dispose();
     forgotten.dispose();
     damages.dispose();
-    if (report == null) {
-      if (mounted) setState(() => _saving = false);
-      return;
-    }
+    if (report == null) return;
+    if (_saving) return;
     try {
+      _setSavingState(true, actionId: actionId);
       await _api.submitCrewFinalReport(
         operationId: widget.assignment.resolvedOperationId,
         report: report,
       );
       await _load();
-      _showEvidenceMessage('Operación enviada correctamente.');
+      _showMessage('Operación enviada correctamente.');
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
-      }
+      _showMessage('$error');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      _setSavingState(false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final actions = _list(_workflow['allowed_actions']);
-    final checklists = _list(_workflow['checklists']);
-    final tracking = _list(_workflow['tracking_events']);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mi vuelo')),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+  Widget _flightSummaryCard() {
+    final assignment = widget.assignment;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_loading) const LinearProgressIndicator(),
-            if (_saving)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: LinearProgressIndicator(),
+            const Text(
+              'Mi vuelo',
+              style: TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
               ),
-            if (_error.isNotEmpty)
-              _InfoTile(
-                icon: Icons.cloud_off,
-                title: 'No pudimos cargar las tareas del vuelo',
-                subtitle:
-                    'Revisa tu conexión y desliza hacia abajo para intentar de nuevo.',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              assignment.route,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              assignment.aircraft,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const Divider(height: 28),
+            _summaryLine(
+              Icons.calendar_today_rounded,
+              'Fecha',
+              _compactCrewDate(assignment.date),
+            ),
+            _summaryLine(
+              Icons.schedule_rounded,
+              'Reporte',
+              assignment.showTime,
+            ),
+            _summaryLine(
+              Icons.groups_rounded,
+              'Pasajeros',
+              '${assignment.passengers}',
+            ),
+            if (assignment.origin.isNotEmpty)
+              _summaryLine(
+                Icons.flight_takeoff_rounded,
+                'Salida',
+                assignment.origin,
               ),
-            if (_workflow.isNotEmpty) ...[
-              _flightSummaryCard(),
-              const SizedBox(height: 16),
-              Text(
-                '¿Qué debes hacer ahora?',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            if (assignment.destination.isNotEmpty)
+              _summaryLine(
+                Icons.flight_land_rounded,
+                'Llegada',
+                assignment.destination,
               ),
-              const SizedBox(height: 10),
-              if (actions.isEmpty)
-                const _InfoTile(
-                  icon: Icons.task_alt_rounded,
-                  title: 'No tienes acciones pendientes',
-                  subtitle:
-                      'El siguiente paso aparecerá aquí cuando esté disponible.',
+            _summaryLine(Icons.verified_rounded, 'Estado', assignment.status),
+            if (assignment.code.trim().isNotEmpty && assignment.code != 'OPS')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Folio: ${assignment.code}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
-              ...actions.map(
-                (action) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : () => _runAction(action),
-                    icon: Icon(_friendlyActionIcon(action)),
-                    label: Text(_friendlyActionLabel(action)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryLine(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: const Color(0xFF385A72)),
+          const SizedBox(width: 10),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Expanded(child: Text(value, textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepper() {
+    final steps = _flow.steps;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children:
+            steps.map((step) {
+              final selected = step.id == _currentStepId;
+              final color = switch (step.status) {
+                'completed' => const Color(0xFF16845B),
+                'current' => const Color(0xFFB7791F),
+                'blocked' => const Color(0xFFBFC7D1),
+                _ => const Color(0xFF385A72),
+              };
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  selected: selected,
+                  label: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(step.label),
+                      Text(
+                        step.status == 'completed'
+                            ? 'Completado'
+                            : step.status == 'current'
+                            ? 'Activo'
+                            : step.status == 'blocked'
+                            ? 'Bloqueado'
+                            : 'Pendiente',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ],
                   ),
+                  onSelected:
+                      step.available
+                          ? (_) => setState(() => _selectedStepId = step.id)
+                          : null,
+                  selectedColor: color.withValues(alpha: 0.16),
+                  side: BorderSide(color: color),
                 ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+
+  Widget _primaryActionBanner() {
+    final action = _flow.primaryAction;
+    final primaryActionId = 'primary:${action.kind}:${action.cta}';
+    final primaryBusy = _isBusyAction(primaryActionId);
+    final incidentBusy = _isBusyAction('primary:incident');
+    Future<void> Function()? onPressed;
+    switch (action.kind) {
+      case 'confirm_assignment':
+        onPressed = () => _confirmAssignment(actionId: primaryActionId);
+        break;
+      case 'workflow_action':
+        if (action.action != null) {
+          onPressed =
+              () => _runAction(action.action!, actionId: primaryActionId);
+        }
+        break;
+      case 'submit_report':
+        onPressed = () => _showReport(actionId: primaryActionId);
+        break;
+      case 'open_checklist':
+        onPressed = () => _focusStepSection('checklist');
+        break;
+      case 'open_tracking':
+        onPressed = () => _focusStepSection('tracking');
+        break;
+      case 'open_closure':
+        onPressed = () => _focusStepSection('closure');
+        break;
+    }
+    return Card(
+      key: _primaryActionKey,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Acción principal',
+              style: TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Tareas de tu vuelo',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              if (checklists.isEmpty)
-                const _InfoTile(
-                  icon: Icons.lock_clock_rounded,
-                  title: 'Aún no hay tareas disponibles',
-                  subtitle: 'Las tareas aparecerán conforme avance tu vuelo.',
-                ),
-              ...checklists.map(_checklistCard),
-              if (tracking.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Tu progreso',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 3),
-                  child: Text('Seguimiento del vuelo'),
-                ),
-                const SizedBox(height: 6),
-                ...tracking.map(
-                  (event) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(
-                      Icons.check_circle_rounded,
-                      color: Color(0xFF16845B),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              action.title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 6),
+            Text(action.detail),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (action.cta.isNotEmpty)
+                  FilledButton.icon(
+                    onPressed: _saving ? null : onPressed,
+                    icon: _buttonIcon(
+                      Icons.arrow_forward_rounded,
+                      busy: primaryBusy,
                     ),
-                    title: Text(_friendlyEventTitle(event)),
-                    subtitle:
-                        '${event['created_at'] ?? ''}'.trim().isEmpty
-                            ? null
-                            : Text('${event['created_at']}'),
+                    label: Text(
+                      _buttonLabel(
+                        action.cta,
+                        busy: primaryBusy,
+                        busyLabel: 'Procesando...',
+                      ),
+                    ),
+                  ),
+                OutlinedButton.icon(
+                  onPressed:
+                      _saving
+                          ? null
+                          : () =>
+                              _showIncidentDialog(actionId: 'primary:incident'),
+                  icon: _buttonIcon(
+                    Icons.warning_amber_rounded,
+                    busy: incidentBusy,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  label: Text(
+                    _buttonLabel('Reportar incidencia', busy: incidentBusy),
                   ),
                 ),
               ],
-              if (_workflow['final_report'] is Map) ...[
-                const SizedBox(height: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _validationStep() {
+    final confirmBusy = _isBusyAction('validation:confirm');
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Paso 1 · Validar vuelo',
+              style: TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Confirma que recibiste y puedes realizar esta asignación.',
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _factPill('Ruta', widget.assignment.route),
+                _factPill('Fecha', _compactCrewDate(widget.assignment.date)),
+                _factPill('Reporte', widget.assignment.showTime),
+                _factPill('Aeronave', widget.assignment.aircraft),
+                _factPill('Pasajeros', '${widget.assignment.passengers} pax'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!_flow.assignmentConfirmed)
+              FilledButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () =>
+                            _confirmAssignment(actionId: 'validation:confirm'),
+                icon: _buttonIcon(
+                  Icons.check_circle_outline_rounded,
+                  busy: confirmBusy,
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Confirmar vuelo',
+                    busy: confirmBusy,
+                    busyLabel: 'Confirmando...',
+                  ),
+                ),
+              )
+            else
+              const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF16845B),
+                ),
+                title: Text('Vuelo confirmado'),
+                subtitle: Text('La asignación ya está validada.'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _factPill(String label, String value) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 140),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE1E7ED)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  Widget _checklistStep({
+    required String eyebrow,
+    required String title,
+    required Map<String, dynamic>? checklist,
+    required _ChecklistSummary summary,
+    String? footer,
+    Widget? footerAction,
+  }) {
+    if (checklist == null) {
+      return const _InfoTile(
+        icon: Icons.lock_clock_rounded,
+        title: 'Aún no hay checklist disponible',
+        subtitle: 'Esta fase se habilitará conforme avance la operación.',
+      );
+    }
+
+    final progress =
+        summary.total == 0 ? 0.0 : summary.resolved / summary.total;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              eyebrow,
+              style: const TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 9,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('${(progress * 100).round()}%'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('${summary.resolved} de ${summary.total} completados'),
+            if (summary.total == 0) ...[
+              const SizedBox(height: 16),
+              const _InfoTile(
+                icon: Icons.playlist_remove_rounded,
+                title: 'Checklist sin elementos configurados.',
+                subtitle:
+                    'Esta fase sigue pendiente hasta que backend entregue elementos reales.',
+              ),
+            ],
+            const SizedBox(height: 16),
+            ..._groupedChecklist(checklist).map(
+              (group) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _checklistGroupCard(checklist, group.key, group.value),
+              ),
+            ),
+            if (footer != null || footerAction != null) ...[
+              const SizedBox(height: 14),
+              if (footer != null)
                 Text(
-                  'Cierre del vuelo',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  footer,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _showReport,
-                  icon: const Icon(Icons.description_rounded),
-                  label: const Text('Consultar reporte final'),
-                ),
+              if (footerAction != null) ...[
+                const SizedBox(height: 10),
+                footerAction,
               ],
             ],
           ],
@@ -799,27 +1740,83 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     );
   }
 
-  Widget _checklistCard(Map<String, dynamic> checklist) {
-    final items = _list(checklist['items']);
-    final completed =
-        items
-            .where(
-              (item) =>
-                  ['completed', 'not_applicable'].contains(item['status']),
-            )
-            .length;
-    return Card(
-      child: ExpansionTile(
-        title: Text(
-          _friendlyChecklistTitle('${checklist['type'] ?? ''}'),
-          style: const TextStyle(fontWeight: FontWeight.w900),
+  Widget _checklistGroupCard(
+    Map<String, dynamic> checklist,
+    String label,
+    List<Map<String, dynamic>> items,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final checklistType = '${checklist['type'] ?? ''}';
+    final isExpanded = _isChecklistGroupExpanded(checklistType, label);
+    final handled = items.where(_isChecklistHandled).length;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color:
+              isExpanded
+                  ? scheme.primary.withValues(alpha: 0.22)
+                  : scheme.outlineVariant,
         ),
-        subtitle: Text('$completed de ${items.length} tareas completadas'),
-        children:
-            items.map((item) {
-              final evidence = _list(item['evidence_files']);
-              return _checklistItemCard(checklist, item, evidence);
-            }).toList(),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _toggleChecklistGroup(checklistType, label),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$handled/${items.length} registrados',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                children:
+                    items
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _checklistItemCard(checklist, item),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -827,38 +1824,792 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   Widget _checklistItemCard(
     Map<String, dynamic> checklist,
     Map<String, dynamic> item,
-    List<Map<String, dynamic>> evidence,
   ) {
-    final completed = item['status'] == 'completed';
-    final failed = item['status'] == 'failed';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF7F9FB),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE1E7ED)),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final checklistType = '${checklist['type'] ?? ''}';
+    final isExpanded = _isChecklistItemExpanded(checklistType, item);
+    final status = _token(item['status']);
+    final title = '${item['label'] ?? item['code'] ?? 'Elemento'}';
+    final icon =
+        _isChecklistResolved(item)
+            ? Icons.check_circle_rounded
+            : status == 'failed'
+            ? Icons.error_rounded
+            : Icons.radio_button_unchecked_rounded;
+    final iconColor =
+        _isChecklistResolved(item)
+            ? Colors.green.shade700
+            : status == 'failed'
+            ? scheme.error
+            : scheme.onSurfaceVariant;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isExpanded
+                  ? scheme.primary.withValues(alpha: 0.34)
+                  : scheme.outlineVariant,
+          width: isExpanded ? 1.4 : 1,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        boxShadow:
+            isExpanded
+                ? [
+                  BoxShadow(
+                    color: scheme.shadow.withValues(alpha: 0.06),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+                : const [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _toggleChecklistItem(checklistType, item),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, color: iconColor, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _checklistStatusLabel(item),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.chevron_right_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                if (isExpanded) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Divider(
+                      height: 1,
+                      color: scheme.outlineVariant.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  _checklistDetailCard(checklist, item),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _checklistDetailCard(
+    Map<String, dynamic> checklist,
+    Map<String, dynamic> item,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final checklistType = '${checklist['type'] ?? ''}';
+    final itemId = '${item['id'] ?? ''}';
+    final evidence = _list(item['evidence_files']);
+    final failed = _token(item['status']) == 'failed';
+    final completeActionId = 'checklist:$checklistType:$itemId:completed';
+    final noApplyActionId = 'checklist:$checklistType:$itemId:not_applicable';
+    final failureActionId = 'failure:$checklistType:$itemId';
+    final noteActionId = 'note:$checklistType:$itemId';
+    final cameraActionId = 'evidence:$checklistType:$itemId:camera';
+    final galleryActionId = 'evidence:$checklistType:$itemId:gallery';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if ('${item['description'] ?? ''}'.trim().isNotEmpty) ...[
+          Text(
+            '${item['description']}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        Text(
+          '¿Todo está correcto?',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        if ('${item['notes'] ?? ''}'.trim().isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            'Nota',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${item['notes']}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _saveChecklistItem(
+                          checklist: checklist,
+                          item: item,
+                          status: 'completed',
+                          actionId: completeActionId,
+                        ),
+                icon: _buttonIcon(
+                  Icons.check_rounded,
+                  busy: _isBusyAction(completeActionId),
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Correcto',
+                    busy: _isBusyAction(completeActionId),
+                    busyLabel: 'Guardando...',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _saveChecklistItem(
+                          checklist: checklist,
+                          item: item,
+                          status: 'not_applicable',
+                          actionId: noApplyActionId,
+                        ),
+                icon: _buttonIcon(
+                  Icons.remove_rounded,
+                  busy: _isBusyAction(noApplyActionId),
+                  color: scheme.primary,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'No aplica',
+                    busy: _isBusyAction(noApplyActionId),
+                    busyLabel: 'Guardando...',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _reportChecklistFailure(
+                          checklist,
+                          item,
+                          actionId: failureActionId,
+                        ),
+                icon: _buttonIcon(
+                  Icons.warning_amber_rounded,
+                  busy: _isBusyAction(failureActionId),
+                  color: scheme.error,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  backgroundColor: scheme.errorContainer.withValues(
+                    alpha: 0.28,
+                  ),
+                  foregroundColor: scheme.error,
+                  side: BorderSide(color: scheme.error.withValues(alpha: 0.25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Reportar falla',
+                    busy: _isBusyAction(failureActionId),
+                    busyLabel: 'Guardando...',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () =>
+                            _editItem(checklist, item, actionId: noteActionId),
+                icon: _buttonIcon(
+                  failed ? Icons.edit_note_rounded : Icons.note_add_outlined,
+                  busy: _isBusyAction(noteActionId),
+                  color: const Color(0xFF9A6700),
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  backgroundColor: const Color(0xFFFFF4D6),
+                  foregroundColor: const Color(0xFF9A6700),
+                  side: const BorderSide(color: Color(0xFFE9CF7A)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    failed ? 'Editar nota' : 'Agregar nota',
+                    busy: _isBusyAction(noteActionId),
+                    busyLabel: 'Guardando...',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Evidencia',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _pickEvidence(
+                          checklist,
+                          item,
+                          ImageSource.camera,
+                          actionId: cameraActionId,
+                        ),
+                icon: _buttonIcon(
+                  Icons.camera_alt_rounded,
+                  busy: _isBusyAction(cameraActionId),
+                  color: scheme.primary,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Tomar foto',
+                    busy: _isBusyAction(cameraActionId),
+                    busyLabel: 'Subiendo...',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _pickEvidence(
+                          checklist,
+                          item,
+                          ImageSource.gallery,
+                          actionId: galleryActionId,
+                        ),
+                icon: _buttonIcon(
+                  Icons.photo_library_rounded,
+                  busy: _isBusyAction(galleryActionId),
+                  color: scheme.primary,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Galería',
+                    busy: _isBusyAction(galleryActionId),
+                    busyLabel: 'Subiendo...',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (evidence.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Evidencias adjuntas',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Column(
+            children:
+                evidence.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final file = entry.value;
+                  final url = _evidenceUrl(file);
+                  final name =
+                      '${file['original_name'] ?? file['name'] ?? file['file_path'] ?? 'evidencia_${index + 1}'}';
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == evidence.length - 1 ? 0 : 8,
+                    ),
+                    child: InkWell(
+                      onTap:
+                          url.isEmpty
+                              ? null
+                              : () => _showSavedEvidence(url, file, name),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                color: scheme.surfaceContainerHigh,
+                                child:
+                                    url.isEmpty
+                                        ? const Icon(Icons.image_rounded)
+                                        : Image.network(
+                                          url,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (_, _, _) => const Icon(
+                                                Icons.broken_image_outlined,
+                                              ),
+                                        ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                name.split('/').last,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _trackingStep() {
+    final milestones = _flow.trackingMilestones;
+    final selected = milestones.firstWhere(
+      (item) => item.id == _selectedTrackingId,
+      orElse:
+          () =>
+              milestones.isEmpty
+                  ? const CrewOperationTrackingMilestone(
+                    id: '',
+                    label: '',
+                    detail: '',
+                    state: 'pending',
+                    timestamp: '',
+                    action: null,
+                  )
+                  : milestones.first,
+    );
+    final completed =
+        milestones.where((item) => item.state == 'completed').length;
+    final progress = milestones.isEmpty ? 0.0 : completed / milestones.length;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Paso 4 · Seguimiento',
+              style: TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Progreso de la operación',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 9,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('${(progress * 100).round()}%'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('$completed de ${milestones.length} eventos registrados'),
+            const SizedBox(height: 16),
+            ...milestones.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => setState(() => _selectedTrackingId = item.id),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color:
+                          item.id == selected.id
+                              ? const Color(0xFFEEF5FB)
+                              : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color:
+                            item.id == selected.id
+                                ? const Color(0xFF385A72)
+                                : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          item.state == 'completed'
+                              ? '✓'
+                              : item.state == 'current'
+                              ? '●'
+                              : '○',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.label,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.timestamp.isNotEmpty
+                                    ? item.timestamp
+                                    : item.state == 'current'
+                                    ? 'Siguiente acción'
+                                    : 'Pendiente',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (selected.id.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text(
+                selected.label,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              Text(selected.detail),
+              const SizedBox(height: 10),
+              if (selected.timestamp.isNotEmpty)
+                Text('Registrado: ${selected.timestamp}'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (selected.action != null)
+                    Builder(
+                      builder: (context) {
+                        final actionId = 'tracking:${selected.id}';
+                        final busy = _isBusyAction(actionId);
+                        return FilledButton.icon(
+                          onPressed:
+                              _saving
+                                  ? null
+                                  : () => _runAction(
+                                    selected.action!,
+                                    actionId: actionId,
+                                  ),
+                          icon: _buttonIcon(
+                            _friendlyActionIcon(selected.action!),
+                            busy: busy,
+                          ),
+                          label: Text(
+                            _buttonLabel(
+                              _friendlyActionLabel(selected.action!),
+                              busy: busy,
+                              busyLabel: 'Procesando...',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _saving
+                            ? null
+                            : () => _showIncidentDialog(
+                              actionId: 'tracking:incident',
+                            ),
+                    icon: _buttonIcon(
+                      Icons.warning_amber_rounded,
+                      busy: _isBusyAction('tracking:incident'),
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    label: Text(
+                      _buttonLabel(
+                        'Reportar incidencia',
+                        busy: _isBusyAction('tracking:incident'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _closureStep() {
+    final readyToClose =
+        _postflightChecklist != null &&
+        _postflightSummary.isComplete &&
+        _finalReport.isEmpty;
+    return _checklistStep(
+      eyebrow: 'Paso 5 · Checklist post-vuelo',
+      title: 'Cierre operativo',
+      checklist: _postflightChecklist,
+      summary: _postflightSummary,
+      footer:
+          readyToClose
+              ? 'Checklist completo. Ya puedes enviar el cierre final.'
+              : _finalReport.isNotEmpty
+              ? 'El reporte final ya fue enviado.'
+              : 'Completa el checklist post-vuelo para habilitar el cierre.',
+      footerAction:
+          readyToClose
+              ? FilledButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () => _showReport(actionId: 'closure:submit'),
+                icon: _buttonIcon(
+                  Icons.send_rounded,
+                  busy: _isBusyAction('closure:submit'),
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Finalizar operación',
+                    busy: _isBusyAction('closure:submit'),
+                    busyLabel: 'Enviando...',
+                  ),
+                ),
+              )
+              : _finalReport.isNotEmpty
+              ? OutlinedButton.icon(
+                onPressed: _showReport,
+                icon: const Icon(Icons.description_rounded),
+                label: const Text('Consultar reporte final'),
+              )
+              : null,
+    );
+  }
+
+  Widget _operationSummaryCard() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final workflowStatus = _token(_flow.workflowStatus);
+    final showClosureState =
+        workflowStatus == 'report pending' || _finalReport.isNotEmpty;
+
+    final items =
+        _flow.steps
+            .map(
+              (step) => _OperationChecklistState(
+                label: step.label,
+                status: step.status,
+              ),
+            )
+            .toList();
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Resumen de operación',
+              style: TextStyle(
+                color: Color(0xFFB7791F),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Icon(
+                        item.icon,
+                        color: item.color(scheme),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.label,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.statusLabel,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: item.color(scheme),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (showClosureState) ...[
+              const SizedBox(height: 4),
+              const Divider(),
+              const SizedBox(height: 8),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    completed
-                        ? Icons.check_circle_rounded
-                        : failed
-                        ? Icons.error_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    color:
-                        completed
-                            ? const Color(0xFF16845B)
-                            : failed
-                            ? Colors.red
-                            : Colors.grey,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(
+                      _finalReport.isNotEmpty
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color:
+                          _finalReport.isNotEmpty
+                              ? const Color(0xFF16845B)
+                              : scheme.onSurfaceVariant,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -866,149 +2617,248 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${item['label'] ?? item['code'] ?? 'Tarea'}',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          'Cierre de operación',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        if ('${item['description'] ?? ''}'.trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text('${item['description']}'),
+                        const SizedBox(height: 2),
+                        Text(
+                          _finalReport.isNotEmpty ? 'Completado' : 'Pendiente',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color:
+                                _finalReport.isNotEmpty
+                                    ? const Color(0xFF16845B)
+                                    : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
                           ),
-                        if ('${item['notes'] ?? ''}'.trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text('Nota: ${item['notes']}'),
-                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                completed
-                    ? 'Completado'
-                    : failed
-                    ? 'Requiere atención'
-                    : 'Pendiente',
-                style: TextStyle(
-                  color:
-                      completed
-                          ? const Color(0xFF16845B)
-                          : failed
-                          ? Colors.red
-                          : const Color(0xFF6B7280),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed:
-                        _saving ? null : () => _editItem(checklist, item),
-                    icon: const Icon(Icons.edit_note_rounded),
-                    label: Text(completed ? 'Editar tarea' : 'Completar tarea'),
-                  ),
-                  TextButton.icon(
-                    onPressed:
-                        _saving ? null : () => _editItem(checklist, item),
-                    icon: const Icon(Icons.note_add_outlined),
-                    label: const Text('Agregar nota'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Evidencia fotográfica',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed:
-                        _saving
-                            ? null
-                            : () => _pickEvidence(
-                              checklist,
-                              item,
-                              ImageSource.camera,
-                            ),
-                    icon: const Icon(Icons.camera_alt_rounded),
-                    label: const Text('Tomar foto'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _saving
-                            ? null
-                            : () => _pickEvidence(
-                              checklist,
-                              item,
-                              ImageSource.gallery,
-                            ),
-                    icon: const Icon(Icons.photo_library_rounded),
-                    label: const Text('Elegir de galería'),
-                  ),
-                ],
-              ),
-              if (evidence.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                const Text(
-                  'Fotos registradas',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 76,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: evidence.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final entry = evidence[index];
-                      final url = _evidenceUrl(entry);
-                      return InkWell(
-                        onTap:
-                            url.isEmpty
-                                ? null
-                                : () => _showSavedEvidence(
-                                  url,
-                                  entry,
-                                  '${item['label'] ?? 'Tarea del vuelo'}',
-                                ),
-                        borderRadius: BorderRadius.circular(12),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 76,
-                            color: const Color(0xFFE8EEF3),
-                            child:
-                                url.isEmpty
-                                    ? const Icon(Icons.image_rounded)
-                                    : Image.network(
-                                      url,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (_, _, _) => const Icon(
-                                            Icons.broken_image_outlined,
-                                          ),
-                                    ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _stepContent() {
+    switch (_currentStepId) {
+      case 'validation':
+        return _validationStep();
+      case 'preparation':
+        return _checklistStep(
+          eyebrow: 'Paso 2 · Preparación',
+          title: 'Preparación de cabina',
+          checklist: _preparationChecklist,
+          summary: _preparationSummary,
+          footer:
+              _preparationSummary.total == 0
+                  ? 'Checklist sin elementos configurados.'
+                  : !_preparationSummary.isComplete
+                  ? 'Faltan ${_preparationSummary.pending} elementos por resolver.'
+                  : 'Preparación completa. Ya puedes continuar con el checklist pre-vuelo.',
+        );
+      case 'checklist':
+        return _checklistStep(
+          eyebrow: 'Paso 3 · Checklist pre-vuelo',
+          title: 'Validación previa al abordaje',
+          checklist: _preflightChecklist,
+          summary: _preflightSummary,
+          footer:
+              _preflightSummary.total == 0
+                  ? 'Checklist sin elementos configurados.'
+                  : !_preflightSummary.isComplete
+                  ? 'Faltan ${_preflightSummary.pending} elementos por resolver.'
+                  : 'Checklist pre-vuelo completo. El seguimiento queda habilitado.',
+        );
+      case 'tracking':
+        return _trackingStep();
+      case 'closure':
+        return _closureStep();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mi vuelo')),
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_loading) const LinearProgressIndicator(),
+                if (_saving)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: LinearProgressIndicator(),
+                  ),
+                if (_loading && _workflow.isEmpty)
+                  const _InfoTile(
+                    icon: Icons.sync_rounded,
+                    title: 'Cargando checklist...',
+                    subtitle:
+                        'Estamos consultando el workflow operativo más reciente.',
+                  ),
+                if (_error.isNotEmpty && _workflow.isEmpty)
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _InfoTile(
+                            icon: Icons.cloud_off,
+                            title: 'No fue posible cargar el checklist.',
+                            subtitle:
+                                'Revisa tu conexión y vuelve a intentar para recuperar el workflow.',
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Reintentar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_workflow.isNotEmpty) ...[
+                  _flightSummaryCard(),
+                  const SizedBox(height: 16),
+                  _stepper(),
+                  const SizedBox(height: 16),
+                  KeyedSubtree(key: _stepContentKey, child: _stepContent()),
+                  const SizedBox(height: 16),
+                  _primaryActionBanner(),
+                  const SizedBox(height: 16),
+                  _operationSummaryCard(),
+                  if (_finalReport.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _showReport,
+                      icon: const Icon(Icons.description_rounded),
+                      label: const Text('Consultar reporte final'),
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+          if (_saving)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.04),
+                  ),
+                  child: const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Guardando cambios...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChecklistSummary {
+  const _ChecklistSummary({
+    required this.total,
+    required this.resolved,
+    required this.handled,
+    required this.pending,
+    required this.isComplete,
+  });
+
+  final int total;
+  final int resolved;
+  final int handled;
+  final int pending;
+  final bool isComplete;
+}
+
+class _OperationChecklistState {
+  const _OperationChecklistState({required this.label, required this.status});
+
+  final String label;
+  final String status;
+
+  String get statusLabel {
+    switch (status) {
+      case 'completed':
+        return 'Completado';
+      case 'current':
+        return 'Actual';
+      case 'blocked':
+        return 'Bloqueado';
+      case 'available':
+        return 'Disponible';
+      default:
+        return 'Pendiente';
+    }
+  }
+
+  IconData get icon {
+    switch (status) {
+      case 'completed':
+        return Icons.check_circle_rounded;
+      case 'current':
+        return Icons.trip_origin_rounded;
+      case 'blocked':
+        return Icons.radio_button_unchecked_rounded;
+      case 'available':
+        return Icons.radio_button_unchecked_rounded;
+      default:
+        return Icons.radio_button_unchecked_rounded;
+    }
+  }
+
+  Color color(ColorScheme scheme) {
+    switch (status) {
+      case 'completed':
+        return const Color(0xFF16845B);
+      case 'current':
+        return const Color(0xFFB7791F);
+      case 'blocked':
+        return scheme.onSurfaceVariant;
+      case 'available':
+        return scheme.primary;
+      default:
+        return scheme.onSurfaceVariant;
+    }
   }
 }

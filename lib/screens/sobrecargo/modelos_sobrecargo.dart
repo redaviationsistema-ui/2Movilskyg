@@ -406,40 +406,160 @@ class CrewMissionAction {
 
 class CrewIncident {
   CrewIncident({
+    required this.id,
     required this.title,
     required this.assignment,
     required this.status,
     required this.evidence,
+    String? category,
+    String? type,
+    String? evidenceUrl,
+    String? evidenceMimeType,
+    String? createdAt,
     this.description = '',
     this.priority = 'Media',
     this.comments = const [],
-  });
+  }) : _category = category,
+       _type = type,
+       _evidenceUrl = evidenceUrl,
+       _evidenceMimeType = evidenceMimeType,
+       _createdAt = createdAt;
 
+  final String id;
   final String title;
   final String assignment;
   String status;
   String evidence;
+  final String? _category;
+  final String? _type;
+  final String? _evidenceUrl;
+  final String? _evidenceMimeType;
+  final String? _createdAt;
   String description;
   String priority;
   List<String> comments;
 
+  String get category => _category ?? '';
+  String get type => _type ?? '';
+  String get evidenceUrl => _evidenceUrl ?? '';
+  String get evidenceMimeType => _evidenceMimeType ?? '';
+  String get createdAt => _createdAt ?? '';
+
   factory CrewIncident.fromJson(Map<String, dynamic> json) {
     final comments = json['comments'] ?? json['comentarios'] ?? json['notes'];
     final files = json['files'];
+    String readFileName(dynamic value) {
+      if (value is String) return value.trim();
+      if (value is! Map) return '';
+      return value['original_name']?.toString() ??
+          value['name']?.toString() ??
+          value['filename']?.toString() ??
+          value['file_name']?.toString() ??
+          value['file_path']?.toString() ??
+          value['path']?.toString() ??
+          value['url']?.toString() ??
+          value['public_url']?.toString() ??
+          value['src']?.toString() ??
+          '';
+    }
+
+    String readFileUrl(dynamic value) {
+      if (value is String) return value.trim();
+      if (value is! Map) return '';
+      return value['url']?.toString() ??
+          value['path']?.toString() ??
+          value['file_url']?.toString() ??
+          value['fileUrl']?.toString() ??
+          value['file_path']?.toString() ??
+          value['public_url']?.toString() ??
+          value['publicUrl']?.toString() ??
+          value['image_url']?.toString() ??
+          value['imageUrl']?.toString() ??
+          value['image']?.toString() ??
+          value['src']?.toString() ??
+          '';
+    }
+
+    final rawEvidence = json['evidence'];
+    final rawEvidenceUrl =
+        json['evidence_url'] ??
+        json['evidenceUrl'] ??
+        json['file_url'] ??
+        json['fileUrl'] ??
+        json['public_url'] ??
+        json['publicUrl'] ??
+        json['image_url'] ??
+        json['imageUrl'] ??
+        json['image'] ??
+        json['src'] ??
+        json['url'];
+    Map<String, dynamic>? firstFile;
+    String firstFileString = '';
+    if (files is List) {
+      for (final item in files) {
+        if (item is Map) {
+          firstFile = item.cast<String, dynamic>();
+          break;
+        }
+        if (item is String && item.trim().isNotEmpty) {
+          firstFileString = item.trim();
+          break;
+        }
+      }
+    }
     final evidenceFromFiles =
         files is List
             ? files
-                .whereType<Map>()
-                .map(
-                  (item) =>
-                      item['original_name']?.toString() ??
-                      item['file_path']?.toString() ??
-                      '',
-                )
+                .map(readFileName)
                 .where((item) => item.trim().isNotEmpty)
                 .join(', ')
             : '';
+    final evidenceName =
+        firstFile != null ? readFileName(firstFile) : firstFileString;
+    final evidenceUrl =
+        firstFile != null ? readFileUrl(firstFile) : firstFileString;
+    final evidenceMimeType =
+        firstFile != null
+            ? firstFile['file_type']?.toString() ??
+                firstFile['mime_type']?.toString() ??
+                ''
+            : '';
+    final fallbackEvidenceMimeType =
+        rawEvidence is List
+            ? rawEvidence
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      item['file_type']?.toString() ??
+                      item['mime_type']?.toString() ??
+                      '',
+                )
+                .firstWhere((item) => item.isNotEmpty, orElse: () => '')
+            : rawEvidence is Map
+            ? rawEvidence['file_type']?.toString() ??
+                rawEvidence['mime_type']?.toString() ??
+                ''
+            : '';
+    final fallbackEvidenceName =
+        rawEvidence is List
+            ? rawEvidence
+                .map(readFileName)
+                .firstWhere((item) => item.isNotEmpty, orElse: () => '')
+            : readFileName(rawEvidence);
+    final fallbackEvidenceUrl =
+        rawEvidence is List
+            ? rawEvidence
+                .map(readFileUrl)
+                .firstWhere((item) => item.isNotEmpty, orElse: () => '')
+            : readFileUrl(rawEvidence).trim().isNotEmpty
+            ? readFileUrl(rawEvidence)
+            : rawEvidenceUrl?.toString() ?? '';
     return CrewIncident(
+      id:
+          json['id']?.toString() ??
+          json['incident_id']?.toString() ??
+          json['timeline_id']?.toString() ??
+          '',
       title:
           json['title']?.toString() ??
           json['category']?.toString() ??
@@ -456,7 +576,25 @@ class CrewIncident {
       evidence:
           evidenceFromFiles.isNotEmpty
               ? evidenceFromFiles
-              : json['evidence']?.toString() ?? 'Sin evidencia',
+              : evidenceName.trim().isNotEmpty
+              ? evidenceName
+              : fallbackEvidenceName.trim().isNotEmpty
+              ? fallbackEvidenceName
+              : 'Sin evidencia',
+      category:
+          json['category']?.toString() ?? json['categoria']?.toString() ?? '',
+      type: json['type']?.toString() ?? json['phase']?.toString() ?? '',
+      evidenceUrl:
+          evidenceUrl.trim().isNotEmpty ? evidenceUrl : fallbackEvidenceUrl,
+      evidenceMimeType:
+          evidenceMimeType.trim().isNotEmpty
+              ? evidenceMimeType
+              : fallbackEvidenceMimeType,
+      createdAt:
+          json['created_at']?.toString() ??
+          json['createdAt']?.toString() ??
+          json['fecha_creacion']?.toString() ??
+          '',
       description:
           json['description']?.toString() ??
           json['comment']?.toString() ??

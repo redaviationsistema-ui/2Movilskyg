@@ -73,31 +73,26 @@ class _CrewCompactHomeView extends StatelessWidget {
       );
     }
 
-    final workflowChecklists = _asList(workflow['checklists']);
-    final workflowItems =
-        workflowChecklists
-            .expand((checklist) => _asList(checklist['items']))
-            .toList();
-    final completedItems =
-        workflowItems
-            .where(
-              (item) =>
-                  item['status'] == 'completed' ||
-                  item['status'] == 'not_applicable',
-            )
-            .length;
+    final hasWorkflow = workflow.isNotEmpty;
+    final flow = CrewOperationFlowSnapshot.fromPayload(
+      workflow: workflow,
+      canRespondToAssignment: operation.canRespondToAssignment,
+    );
+    final totalChecklistItems =
+        flow.preparationSummary.total +
+        flow.preflightSummary.total +
+        flow.postflightSummary.total;
+    final resolvedChecklistItems =
+        flow.preparationSummary.resolved +
+        flow.preflightSummary.resolved +
+        flow.postflightSummary.resolved;
     final progress =
-        workflowItems.isEmpty
-            ? operation.persistedChecklistProgress
-            : ((completedItems / workflowItems.length) * 100).round();
-    final allowedActions = _asList(workflow['allowed_actions']);
-    final backendLabel =
-        allowedActions.isEmpty
-            ? ''
-            : '${allowedActions.first['label'] ?? ''}'.trim();
+        hasWorkflow && totalChecklistItems > 0
+            ? ((resolvedChecklistItems / totalChecklistItems) * 100).round()
+            : operation.persistedChecklistProgress;
     final cta =
-        backendLabel.isNotEmpty
-            ? _friendlyHomeAction(backendLabel)
+        hasWorkflow
+            ? _friendlyHomeWorkflowAction(flow.primaryAction)
             : operation.canRespondToAssignment
             ? 'Confirmar mi vuelo'
             : progress < 100
@@ -155,24 +150,42 @@ class _CrewCompactHomeView extends StatelessWidget {
   }
 }
 
-String _friendlyHomeAction(String label) {
-  final value = label.toLowerCase().replaceAll('_', ' ');
-  if (value.contains('checkin') || value.contains('check-in')) {
-    return 'Confirmar llegada';
+String _friendlyHomeWorkflowAction(CrewOperationPrimaryAction action) {
+  switch (action.kind) {
+    case 'confirm_assignment':
+      return 'Confirmar mi vuelo';
+    case 'open_checklist':
+      return 'Completar checklist pre-vuelo';
+    case 'open_tracking':
+      return 'Abrir seguimiento';
+    case 'open_closure':
+      return 'Completar checklist post-vuelo';
+    case 'submit_report':
+      return 'Enviar reporte final';
+    case 'workflow_action':
+      final value = action.cta.toLowerCase().replaceAll('_', ' ');
+      if (value.contains('llegada') || value.contains('check in')) {
+        return 'Confirmar llegada';
+      }
+      if (value.contains('prepar') || value.contains('cabina')) {
+        return 'Preparar cabina';
+      }
+      if (value.contains('pasaj')) {
+        return 'Recibir pasajeros';
+      }
+      if (value.contains('despeg')) {
+        return 'Registrar despegue';
+      }
+      if (value.contains('aterriz')) {
+        return 'Registrar aterrizaje';
+      }
+      if (value.contains('desembar')) {
+        return 'Registrar desembarque';
+      }
+      return action.cta.isEmpty ? 'Ver mi vuelo' : action.cta;
+    default:
+      return 'Ver mi vuelo';
   }
-  if (value.contains('cabin') || value.contains('cabina')) {
-    return 'Preparar cabina';
-  }
-  if (value.contains('passenger') || value.contains('pasaj')) {
-    return 'Recibir pasajeros';
-  }
-  if (value.contains('report') || value.contains('reporte')) {
-    return 'Enviar reporte final';
-  }
-  if (value.contains('photo') || value.contains('foto')) {
-    return 'Registrar fotografías';
-  }
-  return 'Ver mi vuelo';
 }
 
 String _compactCrewDate(DateTime value) {
@@ -4593,65 +4606,83 @@ class _IncidentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = _incidentDisplayTitle(incident);
+    final statusLabel = _incidentStatusLabel(incident.status);
+    final priorityLabel = _incidentPriorityLabel(incident.priority);
+    final evidenceLabel = _incidentEvidenceLabel(incident);
+    final hasEvidence = evidenceLabel.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: _panelDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
-                  incident.title,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F223A),
+                    height: 1.1,
+                  ),
                 ),
               ),
-              _StatusPill(incident.status),
+              const SizedBox(width: 12),
+              _IncidentBadge.status(
+                status: incident.status,
+                label: statusLabel,
+              ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            '${incident.assignment} | Prioridad ${incident.priority} | ${incident.evidence}',
-            style: const TextStyle(color: Color(0xFF5F6975)),
+          _IncidentBadge.priority(
+            priority: incident.priority,
+            label: priorityLabel,
           ),
+          const SizedBox(height: 10),
           if (incident.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(incident.description),
+            Text(
+              incident.description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF4D5B6A),
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (hasEvidence) ...[
+            _IncidentEvidenceRow(incident: incident),
+            const SizedBox(height: 12),
           ],
           if (incident.comments.isNotEmpty) ...[
-            const SizedBox(height: 10),
             ...incident.comments
                 .take(2)
                 .map(
                   (comment) => Text(
                     'Comentario: $comment',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF344054),
+                    ),
                   ),
                 ),
+            const SizedBox(height: 12),
           ],
-          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed:
-                  () => showDialog<void>(
-                    context: context,
-                    builder:
-                        (context) => AlertDialog(
-                          title: Text(incident.title),
-                          content: Text(
-                            '${incident.assignment}\nPrioridad: ${incident.priority}\nEstado: ${incident.status}\n\n${incident.description}',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cerrar'),
-                            ),
-                          ],
-                        ),
-                  ),
+              onPressed: () => _showIncidentDetailModal(context, incident),
               icon: const Icon(Icons.visibility_rounded),
               label: const Text('Ver detalle'),
             ),
@@ -4659,5 +4690,634 @@ class _IncidentTile extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _incidentDisplayTitle(CrewIncident incident) {
+  final raw = [
+    incident.title,
+    incident.category,
+    incident.type,
+  ].firstWhere((item) => item.trim().isNotEmpty, orElse: () => 'Incidencia');
+  final normalized = raw.trim();
+  if (normalized.toLowerCase().contains('cabina')) return 'Cabina';
+  return normalized[0].toUpperCase() + normalized.substring(1);
+}
+
+String _incidentStatusLabel(String status) {
+  final value = status.trim().toLowerCase();
+  if (value == 'open' || value.contains('abiert')) return 'Abierta';
+  if (value == 'closed' || value.contains('cerr')) return 'Cerrada';
+  if (value == 'resolved' || value.contains('resuelt')) return 'Resuelta';
+  if (value == 'pending' || value.contains('pend')) return 'Pendiente';
+  if (value.isEmpty) return 'Abierta';
+  return status.trim();
+}
+
+String _incidentPriorityLabel(String priority) {
+  final value = priority.trim().toLowerCase();
+  if (value == 'high' || value.contains('alta')) return 'Prioridad alta';
+  if (value == 'medium' || value.contains('media')) return 'Prioridad media';
+  if (value == 'low' || value.contains('baja')) return 'Prioridad baja';
+  return priority.trim().isEmpty ? 'Prioridad media' : priority.trim();
+}
+
+String _incidentOperationType(CrewIncident incident) {
+  final candidates = [incident.category, incident.type, incident.assignment];
+  for (final candidate in candidates) {
+    final value = candidate.trim();
+    if (value.isEmpty) continue;
+    if (value.toLowerCase() == 'operacion') return 'Operación';
+    if (value.toLowerCase() == 'operation') return 'Operación';
+    return value.replaceAll('Operacion', 'Operación');
+  }
+  return 'Operación';
+}
+
+String _incidentEvidenceLabel(CrewIncident incident) {
+  final evidence = incident.evidence.trim();
+  if (evidence.isEmpty || evidence.toLowerCase() == 'sin evidencia') return '';
+  if (evidence.contains(',')) {
+    return evidence
+        .split(',')
+        .map((item) => item.trim())
+        .firstWhere((item) => item.isNotEmpty, orElse: () => evidence);
+  }
+  return evidence;
+}
+
+bool _isImageEvidence(CrewIncident incident) {
+  final mimeType = incident.evidenceMimeType.trim().toLowerCase();
+  if (mimeType.startsWith('image/')) return true;
+
+  bool matchesImageExtension(String value) {
+    final raw = value.trim();
+    if (raw.isEmpty) return false;
+    final parsed = Uri.tryParse(raw);
+    final candidate =
+        parsed != null && parsed.path.isNotEmpty ? parsed.path : raw;
+    final lower = candidate.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif');
+  }
+
+  return matchesImageExtension(incident.evidenceUrl) ||
+      matchesImageExtension(_incidentEvidenceLabel(incident));
+}
+
+Future<void> _showIncidentDetailModal(
+  BuildContext context,
+  CrewIncident incident,
+) {
+  final media = MediaQuery.of(context);
+  final theme = Theme.of(context);
+  final statusLabel = _incidentStatusLabel(incident.status);
+  final priorityLabel = _incidentPriorityLabel(incident.priority);
+  final operationType = _incidentOperationType(incident);
+  final evidenceLabel = _incidentEvidenceLabel(incident);
+  final hasEvidence = evidenceLabel.isNotEmpty;
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    builder:
+        (dialogContext) => Dialog(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: media.size.width * 0.9,
+              maxHeight: media.size.height * 0.82,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDFEFF),
+                borderRadius: BorderRadius.circular(26),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Incidencia de cabina',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF10243E),
+                              fontSize: 24,
+                              height: 1.05,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          icon: const Icon(Icons.close_rounded),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF2F5F8),
+                            foregroundColor: const Color(0xFF10243E),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _IncidentBadge.priority(
+                          priority: incident.priority,
+                          label: priorityLabel,
+                        ),
+                        _IncidentBadge.status(
+                          status: incident.status,
+                          label: statusLabel,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Tipo de operación',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: const Color(0xFF24384D),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _IncidentInfoBlock(
+                      child: Text(
+                        operationType,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: const Color(0xFF10243E),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Descripción',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: const Color(0xFF24384D),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _IncidentInfoBlock(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        incident.description.trim().isEmpty
+                            ? 'Sin descripción disponible.'
+                            : incident.description.trim(),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF435567),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    if (hasEvidence) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Evidencia',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF24384D),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _IncidentEvidenceRow(incident: incident),
+                    ],
+                    if (!hasEvidence) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Sin evidencia adjunta',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF6B7886),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (incident.comments.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Comentarios',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF24384D),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _IncidentInfoBlock(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children:
+                              incident.comments
+                                  .take(2)
+                                  .map(
+                                    (comment) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Text(
+                                        comment,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: const Color(0xFF435567),
+                                              height: 1.35,
+                                            ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF10243E),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cerrar',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+  );
+}
+
+Future<void> _showIncidentEvidencePreview(
+  BuildContext context,
+  CrewIncident incident,
+) {
+  final url = resolveMediaUrl(incident.evidenceUrl);
+  final label = _incidentEvidenceLabel(incident);
+  final isImage = _isImageEvidence(incident);
+  if (url.isEmpty || !isImage) {
+    return showDialog<void>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Evidencia'),
+            content: Text(
+              label.isEmpty
+                  ? 'No hay una imagen disponible para esta evidencia.'
+                  : label,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+    );
+  }
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.55),
+    builder:
+        (dialogContext) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          backgroundColor: const Color(0xFFFDFEFF),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Evidencia',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF10243E),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(
+                      minHeight: 180,
+                      maxHeight: 400,
+                    ),
+                    color: const Color(0xFFF3F5F8),
+                    child: InteractiveViewer(
+                      child: Image.network(
+                        url,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const SizedBox(
+                            height: 220,
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                        errorBuilder:
+                            (context, error, stackTrace) => const SizedBox(
+                              height: 220,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.broken_image_outlined,
+                                      size: 42,
+                                      color: Color(0xFF6B7886),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text('No fue posible cargar la imagen'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  label.isEmpty ? 'Archivo adjunto' : label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF10243E),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF10243E),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cerrar',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+  );
+}
+
+Future<CrewIncident> _resolveIncidentForEvidence(CrewIncident incident) async {
+  if (incident.evidenceUrl.trim().isNotEmpty || incident.id.trim().isEmpty) {
+    return incident;
+  }
+  try {
+    final response = await ApiClient.instance.get(
+      '/crew-operation-incidents/${incident.id}',
+      authenticated: true,
+    );
+    final source = _asMap(response['incident'] ?? response['data'] ?? response);
+    if (source.isEmpty) return incident;
+    final resolved = CrewIncident.fromJson(source);
+    if (resolved.evidenceUrl.trim().isEmpty) return incident;
+    return resolved;
+  } catch (_) {
+    return incident;
+  }
+}
+
+class _IncidentBadge extends StatelessWidget {
+  const _IncidentBadge._({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.icon,
+  });
+
+  factory _IncidentBadge.priority({
+    required String priority,
+    required String label,
+  }) {
+    final value = priority.trim().toLowerCase();
+    if (value == 'high' || value.contains('alta')) {
+      return _IncidentBadge._(
+        label: '⚠ $label',
+        backgroundColor: Color(0xFFFFECE8),
+        foregroundColor: Color(0xFFC2412D),
+        icon: null,
+      );
+    }
+    if (value == 'low' || value.contains('baja')) {
+      return _IncidentBadge._(
+        label: '⚠ $label',
+        backgroundColor: Color(0xFFEFF4FB),
+        foregroundColor: Color(0xFF355B8C),
+        icon: null,
+      );
+    }
+    return _IncidentBadge._(
+      label: '⚠ $label',
+      backgroundColor: Color(0xFFFFF4DE),
+      foregroundColor: Color(0xFF9D6B10),
+      icon: null,
+    );
+  }
+
+  factory _IncidentBadge.status({
+    required String status,
+    required String label,
+  }) {
+    final value = status.trim().toLowerCase();
+    if (value == 'closed' || value.contains('cerr')) {
+      return _IncidentBadge._(
+        label: '● $label',
+        backgroundColor: const Color(0xFFF0F2F5),
+        foregroundColor: const Color(0xFF667085),
+        icon: null,
+      );
+    }
+    if (value == 'resolved' || value.contains('resuelt')) {
+      return _IncidentBadge._(
+        label: '● $label',
+        backgroundColor: const Color(0xFFE7F8EE),
+        foregroundColor: const Color(0xFF137A4B),
+        icon: null,
+      );
+    }
+    if (value == 'pending' || value.contains('pend')) {
+      return _IncidentBadge._(
+        label: '● $label',
+        backgroundColor: const Color(0xFFFFF4DE),
+        foregroundColor: const Color(0xFF9D6B10),
+        icon: null,
+      );
+    }
+    return _IncidentBadge._(
+      label: '● $label',
+      backgroundColor: const Color(0xFFEAF8EF),
+      foregroundColor: const Color(0xFF1F7A4F),
+      icon: null,
+    );
+  }
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: foregroundColor),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: foregroundColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IncidentInfoBlock extends StatelessWidget {
+  const _IncidentInfoBlock({
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+  });
+
+  final Widget child;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6F8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _IncidentEvidenceRow extends StatelessWidget {
+  const _IncidentEvidenceRow({required this.incident});
+
+  final CrewIncident incident;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _incidentEvidenceLabel(incident);
+    final resolvedUrl = resolveMediaUrl(incident.evidenceUrl);
+    final clickable = resolvedUrl.isNotEmpty || _isImageEvidence(incident);
+    final card = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6F8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(_evidenceIcon(label), color: const Color(0xFF435567), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF10243E),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (clickable)
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF7A8794)),
+        ],
+      ),
+    );
+    if (!clickable) return card;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final resolvedIncident = await _resolveIncidentForEvidence(incident);
+        if (!context.mounted) return;
+        await _showIncidentEvidencePreview(context, resolvedIncident);
+      },
+      child: card,
+    );
+  }
+
+  IconData _evidenceIcon(String value) {
+    final lower = value.toLowerCase();
+    if (lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif')) {
+      return Icons.image_outlined;
+    }
+    if (lower.endsWith('.pdf')) return Icons.picture_as_pdf_outlined;
+    return Icons.attach_file_rounded;
   }
 }
