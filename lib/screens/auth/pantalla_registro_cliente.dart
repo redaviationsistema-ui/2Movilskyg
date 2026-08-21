@@ -89,12 +89,52 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       vsync: this,
       duration: const Duration(milliseconds: 6200),
     )..repeat();
+    for (final controller in [
+      _nameController,
+      _emailController,
+      _phoneController,
+      _birthDateController,
+      _nationalityController,
+      _baseController,
+      _documentTypeController,
+      _documentNumberController,
+      _documentIssueDateController,
+      _documentExpirationController,
+      _documentStatusController,
+      _ineCurpController,
+      _ineCicController,
+      _ineOcrController,
+      _passwordController,
+      _passwordConfirmationController,
+    ]) {
+      controller.addListener(_refreshStepProgress);
+    }
     _recoverLostPickerData();
   }
 
   @override
   void dispose() {
     _entryController.dispose();
+    for (final controller in [
+      _nameController,
+      _emailController,
+      _phoneController,
+      _birthDateController,
+      _nationalityController,
+      _baseController,
+      _documentTypeController,
+      _documentNumberController,
+      _documentIssueDateController,
+      _documentExpirationController,
+      _documentStatusController,
+      _ineCurpController,
+      _ineCicController,
+      _ineOcrController,
+      _passwordController,
+      _passwordConfirmationController,
+    ]) {
+      controller.removeListener(_refreshStepProgress);
+    }
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -112,6 +152,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     _passwordController.dispose();
     _passwordConfirmationController.dispose();
     super.dispose();
+  }
+
+  void _refreshStepProgress() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _pickIneFront() async {
@@ -840,6 +885,76 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     setState(() => _currentStep = 1);
   }
 
+  bool get _isPersonalDataReady =>
+      _nameController.text.trim().isNotEmpty &&
+      _phoneController.text.trim().isNotEmpty &&
+      _birthDateController.text.trim().isNotEmpty;
+
+  bool get _isAccessDataReady =>
+      _emailController.text.trim().isNotEmpty &&
+      _passwordController.text.length >= 8 &&
+      _passwordController.text == _passwordConfirmationController.text;
+
+  int get _premiumActiveStep {
+    if (_currentStep == 1) return 3;
+    if (_selfieHasFace) return 2;
+    if (_hasIdentityDocumentReady) return 1;
+    return 0;
+  }
+
+  bool _canOpenPremiumStep(int targetStep) {
+    switch (targetStep) {
+      case 0:
+        return true;
+      case 1:
+        return _isPersonalDataReady;
+      case 2:
+        return _isPersonalDataReady && _hasIdentityDocumentReady;
+      case 3:
+        return _isPersonalDataReady &&
+            _hasIdentityDocumentReady &&
+            _selfieHasFace;
+      default:
+        return false;
+    }
+  }
+
+  void _handlePremiumStepTap(int targetStep) {
+    if (!_canOpenPremiumStep(targetStep)) {
+      switch (targetStep) {
+        case 1:
+          _showMessage('Completa primero tus datos personales para continuar.');
+          break;
+        case 2:
+          _showMessage(
+            _hasIdentityDocumentReady
+                ? 'Completa tus datos personales antes de continuar.'
+                : _identityPromptMessage(),
+          );
+          break;
+        case 3:
+          _showMessage(
+            _selfieHasFace
+                ? 'Completa los datos requeridos antes de abrir Acceso.'
+                : 'Debes completar datos, documento y selfie antes de abrir Acceso.',
+          );
+          break;
+      }
+      return;
+    }
+
+    if (targetStep == 3) {
+      if (_formKey.currentState!.validate()) {
+        setState(() => _currentStep = 1);
+      }
+      return;
+    }
+
+    if (_currentStep != 0) {
+      setState(() => _currentStep = 0);
+    }
+  }
+
   void _generatePassword() {
     const alphabet =
         'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#\$%*';
@@ -955,7 +1070,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                             showIdentityBadge: isIdentityStep,
                           ),
                           const SizedBox(height: 18),
-                          _PremiumStepper(activeStep: isIdentityStep ? 0 : 3),
+                          _PremiumStepper(
+                            activeStep: _premiumActiveStep,
+                            onStepTap: _handlePremiumStepTap,
+                          ),
                           const SizedBox(height: 18),
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 260),
@@ -1235,18 +1353,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _RegisterChecklistItem(
         icon: Icons.person_rounded,
         label: 'Datos',
-        ready:
-            _nameController.text.trim().isNotEmpty &&
-            _phoneController.text.trim().isNotEmpty &&
-            _birthDateController.text.trim().isNotEmpty,
+        ready: _isPersonalDataReady,
       ),
       _RegisterChecklistItem(
         icon: Icons.lock_rounded,
         label: 'Acceso',
-        ready:
-            _emailController.text.trim().isNotEmpty &&
-            _passwordController.text.length >= 8 &&
-            _passwordController.text == _passwordConfirmationController.text,
+        ready: _isAccessDataReady,
       ),
     ];
   }
@@ -2167,9 +2279,10 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
 }
 
 class _PremiumStepper extends StatelessWidget {
-  const _PremiumStepper({required this.activeStep});
+  const _PremiumStepper({required this.activeStep, required this.onStepTap});
 
   final int activeStep;
+  final ValueChanged<int> onStepTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2205,47 +2318,58 @@ class _PremiumStepper extends StatelessWidget {
           final isActive = stepIndex == activeStep;
           final isDone = stepIndex < activeStep;
           final step = steps[stepIndex];
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color:
-                      isActive
-                          ? const Color(0x1AD8B15D)
-                          : Colors.white.withValues(alpha: .02),
-                  border: Border.all(
-                    color:
-                        isActive || isDone
-                            ? const Color(0xFFD8B15D)
-                            : const Color(0x2CFFFFFF),
-                  ),
-                ),
-                child: Icon(
-                  isDone ? Icons.check_rounded : step.$2,
-                  color:
-                      isActive || isDone
-                          ? const Color(0xFFD8B15D)
-                          : const Color(0x7DFFFFFF),
-                  size: 22,
+          return Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => onStepTap(stepIndex),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            isActive
+                                ? const Color(0x1AD8B15D)
+                                : Colors.white.withValues(alpha: .02),
+                        border: Border.all(
+                          color:
+                              isActive || isDone
+                                  ? const Color(0xFFD8B15D)
+                                  : const Color(0x2CFFFFFF),
+                        ),
+                      ),
+                      child: Icon(
+                        isDone ? Icons.check_rounded : step.$2,
+                        color:
+                            isActive || isDone
+                                ? const Color(0xFFD8B15D)
+                                : const Color(0x7DFFFFFF),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      step.$1,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color:
+                            isActive
+                                ? const Color(0xFFF3D38A)
+                                : const Color(0x95FFFFFF),
+                        fontSize: 13,
+                        fontWeight:
+                            isActive ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                step.$1,
-                style: TextStyle(
-                  color:
-                      isActive
-                          ? const Color(0xFFF3D38A)
-                          : const Color(0x95FFFFFF),
-                  fontSize: 13,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
+            ),
           );
         }),
       ),
