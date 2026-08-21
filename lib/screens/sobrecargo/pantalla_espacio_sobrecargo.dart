@@ -148,10 +148,12 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     'blockType': '',
     'reason': '',
   };
+  CrewPortalTab _currentTab = CrewPortalTab.dashboard;
 
   @override
   void initState() {
     super.initState();
+    _currentTab = widget.initialTab;
     WidgetsBinding.instance.addObserver(this);
     _refreshPortal();
     unawaited(_connectLiveAssignments());
@@ -173,6 +175,14 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_refreshPortal());
+  }
+
+  @override
+  void didUpdateWidget(covariant CrewPortalScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _currentTab = widget.initialTab;
+    }
   }
 
   Future<void> _loadPortal({bool silent = false}) async {
@@ -486,7 +496,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         }
       });
     } catch (_) {
-      if (mounted && widget.initialTab == CrewPortalTab.availability) {
+      if (mounted && _currentTab == CrewPortalTab.availability) {
         _showSyncMessage('No se pudo cargar la disponibilidad del servidor.');
       }
     } finally {
@@ -665,13 +675,13 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       child: RoleDashboardScaffold(
         title: _title,
         subtitle:
-            widget.initialTab == CrewPortalTab.dashboard
+            _currentTab == CrewPortalTab.dashboard
                 ? 'Tu estado y siguiente acción.'
-                : widget.initialTab == CrewPortalTab.missions
+                : _currentTab == CrewPortalTab.missions
                 ? 'Aquí puedes preparar, atender y finalizar tu operación.'
-                : widget.initialTab == CrewPortalTab.availability
+                : _currentTab == CrewPortalTab.availability
                 ? 'Indica qué días puedes trabajar.'
-                : widget.initialTab == CrewPortalTab.account
+                : _currentTab == CrewPortalTab.account
                 ? 'Perfil, documentos y preferencias.'
                 : 'Información operativa.',
         roleLabel: 'Sobrecargo',
@@ -696,7 +706,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   String get _title {
-    switch (widget.initialTab) {
+    switch (_currentTab) {
       case CrewPortalTab.dashboard:
         return 'Inicio';
       case CrewPortalTab.missions:
@@ -725,7 +735,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Widget _bodyForTab() {
-    switch (widget.initialTab) {
+    switch (_currentTab) {
       case CrewPortalTab.dashboard:
         return _CrewCompactHomeView(
           assignments: _assignments,
@@ -861,9 +871,29 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _openLocalTab(CrewPortalTab tab) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => CrewPortalScreen(initialTab: tab)),
-    );
+    final workspaceIndex = _workspaceIndexForTab(tab);
+    final shellScope = RoleWorkspaceShellScope.maybeOf(context);
+    if (workspaceIndex != null && shellScope != null) {
+      shellScope.selectIndex(workspaceIndex);
+      return;
+    }
+    if (_currentTab == tab) return;
+    setState(() => _currentTab = tab);
+  }
+
+  int? _workspaceIndexForTab(CrewPortalTab tab) {
+    switch (tab) {
+      case CrewPortalTab.dashboard:
+        return 0;
+      case CrewPortalTab.missions:
+        return 1;
+      case CrewPortalTab.availability:
+        return 2;
+      case CrewPortalTab.account:
+        return 3;
+      default:
+        return null;
+    }
   }
 
   Future<void> _loadActiveWorkflowForHome() async {

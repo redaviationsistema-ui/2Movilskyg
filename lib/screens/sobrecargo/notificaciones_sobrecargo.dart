@@ -113,11 +113,18 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: Text('${item['title'] ?? 'Notificación'}'),
-            content: Text('${item['message'] ?? ''}'),
+            title: Text(
+              '${item['title'] ?? 'Notificación'}',
+              style: const TextStyle(color: Colors.black),
+            ),
+            content: Text(
+              '${item['message'] ?? ''}',
+              style: const TextStyle(color: Colors.black),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(foregroundColor: Colors.black),
                 child: const Text('Cerrar'),
               ),
             ],
@@ -142,9 +149,12 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
             icon: Icons.cloud_off_rounded,
             title: 'No se pudieron cargar las notificaciones',
             subtitle: _error,
+            titleColor: Colors.black,
+            subtitleColor: Colors.black,
           ),
           FilledButton.icon(
             onPressed: _load,
+            style: FilledButton.styleFrom(foregroundColor: Colors.black),
             icon: const Icon(Icons.refresh),
             label: const Text('Reintentar'),
           ),
@@ -161,16 +171,21 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
                 '$_unread sin leer',
                 style: Theme.of(
                   context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black,
+                ),
               ),
             ),
             TextButton(
               onPressed: _unread == 0 ? null : _markAll,
+              style: TextButton.styleFrom(foregroundColor: Colors.black),
               child: const Text('Marcar todas'),
             ),
             IconButton(
               onPressed: _loading ? null : _load,
               tooltip: 'Refrescar',
+              color: Colors.black,
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
@@ -181,6 +196,8 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
             icon: Icons.notifications_none_rounded,
             title: 'Sin notificaciones',
             subtitle: 'Los avisos operativos aparecerán aquí.',
+            titleColor: Colors.black,
+            subtitleColor: Colors.black,
           )
         else
           ..._items.map((item) {
@@ -201,10 +218,14 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
                 ),
                 title: Text(
                   '${item['title'] ?? 'Notificación'}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
                 ),
                 subtitle: Text(
                   '${item['message'] ?? ''}${payload['level'] == null ? '' : '\nNivel: ${payload['level']}'}',
+                  style: const TextStyle(color: Colors.black),
                 ),
                 trailing:
                     unread

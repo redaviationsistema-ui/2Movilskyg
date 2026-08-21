@@ -44,6 +44,30 @@ class _CrewOperationViewState extends State<CrewOperationView> {
 
   bool _isBusyAction(String actionId) => _saving && _busyActionId == actionId;
 
+  Future<void> _handleOverflowAction(String action) async {
+    switch (action) {
+      case 'back':
+        if (mounted) Navigator.of(context).maybePop();
+        return;
+      case 'refresh':
+        await _load();
+        return;
+      case 'notifications':
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const CrewPortalScreen(
+              initialTab: CrewPortalTab.notifications,
+            ),
+          ),
+        );
+        return;
+      case 'report':
+        await _showReport(actionId: 'appbar:report');
+        return;
+    }
+  }
+
   Widget _buttonIcon(
     IconData icon, {
     required bool busy,
@@ -2687,7 +2711,51 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi vuelo')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: PopupMenuButton<String>(
+          tooltip: 'Abrir opciones',
+          icon: const Icon(Icons.more_vert_rounded),
+          onSelected: (value) => _handleOverflowAction(value),
+          itemBuilder:
+              (context) => [
+                const PopupMenuItem<String>(
+                  value: 'back',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.arrow_back_rounded),
+                    title: Text('Volver a Mi vuelo'),
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'refresh',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.refresh_rounded),
+                    title: Text('Refrescar'),
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'notifications',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.notifications_none_rounded),
+                    title: Text('Notificaciones'),
+                  ),
+                ),
+                if (_finalReport.isNotEmpty)
+                  const PopupMenuItem<String>(
+                    value: 'report',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.description_rounded),
+                      title: Text('Consultar reporte'),
+                    ),
+                  ),
+              ],
+        ),
+        title: const Text('Mi vuelo'),
+      ),
       body: Stack(
         children: [
           RefreshIndicator(

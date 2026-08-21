@@ -137,6 +137,9 @@ class _CrewCompactHomeView extends StatelessWidget {
                   height: 54,
                   child: FilledButton.icon(
                     onPressed: onOpenMissions,
+                    style: FilledButton.styleFrom(
+                      foregroundColor: Colors.white,
+                    ),
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: Text(cta),
                   ),
@@ -1328,7 +1331,7 @@ class _DarkMetricPill extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: Color(0xFF0E2338),
+          color: Colors.black,
           fontSize: compact ? 10 : 11,
           fontWeight: FontWeight.w500,
           decoration: TextDecoration.none,
@@ -1998,6 +2001,11 @@ class _MissionListState extends State<_MissionList> {
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => widget.onOpenOperation(selected),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: const Color(0xFF17324A),
+              side: const BorderSide(color: Color(0xFF17324A)),
+            ),
             icon: const Icon(Icons.route_rounded),
             label: const Text('Continuar con mi vuelo'),
           ),
@@ -2563,7 +2571,12 @@ class _MissionHero extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Flexible(child: _StatusPill(assignment.status)),
+                Flexible(
+                  child: _StatusPill(
+                    assignment.status,
+                    textColor: Colors.black,
+                  ),
+                ),
               ],
             ),
             SizedBox(height: compact ? 12 : 14),

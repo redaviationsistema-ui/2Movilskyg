@@ -3,6 +3,28 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/proveedor_autenticacion.dart';
 
+class RoleWorkspaceShellScope extends InheritedWidget {
+  const RoleWorkspaceShellScope({
+    super.key,
+    required super.child,
+    required this.openDrawer,
+    required this.selectIndex,
+  });
+
+  final VoidCallback openDrawer;
+  final ValueChanged<int> selectIndex;
+
+  static RoleWorkspaceShellScope? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<RoleWorkspaceShellScope>();
+  }
+
+  @override
+  bool updateShouldNotify(RoleWorkspaceShellScope oldWidget) {
+    return openDrawer != oldWidget.openDrawer ||
+        selectIndex != oldWidget.selectIndex;
+  }
+}
+
 class RoleWorkspaceItem {
   final String label;
   final String shortLabel;
@@ -70,82 +92,90 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
                 onSelect: _selectIndex,
                 onLogout: auth.signOut,
               ),
-      body: SafeArea(
-        child:
-            isWide
-                ? Row(
-                  children: [
-                    _WorkspaceSidebar(
-                      branchLabel: widget.branchLabel,
-                      roleLabel: widget.roleLabel,
-                      title: widget.title,
-                      userEmail: userEmail,
-                      items: widget.items,
-                      selectedIndex: _selectedIndex,
-                      onSelect: _selectIndex,
-                      onLogout: auth.signOut,
-                    ),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) {
-                          final slide = Tween<Offset>(
-                            begin: const Offset(0.03, 0),
-                            end: Offset.zero,
-                          ).animate(animation);
+      body: Builder(
+        builder: (scaffoldContext) {
+          return RoleWorkspaceShellScope(
+            openDrawer: () => Scaffold.of(scaffoldContext).openDrawer(),
+            selectIndex: _selectIndex,
+            child: SafeArea(
+              child:
+                  isWide
+                      ? Row(
+                        children: [
+                          _WorkspaceSidebar(
+                            branchLabel: widget.branchLabel,
+                            roleLabel: widget.roleLabel,
+                            title: widget.title,
+                            userEmail: userEmail,
+                            items: widget.items,
+                            selectedIndex: _selectedIndex,
+                            onSelect: _selectIndex,
+                            onLogout: auth.signOut,
+                          ),
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 280),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              transitionBuilder: (child, animation) {
+                                final slide = Tween<Offset>(
+                                  begin: const Offset(0.03, 0),
+                                  end: Offset.zero,
+                                ).animate(animation);
 
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: slide,
-                              child: child,
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: slide,
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: KeyedSubtree(
+                                key: ValueKey(currentItem.label),
+                                child: currentItem.screen,
+                              ),
                             ),
-                          );
-                        },
-                        child: KeyedSubtree(
-                          key: ValueKey(currentItem.label),
-                          child: currentItem.screen,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-                : Column(
-                  children: [
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) {
-                          final slide = Tween<Offset>(
-                            begin: const Offset(0, 0.02),
-                            end: Offset.zero,
-                          ).animate(animation);
+                          ),
+                        ],
+                      )
+                      : Column(
+                        children: [
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 260),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              transitionBuilder: (child, animation) {
+                                final slide = Tween<Offset>(
+                                  begin: const Offset(0, 0.02),
+                                  end: Offset.zero,
+                                ).animate(animation);
 
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: slide,
-                              child: child,
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: slide,
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: KeyedSubtree(
+                                key: ValueKey(currentItem.label),
+                                child: currentItem.screen,
+                              ),
                             ),
-                          );
-                        },
-                        child: KeyedSubtree(
-                          key: ValueKey(currentItem.label),
-                          child: currentItem.screen,
-                        ),
+                          ),
+                          _WorkspaceBottomNav(
+                            items: widget.items,
+                            selectedIndex: _selectedIndex,
+                            onSelect: _selectIndex,
+                          ),
+                        ],
                       ),
-                    ),
-                    _WorkspaceBottomNav(
-                      items: widget.items,
-                      selectedIndex: _selectedIndex,
-                      onSelect: _selectIndex,
-                    ),
-                  ],
-                ),
+            ),
+          );
+        },
       ),
     );
   }

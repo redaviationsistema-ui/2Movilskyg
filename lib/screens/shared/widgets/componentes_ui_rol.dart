@@ -5,6 +5,7 @@ import '../../../models/modelos_mercado.dart';
 import '../../../models/modelos_flujo_trabajo.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../../../providers/proveedor_flujo_trabajo.dart';
+import 'contenedor_espacio_rol.dart';
 import 'hoja_crud_flujo_trabajo.dart';
 
 class RoleDashboardScaffold extends StatelessWidget {
@@ -96,11 +97,26 @@ class _HeaderCard extends StatelessWidget {
   final RoleDashboardPalette palette;
   final Widget? action;
 
+  void _openWorkspaceDrawer(BuildContext context) {
+    final shellScope = RoleWorkspaceShellScope.maybeOf(context);
+    if (shellScope != null) {
+      shellScope.openDrawer();
+      return;
+    }
+
+    final scaffoldState = context.findAncestorStateOfType<ScaffoldState>();
+    if (scaffoldState?.hasDrawer ?? false) {
+      scaffoldState?.openDrawer();
+      return;
+    }
+
+    Scaffold.maybeOf(context)?.openDrawer();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 960;
     final isCompact = MediaQuery.of(context).size.width < 420;
-    final scaffold = Scaffold.maybeOf(context);
 
     return Container(
       padding: EdgeInsets.all(isCompact ? 16 : 22),
@@ -126,6 +142,28 @@ class _HeaderCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (!isWide)
+                Builder(
+                  builder:
+                      (buttonContext) => SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: () => _openWorkspaceDrawer(buttonContext),
+                            child: Center(
+                              child: Icon(
+                                Icons.menu_rounded,
+                                color: palette.menuIconColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                ),
+              if (!isWide) const SizedBox(width: 8),
               Container(
                 width: isCompact ? 48 : 52,
                 height: isCompact ? 48 : 52,
@@ -171,12 +209,6 @@ class _HeaderCard extends StatelessWidget {
                 ),
               ),
               if (action != null) action!,
-              if (!isWide)
-                IconButton(
-                  tooltip: 'Abrir menu',
-                  onPressed: scaffold?.openDrawer,
-                  icon: Icon(Icons.menu_rounded, color: palette.menuIconColor),
-                ),
             ],
           ),
           const SizedBox(height: 14),

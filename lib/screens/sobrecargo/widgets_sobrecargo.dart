@@ -390,12 +390,16 @@ class _InfoTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.action,
+    this.titleColor,
+    this.subtitleColor,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget? action;
+  final Color? titleColor;
+  final Color? subtitleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +432,7 @@ class _InfoTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: const Color(0xFFFF3B30),
+                      color: titleColor ?? const Color(0xFFFF3B30),
                       fontSize: compact ? 14 : 17,
                       fontWeight: FontWeight.bold,
                       height: 1.1,
@@ -440,7 +444,7 @@ class _InfoTile extends StatelessWidget {
                     maxLines: compact ? 4 : 4,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: const Color(0xFF5F6975),
+                      color: subtitleColor ?? const Color(0xFF5F6975),
                       fontSize: compact ? 12 : 13,
                       fontWeight: FontWeight.w500,
                       height: 1.3,
@@ -559,9 +563,10 @@ class _StatusBanner extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill(this.text);
+  const _StatusPill(this.text, {this.textColor});
 
   final String text;
+  final Color? textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -575,7 +580,7 @@ class _StatusPill extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-          color: colors.$2,
+          color: textColor ?? colors.$2,
           fontSize: 12,
           fontWeight: FontWeight.w900,
         ),
