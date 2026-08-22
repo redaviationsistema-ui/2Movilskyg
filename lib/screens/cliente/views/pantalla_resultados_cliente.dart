@@ -115,7 +115,8 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                 children: [
                   _ResultsSummaryBand(
                     routes: reservation.routes,
-                    passengers: reservation.passengers,
+                    itineraryLegs: reservation.quoteDisplayLegs,
+                    passengers: reservation.quoteDisplayPassengers,
                     isLoading: reservation.isLoadingQuotePreview,
                     onModify:
                         widget.onBackToSearch ?? () => Navigator.pop(context),
@@ -129,7 +130,8 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                         }),
                   ),
                   const SizedBox(height: 18),
-                  if (reservation.quoteError != null) ...[
+                  if (reservation.quoteError != null &&
+                      !reservation.hasQuoteServerError) ...[
                     _InfoCard(text: reservation.quoteError!),
                     const SizedBox(height: 16),
                   ],
@@ -140,7 +142,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                           reservation.isLoadingQuotePreview
                               ? null
                               : reservation.previewCurrentSelection,
-                      hasServerError: reservation.quoteError != null,
+                      hasServerError: reservation.hasQuoteServerError,
                     )
                   else
                     ...matches.asMap().entries.map(
@@ -466,12 +468,14 @@ extension on _ResultsSortCriterion {
 class _ResultsSummaryBand extends StatelessWidget {
   const _ResultsSummaryBand({
     required this.routes,
+    required this.itineraryLegs,
     required this.passengers,
     required this.isLoading,
     required this.onModify,
   });
 
   final List<RouteModel> routes;
+  final List<Map<String, dynamic>> itineraryLegs;
   final int passengers;
   final bool isLoading;
   final VoidCallback onModify;
@@ -481,14 +485,16 @@ class _ResultsSummaryBand extends StatelessWidget {
     final mobile = MediaQuery.sizeOf(context).width < 390;
     final segmentLabels = _segmentLabels();
     final completeSegments =
-        routes
-            .where(
-              (route) =>
-                  route.fromAirport != null &&
-                  route.toAirport != null &&
-                  route.startDate != null,
-            )
-            .length;
+        itineraryLegs.isNotEmpty
+            ? itineraryLegs.length
+            : routes
+                .where(
+                  (route) =>
+                      route.fromAirport != null &&
+                      route.toAirport != null &&
+                      route.startDate != null,
+                )
+                .length;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -612,8 +618,22 @@ class _ResultsSummaryBand extends StatelessWidget {
     );
   }
 
-  String _airportDisplayName(dynamic airport) {
+  String _airportDisplayName(dynamic airport, {String? fallbackCode}) {
     if (airport == null) return '';
+
+    if (airport is Map) {
+      final city = airport['city']?.toString().trim() ?? '';
+      if (city.isNotEmpty) return city;
+
+      final name = airport['name']?.toString().trim() ?? '';
+      if (name.isNotEmpty) return name;
+
+      final iata = airport['iata']?.toString().trim().toUpperCase() ?? '';
+      if (iata.isNotEmpty) return iata;
+
+      final icao = airport['icao']?.toString().trim().toUpperCase() ?? '';
+      if (icao.isNotEmpty) return icao;
+    }
 
     final city = airport.city?.toString().trim() ?? '';
     if (city.isNotEmpty) return city;
@@ -624,10 +644,43 @@ class _ResultsSummaryBand extends StatelessWidget {
     final iata = airport.iata?.toString().trim().toUpperCase() ?? '';
     if (iata.isNotEmpty) return iata;
 
+    final fallback = fallbackCode?.trim().toUpperCase() ?? '';
+    if (fallback.isNotEmpty) return fallback;
+
     return airport.icao?.toString().trim().toUpperCase() ?? '';
   }
 
   List<String> _segmentLabels() {
+    if (itineraryLegs.isNotEmpty) {
+      final labels =
+          itineraryLegs
+              .map((leg) {
+                final origin = _airportDisplayName(
+                  leg['origin_airport'],
+                  fallbackCode:
+                      leg['origin_iata']?.toString() ??
+                      leg['origin_icao']?.toString() ??
+                      leg['origin']?.toString(),
+                );
+                final destination = _airportDisplayName(
+                  leg['destination_airport'],
+                  fallbackCode:
+                      leg['destination_iata']?.toString() ??
+                      leg['destination_icao']?.toString() ??
+                      leg['destination']?.toString(),
+                );
+
+                if (origin.isEmpty || destination.isEmpty) {
+                  return '';
+                }
+                return '$origin → $destination';
+              })
+              .where((label) => label.isNotEmpty)
+              .toList();
+
+      if (labels.isNotEmpty) return labels;
+    }
+
     final labels = <String>[];
     for (final route in routes) {
       final origin = _airportDisplayName(route.fromAirport);

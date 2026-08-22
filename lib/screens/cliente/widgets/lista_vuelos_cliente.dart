@@ -735,7 +735,7 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
                             date: date,
                             time: time,
                             aircraft: _aircraftLabel(request),
-                            passengers: _passengerCount(request).toString(),
+                            passengers: formatClientPassengerSummary(request),
                             reservation: _requestCode(request),
                           ),
                           if (segments.isNotEmpty) ...[
@@ -2049,7 +2049,7 @@ class _NextFlightHero extends StatelessWidget {
                             const SizedBox(width: 11),
                             _HeroMeta(
                               icon: Icons.people_outline_rounded,
-                              label: '${_passengerCount(flight)} pax',
+                              label: formatClientPassengerCompactLabel(flight),
                             ),
                             const SizedBox(width: 11),
                             Expanded(
@@ -2566,7 +2566,9 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
                             ),
                             _CardMeta(
                               icon: Icons.people_outline_rounded,
-                              value: '${_passengerCount(widget.request)} pax',
+                              value: formatClientPassengerCompactLabel(
+                                widget.request,
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -3572,8 +3574,7 @@ class _MinimalFlightCard extends StatelessWidget {
                 ),
                 _MetaChip(
                   icon: Icons.groups_rounded,
-                  label:
-                      '${_passengerCount(request)} ${_passengerCount(request) == 1 ? 'pasajero' : 'pasajeros'}',
+                  label: formatClientPassengerLongLabel(request),
                 ),
                 _MetaChip(icon: Icons.flight_rounded, label: aircraftName),
               ],
@@ -5172,14 +5173,42 @@ String _segmentDepartureLabel(String raw) {
   return _departureCopy({'departure_datetime': value});
 }
 
-int _passengerCount(Map<String, dynamic> request) {
-  return int.tryParse(
-        request['passengers']?.toString() ??
-            request['passenger_count']?.toString() ??
-            request['pax']?.toString() ??
-            '1',
-      ) ??
-      1;
+int? resolveClientPassengerCount(Map<String, dynamic> request) {
+  for (final value in [
+    request['passengers'],
+    request['passenger_count'],
+    request['pax'],
+    request['num_passengers'],
+    request['travellers'],
+    _nestedMap(request['reservation'])['passengers'],
+    _nestedMap(request['flight_request'])['passengers'],
+    _nestedMap(request['contract'])['passengers'],
+  ]) {
+    final parsed = int.tryParse(value?.toString().trim() ?? '');
+    if (parsed != null && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+String formatClientPassengerCompactLabel(Map<String, dynamic> request) {
+  final count = resolveClientPassengerCount(request);
+  if (count == null) return 'Pax -';
+  return '$count pax';
+}
+
+String formatClientPassengerLongLabel(Map<String, dynamic> request) {
+  final count = resolveClientPassengerCount(request);
+  if (count == null) return 'Pasajeros no disponibles';
+  return '$count ${count == 1 ? 'pasajero' : 'pasajeros'}';
+}
+
+String formatClientPassengerSummary(Map<String, dynamic> request) {
+  final count = resolveClientPassengerCount(request);
+  if (count == null) return 'Pax -';
+  return count.toString();
 }
 
 String _aircraftLabel(Map<String, dynamic> request) {

@@ -15,6 +15,15 @@ import '../models/aeropuerto.dart';
 import '../models/modelo_ruta.dart';
 import '../services/servicio_memoria_local.dart';
 
+enum QuotePreviewState {
+  idle,
+  loading,
+  success,
+  empty,
+  validationError,
+  serverError,
+}
+
 class ReservationProvider extends ChangeNotifier {
   ReservationProvider({ApiClient? apiClient, LocalCacheService? cacheService})
     : _api = apiClient ?? ApiClient.instance,
@@ -53,6 +62,8 @@ class ReservationProvider extends ChangeNotifier {
     fullName = '';
     workspaceMessage = null;
     quoteError = null;
+    quoteEmptyMessage = null;
+    quotePreviewState = QuotePreviewState.idle;
     lastWorkspaceSyncAt = null;
     await _cacheService.clearUserData();
     resetForm();
@@ -90,8 +101,10 @@ class ReservationProvider extends ChangeNotifier {
   String? syncMessage;
   String? workspaceMessage;
   String? quoteError;
+  String? quoteEmptyMessage;
   DateTime? lastSyncAt;
   DateTime? lastWorkspaceSyncAt;
+  QuotePreviewState quotePreviewState = QuotePreviewState.idle;
 
   Aircraft? selectedAircraft;
 
@@ -101,6 +114,10 @@ class ReservationProvider extends ChangeNotifier {
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? selectedQuoteMatch;
   Map<String, dynamic>? _lastCreatedFlightRequestPayload;
+  List<Map<String, dynamic>> _lastQuotedLegs = const [];
+  int _lastQuotedPassengers = 1;
+  String _lastQuotedTripTypeCode = 'one_way';
+  String _lastQuotedTripTypeLabel = 'Ida';
 
   String? name;
   String? email;
@@ -121,6 +138,31 @@ class ReservationProvider extends ChangeNotifier {
       dashboardData != null ||
       flightRequests.isNotEmpty ||
       aircraftFleet.isNotEmpty;
+
+  bool get hasQuoteServerError =>
+      quotePreviewState == QuotePreviewState.serverError;
+
+  bool get hasQuoteValidationError =>
+      quotePreviewState == QuotePreviewState.validationError;
+
+  bool get hasQuoteEmptyResult => quotePreviewState == QuotePreviewState.empty;
+
+  List<Map<String, dynamic>> get quoteDisplayLegs {
+    final currentLegs = _normalizedBackendLegs();
+    if (currentLegs.isNotEmpty) {
+      return currentLegs.map((leg) => Map<String, dynamic>.from(leg)).toList();
+    }
+    return _lastQuotedLegs
+        .map((leg) => Map<String, dynamic>.from(leg))
+        .toList();
+  }
+
+  int get quoteDisplayPassengers {
+    if (_completeQuoteRoutes().isNotEmpty) {
+      return passengers;
+    }
+    return _lastQuotedPassengers;
+  }
 
   static const Map<String, String> priorityLabels = {
     'empty_leg': 'Empty Leg',
@@ -404,18 +446,22 @@ class ReservationProvider extends ChangeNotifier {
             ? null
             : Map<String, dynamic>.from(selectedQuoteMatch!);
     quoteError = null;
+    quoteEmptyMessage = null;
     isLoadingQuotePreview = true;
+    quotePreviewState = QuotePreviewState.loading;
     notifyListeners();
 
     try {
       final validationError = _quoteValidationMessage();
       if (validationError != null) {
         quoteError = validationError;
+        quotePreviewState = QuotePreviewState.validationError;
         return false;
       }
 
       final segmentCount = _completeQuoteRoutes().length;
       final previewPayload = _buildBackendFlightRequestPayload();
+      _rememberQuotedSearch(previewPayload);
       assert(() {
         debugPrint('========================================');
         debugPrint('[QUOTE REQUEST][MOBILE]');
@@ -474,11 +520,13 @@ class ReservationProvider extends ChangeNotifier {
       selectedQuoteMatch = _pickSelectedQuoteMatch(quoteMatches);
 
       if (quoteMatches.isEmpty) {
-        quoteError =
+        quotePreviewState = QuotePreviewState.empty;
+        quoteEmptyMessage =
             'No encontramos aeronaves disponibles en el aeropuerto de origen ni en bases cercanas dentro del radio operativo.';
-        return false;
+        return true;
       }
 
+      quotePreviewState = QuotePreviewState.success;
       return true;
     } on ApiException catch (error) {
       if (previousMatches.isNotEmpty) {
@@ -486,6 +534,7 @@ class ReservationProvider extends ChangeNotifier {
         selectedQuoteMatch = previousSelectedQuote;
       }
       quoteError = _quotePreviewErrorMessage(error);
+      quotePreviewState = QuotePreviewState.serverError;
       return false;
     } on TimeoutException {
       if (previousMatches.isNotEmpty) {
@@ -494,6 +543,7 @@ class ReservationProvider extends ChangeNotifier {
       }
       quoteError =
           'El servidor tardó demasiado en responder. Intenta nuevamente en unos momentos.';
+      quotePreviewState = QuotePreviewState.serverError;
       return false;
     } on SocketException {
       if (previousMatches.isNotEmpty) {
@@ -502,6 +552,7 @@ class ReservationProvider extends ChangeNotifier {
       }
       quoteError =
           'No fue posible conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+      quotePreviewState = QuotePreviewState.serverError;
       return false;
     } catch (error) {
       if (previousMatches.isNotEmpty) {
@@ -509,6 +560,7 @@ class ReservationProvider extends ChangeNotifier {
         selectedQuoteMatch = previousSelectedQuote;
       }
       quoteError = 'No fue posible obtener una cotizacion real: $error';
+      quotePreviewState = QuotePreviewState.serverError;
       return false;
     } finally {
       isLoadingQuotePreview = false;
@@ -520,11 +572,14 @@ class ReservationProvider extends ChangeNotifier {
     Map<String, dynamic> quote,
   ) async {
     final validationError = _quoteValidationMessage();
-    if (validationError != null) {
+    if (validationError != null && _lastQuotedLegs.isEmpty) {
       throw StateError(validationError);
     }
 
-    final payload = _buildBackendFlightRequestPayload(quote: quote);
+    final payload = _buildBackendFlightRequestPayload(
+      quote: quote,
+      allowSnapshotFallback: validationError != null,
+    );
     _lastCreatedFlightRequestPayload = payload;
 
     final response = await _api.createFlightRequestPayload(payload);
@@ -678,11 +733,20 @@ class ReservationProvider extends ChangeNotifier {
 
   Map<String, dynamic> _buildBackendFlightRequestPayload({
     Map<String, dynamic>? quote,
+    bool allowSnapshotFallback = false,
   }) {
-    final normalizedLegs = _normalizedBackendLegs();
+    final normalizedLegs = _normalizedBackendLegs(
+      allowSnapshotFallback: allowSnapshotFallback,
+    );
+    final usingSnapshot =
+        allowSnapshotFallback &&
+        normalizedLegs.isNotEmpty &&
+        _completeQuoteRoutes().isEmpty &&
+        _lastQuotedLegs.isNotEmpty;
     final firstLeg = normalizedLegs.isNotEmpty ? normalizedLegs.first : null;
     final lastLeg = normalizedLegs.isNotEmpty ? normalizedLegs.last : null;
-    final explicitTripType = currentTripTypeCode;
+    final explicitTripType =
+        usingSnapshot ? _lastQuotedTripTypeCode : currentTripTypeCode;
     final inferredClosedRoute =
         normalizedLegs.length > 1 &&
         (firstLeg?['origin']?.toString().trim().toUpperCase() ?? '') ==
@@ -762,9 +826,10 @@ class ReservationProvider extends ChangeNotifier {
       'base_airport': firstLeg?['origin'] ?? '',
       'destination': firstLeg?['destination'] ?? '',
       'departure_datetime': departureDatetime,
-      'passengers': passengers,
+      'passengers': usingSnapshot ? _lastQuotedPassengers : passengers,
       'trip_type': tripType,
-      'trip_label': currentTripTypeLabel,
+      'trip_label':
+          usingSnapshot ? _lastQuotedTripTypeLabel : currentTripTypeLabel,
       'return_to_origin':
           tripType == 'multi_leg' ? shouldCloseRoute : inferredClosedRoute,
       'return_to_start':
@@ -868,7 +933,7 @@ class ReservationProvider extends ChangeNotifier {
       payload,
       'notes',
       [
-        currentTripTypeLabel,
+        usingSnapshot ? _lastQuotedTripTypeLabel : currentTripTypeLabel,
         priorityCode,
         pets.trim() == 'Si' ? 'Mascotas a bordo' : '',
         specialBaggage.trim(),
@@ -1033,47 +1098,79 @@ class ReservationProvider extends ChangeNotifier {
     }).toList();
   }
 
-  List<Map<String, dynamic>> _normalizedBackendLegs() {
-    return routes
-        .map((route) {
-          final date = route.startDate ?? startDate;
-          final dateLabel = date == null ? '' : _dateOnly(date);
-          final timeLabel = date == null ? '09:00' : _timeOnly(date);
-          final originIdentity = _airportIdentityForRequest(
-            route.fromAirport,
-            _backendAirportCode(route.fromAirport),
-          );
-          final destinationIdentity = _airportIdentityForRequest(
-            route.toAirport,
-            _backendAirportCode(route.toAirport),
-          );
+  List<Map<String, dynamic>> _normalizedBackendLegs({
+    bool allowSnapshotFallback = false,
+  }) {
+    final normalized =
+        routes
+            .map((route) {
+              final date = route.startDate ?? startDate;
+              final dateLabel = date == null ? '' : _dateOnly(date);
+              final timeLabel = date == null ? '09:00' : _timeOnly(date);
+              final originIdentity = _airportIdentityForRequest(
+                route.fromAirport,
+                _backendAirportCode(route.fromAirport),
+              );
+              final destinationIdentity = _airportIdentityForRequest(
+                route.toAirport,
+                _backendAirportCode(route.toAirport),
+              );
 
-          return {
-            'origin': _backendAirportCode(route.fromAirport),
-            'destination': _backendAirportCode(route.toAirport),
-            'origin_airport_id': originIdentity['id'],
-            'destination_airport_id': destinationIdentity['id'],
-            'origin_icao': originIdentity['icao'],
-            'destination_icao': destinationIdentity['icao'],
-            'origin_iata': originIdentity['iata'],
-            'destination_iata': destinationIdentity['iata'],
-            'origin_airport': originIdentity['airport'],
-            'destination_airport': destinationIdentity['airport'],
-            'date': dateLabel,
-            'time': timeLabel,
-            'departure_datetime':
-                dateLabel.isEmpty
-                    ? ''
-                    : '$dateLabel'
-                        'T$timeLabel:00',
-            'passengers': route.passengers > 0 ? route.passengers : passengers,
-          };
-        })
-        .where((leg) {
-          return (leg['origin'] as String).isNotEmpty &&
-              (leg['destination'] as String).isNotEmpty;
-        })
+              return {
+                'origin': _backendAirportCode(route.fromAirport),
+                'destination': _backendAirportCode(route.toAirport),
+                'origin_airport_id': originIdentity['id'],
+                'destination_airport_id': destinationIdentity['id'],
+                'origin_icao': originIdentity['icao'],
+                'destination_icao': destinationIdentity['icao'],
+                'origin_iata': originIdentity['iata'],
+                'destination_iata': destinationIdentity['iata'],
+                'origin_airport': originIdentity['airport'],
+                'destination_airport': destinationIdentity['airport'],
+                'date': dateLabel,
+                'time': timeLabel,
+                'departure_datetime':
+                    dateLabel.isEmpty
+                        ? ''
+                        : '$dateLabel'
+                            'T$timeLabel:00',
+                'passengers':
+                    route.passengers > 0 ? route.passengers : passengers,
+              };
+            })
+            .where((leg) {
+              return (leg['origin'] as String).isNotEmpty &&
+                  (leg['destination'] as String).isNotEmpty;
+            })
+            .toList();
+    if (normalized.isNotEmpty || !allowSnapshotFallback) {
+      return normalized;
+    }
+    return _lastQuotedLegs
+        .map((leg) => Map<String, dynamic>.from(leg))
         .toList();
+  }
+
+  void _rememberQuotedSearch(Map<String, dynamic> previewPayload) {
+    final legs = previewPayload['legs'];
+    if (legs is! List || legs.isEmpty) return;
+
+    _lastQuotedLegs =
+        legs
+            .whereType<Map>()
+            .map((leg) => Map<String, dynamic>.from(leg))
+            .toList();
+    _lastQuotedPassengers =
+        int.tryParse(previewPayload['passengers']?.toString() ?? '') ??
+        passengers;
+    _lastQuotedTripTypeCode =
+        previewPayload['trip_type']?.toString().trim().isNotEmpty == true
+            ? previewPayload['trip_type'].toString().trim()
+            : currentTripTypeCode;
+    _lastQuotedTripTypeLabel =
+        previewPayload['trip_label']?.toString().trim().isNotEmpty == true
+            ? previewPayload['trip_label'].toString().trim()
+            : currentTripTypeLabel;
   }
 
   void _putIfMeaningful(
@@ -2062,7 +2159,12 @@ class ReservationProvider extends ChangeNotifier {
       int? currentIndex;
       for (final alias in aliases) {
         final matchedIndex = indexByAlias[alias];
-        if (matchedIndex != null) {
+        if (matchedIndex != null &&
+            _canMergeFlightHistoryRows(
+              merged[matchedIndex],
+              normalized,
+              matchedAlias: alias,
+            )) {
           currentIndex = matchedIndex;
           break;
         }
@@ -2093,32 +2195,31 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   Set<String> _mergeAliasesForFlightHistoryRow(Map<String, dynamic> row) {
-    final reservation = _nestedMap(row['reservation']);
-    final flightRequest = _nestedMap(row['flight_request']);
     final aliases = <String>{};
 
-    final flightRequestId =
-        _resolveEntityId(row['flight_request_id']) ??
-        _resolveEntityId(row['request_id']) ??
-        _resolveEntityId(flightRequest['id']) ??
-        _resolveEntityId(reservation['flight_request_id']);
+    final flightRequestId = _flightHistoryFlightRequestId(row);
     if (flightRequestId != null && flightRequestId.isNotEmpty) {
       aliases.add('flight_request:$flightRequestId');
-      aliases.add('entity:$flightRequestId');
     }
 
-    final reservationId =
-        _resolveEntityId(row['reservation_id']) ??
-        _resolveEntityId(row['booking_id']) ??
-        _resolveEntityId(reservation['id']);
+    final reservationId = _flightHistoryReservationId(row);
     if (reservationId != null && reservationId.isNotEmpty) {
       aliases.add('reservation:$reservationId');
-      aliases.add('entity:$reservationId');
+    }
+
+    final requestNumber = _flightHistoryRequestNumber(row);
+    if (requestNumber != null && requestNumber.isNotEmpty) {
+      aliases.add('request_number:$requestNumber');
     }
 
     final rowId = _resolveEntityId(row);
-    if (rowId != null && rowId.isNotEmpty) {
+    if (aliases.isEmpty && rowId != null && rowId.isNotEmpty) {
       aliases.add('entity:$rowId');
+    }
+
+    final businessKey = _flightHistoryBusinessKey(row);
+    if (businessKey.isNotEmpty) {
+      aliases.add('business:$businessKey');
     }
 
     if (aliases.isEmpty) {
@@ -2134,6 +2235,197 @@ class ReservationProvider extends ChangeNotifier {
     }
 
     return aliases;
+  }
+
+  bool _canMergeFlightHistoryRows(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming, {
+    required String matchedAlias,
+  }) {
+    if (_sharesStrongFlightHistoryIdentity(current, incoming)) {
+      return true;
+    }
+
+    if (_hasConflictingStrongFlightHistoryIdentity(current, incoming)) {
+      return false;
+    }
+
+    final currentHasStrong = _hasStrongFlightHistoryIdentity(current);
+    final incomingHasStrong = _hasStrongFlightHistoryIdentity(incoming);
+
+    if (currentHasStrong && incomingHasStrong) {
+      return false;
+    }
+
+    return matchedAlias.startsWith('business:') ||
+        matchedAlias.startsWith('fallback:') ||
+        matchedAlias.startsWith('entity:');
+  }
+
+  bool _sharesStrongFlightHistoryIdentity(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming,
+  ) {
+    final currentReservationId = _flightHistoryReservationId(current);
+    final incomingReservationId = _flightHistoryReservationId(incoming);
+    if (currentReservationId != null &&
+        incomingReservationId != null &&
+        currentReservationId == incomingReservationId) {
+      return true;
+    }
+
+    final currentFlightRequestId = _flightHistoryFlightRequestId(current);
+    final incomingFlightRequestId = _flightHistoryFlightRequestId(incoming);
+    if (currentFlightRequestId != null &&
+        incomingFlightRequestId != null &&
+        currentFlightRequestId == incomingFlightRequestId) {
+      return true;
+    }
+
+    final currentRequestNumber = _flightHistoryRequestNumber(current);
+    final incomingRequestNumber = _flightHistoryRequestNumber(incoming);
+    return currentRequestNumber != null &&
+        incomingRequestNumber != null &&
+        currentRequestNumber == incomingRequestNumber;
+  }
+
+  bool _hasConflictingStrongFlightHistoryIdentity(
+    Map<String, dynamic> current,
+    Map<String, dynamic> incoming,
+  ) {
+    final currentReservationId = _flightHistoryReservationId(current);
+    final incomingReservationId = _flightHistoryReservationId(incoming);
+    if (currentReservationId != null &&
+        incomingReservationId != null &&
+        currentReservationId != incomingReservationId) {
+      return true;
+    }
+
+    final currentFlightRequestId = _flightHistoryFlightRequestId(current);
+    final incomingFlightRequestId = _flightHistoryFlightRequestId(incoming);
+    if (currentFlightRequestId != null &&
+        incomingFlightRequestId != null &&
+        currentFlightRequestId != incomingFlightRequestId) {
+      return true;
+    }
+
+    final currentRequestNumber = _flightHistoryRequestNumber(current);
+    final incomingRequestNumber = _flightHistoryRequestNumber(incoming);
+    return currentRequestNumber != null &&
+        incomingRequestNumber != null &&
+        currentRequestNumber != incomingRequestNumber;
+  }
+
+  bool _hasStrongFlightHistoryIdentity(Map<String, dynamic> row) {
+    return _flightHistoryReservationId(row) != null ||
+        _flightHistoryFlightRequestId(row) != null ||
+        _flightHistoryRequestNumber(row) != null;
+  }
+
+  String? _flightHistoryReservationId(Map<String, dynamic> row) {
+    final reservation = _nestedMap(row['reservation']);
+    return _resolveEntityId(row['reservation_id']) ??
+        _resolveEntityId(row['booking_id']) ??
+        _resolveEntityId(reservation['id']);
+  }
+
+  String? _flightHistoryFlightRequestId(Map<String, dynamic> row) {
+    final reservation = _nestedMap(row['reservation']);
+    final flightRequest = _nestedMap(row['flight_request']);
+    return _resolveEntityId(row['flight_request_id']) ??
+        _resolveEntityId(row['request_id']) ??
+        _resolveEntityId(flightRequest['id']) ??
+        _resolveEntityId(reservation['flight_request_id']);
+  }
+
+  String? _flightHistoryRequestNumber(Map<String, dynamic> row) {
+    final reservation = _nestedMap(row['reservation']);
+    final flightRequest = _nestedMap(row['flight_request']);
+    final value =
+        _firstText(row, const [
+          'request_number',
+          'folio',
+          'booking_code',
+          'reservation_code',
+          'code',
+        ]) ??
+        _firstText(reservation, const [
+          'request_number',
+          'folio',
+          'booking_code',
+          'reservation_code',
+          'code',
+        ]) ??
+        _firstText(flightRequest, const [
+          'request_number',
+          'folio',
+          'booking_code',
+          'reservation_code',
+          'code',
+        ]);
+    final normalized = value?.trim().toUpperCase() ?? '';
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  String _flightHistoryBusinessKey(Map<String, dynamic> row) {
+    final aircraftId =
+        _firstText(row, const ['assigned_aircraft_id', 'aircraft_id']) ??
+        _firstText(_nestedMap(row['reservation']), const [
+          'assigned_aircraft_id',
+          'aircraft_id',
+        ]) ??
+        _firstText(_nestedMap(row['flight_request']), const [
+          'assigned_aircraft_id',
+          'aircraft_id',
+        ]) ??
+        '';
+    final aircraftLabel =
+        _firstText(row, const [
+          'assigned_aircraft_model',
+          'aircraft_model',
+          'aircraft_name',
+          'aircraft',
+        ]) ??
+        _firstText(_nestedMap(row['reservation']), const [
+          'assigned_aircraft_model',
+          'aircraft_model',
+          'aircraft_name',
+          'aircraft',
+        ]) ??
+        _firstText(_nestedMap(row['flight_request']), const [
+          'assigned_aircraft_model',
+          'aircraft_model',
+          'aircraft_name',
+          'aircraft',
+        ]) ??
+        '';
+    final origin =
+        (_firstText(row, const ['origin']) ?? '').trim().toUpperCase();
+    final destination =
+        (_firstText(row, const ['destination']) ?? '').trim().toUpperCase();
+    final departureDateTime =
+        (_firstText(row, const ['departure_datetime', 'date']) ?? '').trim();
+    final passengers =
+        (_firstText(row, const ['passengers']) ?? '').trim().toUpperCase();
+    final aircraftKey =
+        aircraftId.trim().isNotEmpty
+            ? aircraftId.trim().toUpperCase()
+            : aircraftLabel.trim().toUpperCase();
+
+    if (aircraftKey.isEmpty ||
+        origin.isEmpty ||
+        destination.isEmpty ||
+        departureDateTime.isEmpty) {
+      return '';
+    }
+
+    return [
+      aircraftKey,
+      origin,
+      destination,
+      departureDateTime,
+      passengers,
+    ].join('::');
   }
 
   Map<String, dynamic> _mergeFlightHistoryRecord(
@@ -3060,6 +3352,12 @@ class ReservationProvider extends ChangeNotifier {
     quoteMatches = [];
     selectedQuoteMatch = null;
     quoteError = null;
+    quoteEmptyMessage = null;
+    quotePreviewState = QuotePreviewState.idle;
+    _lastQuotedLegs = const [];
+    _lastQuotedPassengers = 1;
+    _lastQuotedTripTypeCode = 'one_way';
+    _lastQuotedTripTypeLabel = 'Ida';
     routes = [RouteModel()];
     notifyListeners();
   }

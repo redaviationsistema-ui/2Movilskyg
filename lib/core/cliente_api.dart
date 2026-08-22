@@ -394,7 +394,6 @@ class ApiClient {
     final data = await getFirstAvailable(const [
       '/cliente/reservas',
       '/client/reservations',
-      '/client/flight-requests',
     ], authenticated: true);
     return _listFromPayload(data, const [
       'reservations',
@@ -422,23 +421,32 @@ class ApiClient {
   }
 
   Future<List<Map<String, dynamic>>> getClientFlightRequests() async {
-    final data = await getFirstAvailable(const [
+    ApiException? lastError;
+
+    for (final path in const [
       '/client/flight-requests',
       '/cliente/solicitudes',
-      '/cliente/reservas',
-      '/client/reservations',
-    ], authenticated: true);
+    ]) {
+      try {
+        final data = await get(path, authenticated: true);
+        return _listFromPayload(data, const [
+          'flight_requests',
+          'requests',
+          'solicitudes',
+          'items',
+          'data',
+        ]);
+      } on ApiException catch (error) {
+        if (!_shouldTryAlternative(error, null)) rethrow;
+        lastError = error;
+      }
+    }
 
-    return _listFromPayload(data, const [
-      'flight_requests',
-      'requests',
-      'solicitudes',
-      'reservations',
-      'reservas',
-      'bookings',
-      'items',
-      'data',
-    ]);
+    if (lastError != null) {
+      return const [];
+    }
+
+    return const [];
   }
 
   Future<List<Map<String, dynamic>>> getClientAircraft({
