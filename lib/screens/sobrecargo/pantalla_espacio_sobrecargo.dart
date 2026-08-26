@@ -15,6 +15,7 @@ import '../../core/media_utils.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import 'crew_operation_flow.dart';
 import '../shared/widgets/componentes_ui_rol.dart';
+import '../shared/widgets/crew_ui_tokens.dart';
 import '../shared/widgets/contenedor_espacio_rol.dart';
 
 part 'modelos_sobrecargo.dart';
@@ -182,6 +183,155 @@ class _CrewWorkspaceScreenState extends State<CrewWorkspaceScreen> {
       }
     }
     return true;
+  }
+}
+
+class _AdditionalFlightInfoCard extends StatefulWidget {
+  const _AdditionalFlightInfoCard({required this.assignment});
+
+  final CrewAssignment assignment;
+
+  @override
+  State<_AdditionalFlightInfoCard> createState() =>
+      _AdditionalFlightInfoCardState();
+}
+
+class _AdditionalFlightInfoCardState extends State<_AdditionalFlightInfoCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <(String, String)>[
+      if (widget.assignment.code.trim().isNotEmpty)
+        ('Folio', widget.assignment.code.trim()),
+      if (widget.assignment.provider.trim().isNotEmpty)
+        ('Proveedor', widget.assignment.provider.trim()),
+      if (widget.assignment.client.trim().isNotEmpty)
+        ('Cliente', widget.assignment.client.trim()),
+      if (widget.assignment.catering.trim().isNotEmpty)
+        ('Catering', widget.assignment.catering.trim()),
+      if (widget.assignment.serviceLevel.trim().isNotEmpty)
+        ('Servicio', widget.assignment.serviceLevel.trim()),
+      if (widget.assignment.specialRequirements.trim().isNotEmpty)
+        ('Requerimientos', widget.assignment.specialRequirements.trim()),
+      if (widget.assignment.internalContact.trim().isNotEmpty)
+        ('Contacto interno', widget.assignment.internalContact.trim()),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1E8EF)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0E2238),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.description_outlined,
+                      color: CrewColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Información adicional del vuelo',
+                      style: TextStyle(
+                        color: Color(0xFF082A45),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: const Color(0xFF687386),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: [
+                  const Divider(height: 1, color: Color(0xFFE6EDF3)),
+                  const SizedBox(height: 12),
+                  if (details.isEmpty)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'No hay información adicional disponible.',
+                        style: TextStyle(
+                          color: Color(0xFF687386),
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                    )
+                  else
+                    ...details.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 110,
+                              child: Text(
+                                item.$1,
+                                style: const TextStyle(
+                                  color: Color(0xFF687386),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item.$2,
+                                style: const TextStyle(
+                                  color: Color(0xFF082A45),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -915,12 +1065,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
             ),
             if (active.isNotEmpty) ...[
               const SizedBox(height: 14),
-              _ActionCard(
-                title: 'Reportar un problema',
-                subtitle:
-                    'Utiliza esta opción si ocurrió algo que el administrador deba conocer.',
-                icon: Icons.report_problem_rounded,
-                button: 'Reportar un problema',
+              _CompactIncidentBanner(
                 onPressed:
                     _incidentSaving
                         ? null
@@ -930,6 +1075,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
                 const SizedBox(height: 12),
                 ..._incidents.map((item) => _IncidentTile(incident: item)),
               ],
+              const SizedBox(height: 12),
+              _AdditionalFlightInfoCard(assignment: active.first),
             ],
           ],
         );

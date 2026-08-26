@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../providers/proveedor_autenticacion.dart';
+import 'crew_ui_tokens.dart';
 
 class RoleWorkspaceShellScope extends InheritedWidget {
   const RoleWorkspaceShellScope({
@@ -121,7 +122,7 @@ class _RoleWorkspaceShellState extends State<RoleWorkspaceShell> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFF06111D),
+      backgroundColor: CrewColors.navy,
       drawer:
           isWide
               ? null
@@ -284,9 +285,9 @@ class _WorkspaceBottomNav extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: const Color(0xFF0E2235),
+          color: CrewColors.navy,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0x33E0B86E)),
+          border: Border.all(color: const Color(0x40E9BB58)),
           boxShadow: const [
             BoxShadow(
               color: Color(0x33000000),
@@ -314,9 +315,7 @@ class _WorkspaceBottomNav extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color:
-                            isSelected
-                                ? const Color(0xFFE0B86E)
-                                : Colors.transparent,
+                            isSelected ? CrewColors.gold : Colors.transparent,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: Column(
@@ -327,8 +326,8 @@ class _WorkspaceBottomNav extends StatelessWidget {
                             size: 19,
                             color:
                                 isSelected
-                                    ? const Color(0xFF10253A)
-                                    : Colors.white.withValues(alpha: 0.82),
+                                    ? CrewColors.navy
+                                    : const Color(0xFFD8DEE5),
                           ),
                           const SizedBox(height: 3),
                           Text(
@@ -338,8 +337,8 @@ class _WorkspaceBottomNav extends StatelessWidget {
                             style: TextStyle(
                               color:
                                   isSelected
-                                      ? const Color(0xFF10253A)
-                                      : Colors.white.withValues(alpha: 0.74),
+                                      ? CrewColors.navy
+                                      : const Color(0xFFD8DEE5),
                               fontSize: 10.5,
                               fontWeight: FontWeight.w900,
                             ),
@@ -386,7 +385,7 @@ class _WorkspaceSidebar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF07121D), Color(0xFF0E2238), Color(0xFF14324B)],
+          colors: [CrewColors.navy, CrewColors.navy, CrewColors.navySecondary],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
@@ -479,7 +478,7 @@ class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: const Color(0xFF0C1B2A),
+      backgroundColor: CrewColors.navy,
       child: SafeArea(
         child: RoleWorkspaceDrawerContent(
           branchLabel: widget.branchLabel,
@@ -680,11 +679,11 @@ class _WorkspaceIdentityCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
-          colors: [Color(0xFF11283D), Color(0xFF173D57)],
+          colors: [CrewColors.navy, CrewColors.navySecondary],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: const Color(0x33E0B86E)),
+        border: Border.all(color: const Color(0x40E9BB58)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -705,19 +704,19 @@ class _WorkspaceIdentityCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               gradient: const LinearGradient(
-                colors: [Color(0xFFE0B86E), Color(0xFFF2D39C)],
+                colors: [CrewColors.gold, Color(0xFFF3D48A)],
               ),
             ),
             child: const Icon(
               Icons.flight_takeoff_rounded,
-              color: Color(0xFF10253A),
+              color: CrewColors.navy,
             ),
           ),
           const SizedBox(height: 14),
           Text(
             branchLabel,
             style: const TextStyle(
-              color: Color(0xFFE0B86E),
+              color: CrewColors.gold,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -777,9 +776,8 @@ class _WorkspaceNavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = isSelected ? const Color(0xFF10253A) : Colors.white;
-    final background =
-        isSelected ? const Color(0xFFE0B86E) : Colors.transparent;
+    final foreground = isSelected ? CrewColors.navy : Colors.white;
+    final background = isSelected ? CrewColors.gold : Colors.transparent;
 
     return InkWell(
       onTap: onTap,
@@ -848,7 +846,7 @@ class _WorkspaceNavGroup extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFE0B86E) : Colors.transparent,
+              color: isSelected ? CrewColors.gold : Colors.transparent,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color:
@@ -859,17 +857,13 @@ class _WorkspaceNavGroup extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  color: isSelected ? const Color(0xFF10253A) : Colors.white,
-                ),
+                Icon(icon, color: isSelected ? CrewColors.navy : Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     label,
                     style: TextStyle(
-                      color:
-                          isSelected ? const Color(0xFF10253A) : Colors.white,
+                      color: isSelected ? CrewColors.navy : Colors.white,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -877,7 +871,7 @@ class _WorkspaceNavGroup extends StatelessWidget {
                 Text(
                   isExpanded ? '˅' : '>',
                   style: TextStyle(
-                    color: isSelected ? const Color(0xFF10253A) : Colors.white,
+                    color: isSelected ? CrewColors.navy : Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
@@ -950,7 +944,7 @@ class _WorkspaceNavSubtile extends StatelessWidget {
         status == RoleWorkspaceDrawerItemStatus.blocked
             ? Colors.white.withValues(alpha: 0.34)
             : isActive
-            ? const Color(0xFFE0B86E)
+            ? CrewColors.gold
             : status == RoleWorkspaceDrawerItemStatus.completed
             ? Colors.white.withValues(alpha: 0.92)
             : Colors.white.withValues(alpha: 0.88);
@@ -958,7 +952,7 @@ class _WorkspaceNavSubtile extends StatelessWidget {
         status == RoleWorkspaceDrawerItemStatus.blocked
             ? Colors.white.withValues(alpha: 0.28)
             : isActive
-            ? const Color(0xFFE0B86E)
+            ? CrewColors.gold
             : status == RoleWorkspaceDrawerItemStatus.completed
             ? const Color(0xFFE7EEF6)
             : Colors.white.withValues(alpha: 0.72);

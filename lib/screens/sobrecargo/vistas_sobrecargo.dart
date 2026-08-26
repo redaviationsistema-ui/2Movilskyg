@@ -18,10 +18,7 @@ class _CrewNotificationButton extends StatelessWidget {
       icon: Badge(
         isLabelVisible: unread > 0,
         label: Text(unread > 99 ? '99+' : '$unread'),
-        child: const Icon(
-          Icons.notifications_none_rounded,
-          color: Color(0xFFE2BD79),
-        ),
+        child: const Icon(Icons.more_vert_rounded, color: CrewColors.gold),
       ),
     );
   }
@@ -442,7 +439,7 @@ class _CrewCommandHero extends StatelessWidget {
                   ),
                   child: const Icon(
                     Icons.airline_seat_recline_extra_rounded,
-                    color: Color(0xFFE0B86E),
+                    color: CrewColors.gold,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -453,7 +450,7 @@ class _CrewCommandHero extends StatelessWidget {
                       const Text(
                         'Cabin Command',
                         style: TextStyle(
-                          color: Color(0xFFE0B86E),
+                          color: CrewColors.gold,
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                         ),
@@ -572,7 +569,7 @@ class _CrewHeroScore extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFFE0B86E),
+        color: CrewColors.gold,
         border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
       ),
       child: Text(
@@ -606,7 +603,7 @@ class _CrewHeroChip extends StatelessWidget {
       decoration: BoxDecoration(
         color:
             highlighted
-                ? const Color(0xFFE0B86E)
+                ? CrewColors.gold
                 : Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: const Color(0x44E0B86E)),
@@ -749,18 +746,12 @@ class _DashboardView extends StatelessWidget {
       _BreakdownItem(
         label: 'Documentos',
         value: '$documentsValidity%',
-        tone:
-            documentsValidity >= 90
-                ? const Color(0xFF0F8A5F)
-                : const Color(0xFFB7791F),
+        tone: documentsValidity >= 90 ? CrewColors.success : CrewColors.warning,
       ),
       _BreakdownItem(
         label: 'Checklist',
         value: '$checklistProgress%',
-        tone:
-            checklistProgress >= 80
-                ? const Color(0xFF0F8A5F)
-                : const Color(0xFFB7791F),
+        tone: checklistProgress >= 80 ? CrewColors.success : CrewColors.warning,
       ),
       _BreakdownItem(
         label: 'Estado',
@@ -773,8 +764,8 @@ class _DashboardView extends StatelessWidget {
         tone:
             profileState.toLowerCase().contains('valid') ||
                     profileState.toLowerCase().contains('aprobad')
-                ? const Color(0xFF0F8A5F)
-                : const Color(0xFFB7791F),
+                ? CrewColors.success
+                : CrewColors.warning,
       ),
     ];
     final dayOfFlightDetails = _dayOfFlightDetails(nextMission, openIncidents);
@@ -1117,11 +1108,11 @@ class _DashboardView extends StatelessWidget {
   Color _statusTone(String value) {
     final normalized = value.toLowerCase();
     if (normalized.contains('disponible') || normalized.contains('mision')) {
-      return const Color(0xFF0F8A5F);
+      return CrewColors.success;
     }
     if (normalized.contains('confirm')) return const Color(0xFF2563EB);
     if (normalized.contains('sin') || normalized.contains('por')) {
-      return const Color(0xFFB7791F);
+      return CrewColors.warning;
     }
     return const Color(0xFF64748B);
   }
@@ -1150,7 +1141,7 @@ class _ReadinessCard extends StatelessWidget {
       padding: EdgeInsets.all(compact ? 14 : 18),
       decoration: _panelDecoration().copyWith(
         gradient: const LinearGradient(
-          colors: [Color(0xFF07121D), Color(0xFF173B55)],
+          colors: [CrewColors.navy, CrewColors.navySecondary],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1173,7 +1164,7 @@ class _ReadinessCard extends StatelessWidget {
               Text(
                 '$score%',
                 style: TextStyle(
-                  color: Color(0xFFE0B86E),
+                  color: CrewColors.gold,
                   fontSize: compact ? 24 : 28,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1187,7 +1178,7 @@ class _ReadinessCard extends StatelessWidget {
               value: score / 100,
               minHeight: 10,
               backgroundColor: Colors.white24,
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFE0B86E)),
+              valueColor: const AlwaysStoppedAnimation(CrewColors.gold),
             ),
           ),
           const SizedBox(height: 12),
@@ -1257,7 +1248,7 @@ class _MissionHeroCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: const Color(0xFFB7791F),
+                          color: CrewColors.warning,
                           fontSize: compact ? 12 : 13,
                           fontWeight: FontWeight.w600,
                           decoration: TextDecoration.none,
@@ -1590,7 +1581,7 @@ class _TimelineCard extends StatelessWidget {
                                 size: 16,
                                 color:
                                     item.done
-                                        ? const Color(0xFF0F8A5F)
+                                        ? CrewColors.success
                                         : const Color(0xFF64748B),
                               ),
                               const SizedBox(width: 7),
@@ -1599,7 +1590,7 @@ class _TimelineCard extends StatelessWidget {
                                 style: TextStyle(
                                   color:
                                       item.done
-                                          ? const Color(0xFF0F8A5F)
+                                          ? CrewColors.success
                                           : const Color(0xFF475569),
                                   fontWeight: FontWeight.w800,
                                   fontSize: compact ? 12 : 13,
@@ -1781,7 +1772,7 @@ class _AlertStack extends StatelessWidget {
                       children: [
                         const Icon(
                           Icons.auto_awesome_rounded,
-                          color: Color(0xFFB7791F),
+                          color: CrewColors.warning,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -1851,7 +1842,7 @@ class _ExpiringDocumentsCard extends StatelessWidget {
                   children: [
                     const Icon(
                       Icons.description_rounded,
-                      color: Color(0xFFB7791F),
+                      color: CrewColors.warning,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1928,11 +1919,11 @@ class _OperationalStrip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           gradient: const LinearGradient(
-            colors: [Color(0xFF07121D), Color(0xFF12304A)],
+            colors: [CrewColors.navy, CrewColors.navySecondary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0x33E0B86E)),
+          border: Border.all(color: const Color(0x40E9BB58)),
           boxShadow: const [
             BoxShadow(
               color: Color(0x24000000),
@@ -1948,14 +1939,11 @@ class _OperationalStrip extends StatelessWidget {
               height: compact ? 44 : 50,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFE0B86E), Color(0xFFF2D39C)],
+                  colors: [CrewColors.gold, Color(0xFFF3D48A)],
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(
-                Icons.airlines_rounded,
-                color: Color(0xFF07121D),
-              ),
+              child: const Icon(Icons.airlines_rounded, color: CrewColors.navy),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -1965,7 +1953,7 @@ class _OperationalStrip extends StatelessWidget {
                   Text(
                     status,
                     style: TextStyle(
-                      color: Color(0xFFE0B86E),
+                      color: CrewColors.gold,
                       fontSize: compact ? 11 : 12,
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.none,
@@ -2028,6 +2016,8 @@ class _MissionList extends StatefulWidget {
 }
 
 class _MissionListState extends State<_MissionList> {
+  static const Color _missionBlueBright = CrewColors.primary;
+
   String? _selectedAssignmentId;
 
   @override
@@ -2046,6 +2036,21 @@ class _MissionListState extends State<_MissionList> {
     final selected = _selectedAssignment(activeAssignments);
     final primaryAction = _primaryActionFor(selected);
     final secondaryActions = _secondaryActionsFor(selected);
+    final progressItems =
+        selected == null
+            ? const <_MissionProgressItem>[]
+            : _buildProgress(selected);
+    final progressPercent =
+        selected == null
+            ? 0
+            : ((progressItems
+                            .where(
+                              (item) => item.tone == _MissionStageTone.done,
+                            )
+                            .length /
+                        (progressItems.isEmpty ? 1 : progressItems.length)) *
+                    100)
+                .round();
     final actionTitle =
         selected == null
             ? 'Acciones principales'
@@ -2056,29 +2061,70 @@ class _MissionListState extends State<_MissionList> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _MissionSelectorStrip(
-          assignments: activeAssignments,
-          selectedId: selected?.id,
-          onSelected:
-              (assignment) =>
-                  setState(() => _selectedAssignmentId = assignment.id),
-        ),
+        if (activeAssignments.length >= 2)
+          _MissionSelectorStrip(
+            assignments: activeAssignments,
+            selectedId: selected?.id,
+            onSelected:
+                (assignment) =>
+                    setState(() => _selectedAssignmentId = assignment.id),
+          ),
         if (selected != null) ...[
-          const SizedBox(height: 14),
+          if (activeAssignments.length >= 2) const SizedBox(height: 14),
           _MissionHero(assignment: selected),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => widget.onOpenOperation(selected),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: const Color(0xFF17324A),
-              side: const BorderSide(color: Color(0xFF17324A)),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => widget.onOpenOperation(selected),
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              child: Ink(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [_missionBlueBright, Color(0xFF0B63C7)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.flight_takeoff_rounded, color: Colors.white),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Continuar con mi vuelo',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_rounded, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            icon: const Icon(Icons.route_rounded),
-            label: const Text('Continuar con mi vuelo'),
           ),
           const SizedBox(height: 14),
-          if (primaryAction != null)
+          _MissionProgressCard(
+            items: progressItems,
+            progressPercent: progressPercent,
+          ),
+          if (primaryAction != null) ...[
+            const SizedBox(height: 14),
             _ActionCard(
               title: actionTitle,
               subtitle: _primaryDetail(selected),
@@ -2101,6 +2147,7 @@ class _MissionListState extends State<_MissionList> {
                       ? null
                       : () => _runPrimaryAction(selected, primaryAction),
             ),
+          ],
           if (secondaryActions.isNotEmpty) ...[
             const SizedBox(height: 14),
             _MissionSecondaryActions(
@@ -2108,13 +2155,6 @@ class _MissionListState extends State<_MissionList> {
               onTap: (action) => _runSecondaryAction(selected, action),
             ),
           ],
-          const SizedBox(height: 14),
-          const _InfoTile(
-            icon: Icons.verified_rounded,
-            title: 'Progreso del vuelo',
-            subtitle:
-                'Consulta tus tareas, fotografías y los pasos que tienes pendientes.',
-          ),
         ],
       ],
     );
@@ -2380,38 +2420,312 @@ class _MissionListState extends State<_MissionList> {
     ];
   }
 
-  // ignore: unused_element
-  List<_MissionProgressItem> _buildProgress(List<_MissionStage> stages) {
-    const baseSteps = [
-      ('availability', 'Disponibilidad'),
-      ('itinerary', 'Itinerario'),
-      ('presentation', 'Presentacion'),
-      ('cabin', 'Cabina'),
-      ('passengers', 'Pasajeros'),
-      ('service', 'Servicio'),
-      ('layover', 'Escala / tramo'),
-      ('closing', 'Cierre'),
-      ('admin-closing', 'Cierre admin'),
+  List<_MissionProgressItem> _buildProgress(CrewAssignment assignment) {
+    final steps = [
+      (label: 'Vuelo validado', done: !assignment.canRespondToAssignment),
+      (
+        label: 'Preparación',
+        done: const [
+          'En aeropuerto/base',
+          'Cabina revisada',
+          'Pasajeros recibidos',
+          'En servicio',
+          'Finalizada',
+        ].contains(assignment.status),
+      ),
+      (
+        label: 'Checklist pre-vuelo',
+        done: const [
+          'Cabina revisada',
+          'Pasajeros recibidos',
+          'En servicio',
+          'Finalizada',
+        ].contains(assignment.status),
+      ),
+      (
+        label: 'Seguimiento',
+        done: const [
+          'Pasajeros recibidos',
+          'En servicio',
+          'Finalizada',
+        ].contains(assignment.status),
+      ),
+      (label: 'Checklist post-vuelo', done: assignment.isFinalized),
+      (label: 'Cierre de operación', done: assignment.isFinalized),
     ];
-    return baseSteps.map((step) {
-      final stage = stages.where((item) => item.id == step.$1).firstOrNull;
+    final currentIndex = steps.indexWhere((step) => !step.done);
+    return steps.indexed.map((entry) {
+      final index = entry.$1;
+      final step = entry.$2;
+      final tone =
+          step.done
+              ? _MissionStageTone.done
+              : currentIndex == index
+              ? _MissionStageTone.active
+              : currentIndex != -1 && index > currentIndex
+              ? _MissionStageTone.blocked
+              : _MissionStageTone.pending;
       return _MissionProgressItem(
-        label: step.$2,
-        state: stage?.state ?? 'Pendiente',
-        tone: _stageTone(stage?.state ?? 'Pendiente'),
+        label: step.label,
+        state:
+            step.done
+                ? 'Completado'
+                : index == currentIndex
+                ? 'Actual'
+                : 'Pendiente',
+        tone: tone,
       );
     }).toList();
   }
+}
 
-  _MissionStageTone _stageTone(String value) {
-    final normalized = value.toLowerCase();
-    if (normalized.contains('completado') ||
-        normalized.contains('confirmado') ||
-        normalized.contains('recibido')) {
-      return _MissionStageTone.done;
+class _MissionProgressCard extends StatelessWidget {
+  const _MissionProgressCard({
+    required this.items,
+    required this.progressPercent,
+  });
+
+  static const Color _text = Color(0xFF082A45);
+  static const Color _muted = Color(0xFF687386);
+  static const Color _gold = CrewColors.gold;
+  static const Color _line = CrewColors.line;
+  static const Color _green = CrewColors.success;
+  static const Color _pending = Color(0xFFD5DDE6);
+
+  final List<_MissionProgressItem> items;
+  final int progressPercent;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleItems = items.take(6).toList();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1E8EF)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0E2238),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ProgressHeaderIcon(),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Progreso del vuelo',
+                            style: TextStyle(
+                              color: _text,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Consulta tus tareas, fotografías y los pasos que tienes pendientes.',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 13,
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _ProgressRing(percent: progressPercent),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              for (var i = 0; i < visibleItems.length; i++) ...[
+                _MissionProgressNode(item: visibleItems[i]),
+                if (i != visibleItems.length - 1)
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        color:
+                            visibleItems[i].tone == _MissionStageTone.done
+                                ? _green.withValues(alpha: 0.35)
+                                : visibleItems[i].tone ==
+                                    _MissionStageTone.active
+                                ? _gold.withValues(alpha: 0.28)
+                                : _line,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < visibleItems.length; i++) ...[
+                Expanded(
+                  child: Text(
+                    visibleItems[i].label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _text,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                if (i != visibleItems.length - 1) const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissionProgressNode extends StatelessWidget {
+  const _MissionProgressNode({required this.item});
+
+  final _MissionProgressItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (item.tone) {
+      case _MissionStageTone.done:
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(
+            color: _MissionProgressCard._green,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+        );
+      case _MissionStageTone.blocked:
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F5F7),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: const Icon(
+            Icons.lock_rounded,
+            color: Color(0xFF94A3B8),
+            size: 14,
+          ),
+        );
+      case _MissionStageTone.active:
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF7DF),
+            shape: BoxShape.circle,
+            border: Border.all(color: _MissionProgressCard._gold, width: 2),
+          ),
+          child: const Icon(
+            Icons.radio_button_checked_rounded,
+            color: _MissionProgressCard._gold,
+            size: 12,
+          ),
+        );
+      case _MissionStageTone.pending:
+        return Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: _MissionProgressCard._pending, width: 2),
+          ),
+        );
     }
-    if (normalized.contains('admin')) return _MissionStageTone.neutral;
-    return _MissionStageTone.pending;
+  }
+}
+
+class _ProgressHeaderIcon extends StatelessWidget {
+  const _ProgressHeaderIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3FF),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Icon(Icons.bar_chart_rounded, color: CrewColors.primary),
+    );
+  }
+}
+
+class _ProgressRing extends StatelessWidget {
+  const _ProgressRing({required this.percent});
+
+  final int percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (percent.clamp(0, 100)) / 100;
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 72,
+            height: 72,
+            child: CircularProgressIndicator(
+              value: progress.toDouble(),
+              strokeWidth: 8,
+              backgroundColor: const Color(0xFFE8EDF3),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                CrewColors.success,
+              ),
+            ),
+          ),
+          Text(
+            '$percent%',
+            style: const TextStyle(
+              color: _MissionProgressCard._text,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2450,7 +2764,7 @@ class _MissionStage {
   final List<String> points;
 }
 
-enum _MissionStageTone { done, pending, neutral }
+enum _MissionStageTone { done, active, pending, blocked }
 
 class _MissionProgressItem {
   const _MissionProgressItem({
@@ -2498,7 +2812,7 @@ class _MissionSelectorStrip extends StatelessWidget {
                 gradient:
                     isSelected
                         ? const LinearGradient(
-                          colors: [Color(0xFF0E2235), Color(0xFF173B55)],
+                          colors: [CrewColors.navy, CrewColors.navySecondary],
                         )
                         : const LinearGradient(
                           colors: [Colors.white, Color(0xFFF8FBFD)],
@@ -2506,7 +2820,7 @@ class _MissionSelectorStrip extends StatelessWidget {
                 border: Border.all(
                   color:
                       isSelected
-                          ? const Color(0x33E0B86E)
+                          ? const Color(0x40E9BB58)
                           : const Color(0xFFE5EAF0),
                 ),
               ),
@@ -2555,133 +2869,231 @@ class _MissionSelectorStrip extends StatelessWidget {
 class _MissionHero extends StatelessWidget {
   const _MissionHero({required this.assignment});
 
+  static const Color _night = Color(0xFF063B6B);
+  static const Color _blue = Color(0xFF0B63C7);
+  static const Color _text = CrewColors.textPrimary;
+  static const Color _muted = CrewColors.textSecondary;
+  static const Color _line = CrewColors.line;
+  static const Color _green = CrewColors.success;
+  static const Color _greenSoft = CrewColors.successSoft;
+  static const Color _orange = CrewColors.warning;
+  static const Color _orangeSoft = Color(0xFFFFF3E5);
+  static const Color _violet = CrewColors.purple;
+  static const Color _violetSoft = Color(0xFFF2EBFF);
+  static const Color _blueSoft = Color(0xFFEAF3FF);
+  static const Color _gold = CrewColors.gold;
+  static const Color _goldSoft = Color(0xFFFFF7DF);
+
   final CrewAssignment assignment;
 
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.of(context).size.width < 430;
+    final facts = [
+      (
+        label: 'Fecha',
+        value: _compactCrewDate(assignment.date),
+        icon: Icons.calendar_month_rounded,
+        color: CrewColors.primary,
+        softColor: _blueSoft,
+      ),
+      (
+        label: 'Reporte',
+        value: assignment.showTime,
+        icon: Icons.schedule_rounded,
+        color: _orange,
+        softColor: _orangeSoft,
+      ),
+      (
+        label: 'Pasajeros',
+        value:
+            assignment.passengers > 0
+                ? '${assignment.passengers} pax'
+                : 'Sin dato',
+        icon: Icons.groups_rounded,
+        color: _violet,
+        softColor: _violetSoft,
+      ),
+      (
+        label: 'Salida',
+        value:
+            assignment.origin.trim().isEmpty
+                ? 'Pendiente'
+                : assignment.origin.trim(),
+        icon: Icons.flight_takeoff_rounded,
+        color: CrewColors.primary,
+        softColor: _blueSoft,
+      ),
+      (
+        label: 'Llegada',
+        value:
+            assignment.destination.trim().isEmpty
+                ? 'Pendiente'
+                : assignment.destination.trim(),
+        icon: Icons.flight_land_rounded,
+        color: _green,
+        softColor: _greenSoft,
+      ),
+      (
+        label: 'Estado',
+        value:
+            assignment.status.trim().isEmpty ? 'Pendiente' : assignment.status,
+        icon: Icons.verified_rounded,
+        color: _gold,
+        softColor: _goldSoft,
+      ),
+    ];
 
     return _AnimatedEntry(
       child: Container(
-        padding: EdgeInsets.all(compact ? 14 : 18),
-        decoration: _panelDecoration(),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [_night, _blue],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0x335FA9FF)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0E0E2238),
+              blurRadius: 18,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: compact ? 42 : 48,
-                  height: compact ? 42 : 48,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF2F8),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.flight_takeoff_rounded,
-                    color: Color(0xFF0E2338),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (assignment.code != 'OPS')
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _green,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Confirmado',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                         Text(
-                          'Folio: ${assignment.code}',
+                          assignment.route,
+                          maxLines: compact ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: compact ? 26 : 29,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          assignment.aircraft.trim().isEmpty
+                              ? 'Aeronave por confirmar'
+                              : assignment.aircraft,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: const Color(0xFFB7791F),
-                            fontSize: compact ? 11 : 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: compact ? 16 : 17,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      if (assignment.code != 'OPS') const SizedBox(height: 4),
-                      Text(
-                        assignment.route,
-                        maxLines: compact ? 2 : 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 18 : 20,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0E2338),
-                          height: 1.1,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Container(
+                    width: compact ? 54 : 60,
+                    height: compact ? 54 : 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.flight_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final useThreeColumns = constraints.maxWidth >= 410;
+                  final columns = useThreeColumns ? 3 : 2;
+                  final columnWidth =
+                      (constraints.maxWidth - (columns - 1)) / columns;
+                  return Wrap(
+                    children: [
+                      for (var index = 0; index < facts.length; index++)
+                        SizedBox(
+                          width: columnWidth,
+                          child: _MissionHeroFact(
+                            icon: facts[index].icon,
+                            label: facts[index].label,
+                            value: facts[index].value,
+                            color: facts[index].color,
+                            softColor: facts[index].softColor,
+                            onDarkBackground: true,
+                            showRightBorder: (index % columns) != columns - 1,
+                            showBottomBorder: index < facts.length - columns,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        assignment.provider,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Color(0xFF5F6975),
-                          height: 1.3,
-                          fontSize: compact ? 12 : 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        assignment.aircraft,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFF41566A),
-                          height: 1.25,
-                          fontSize: compact ? 12 : 13,
-                        ),
-                      ),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: _StatusPill(
-                    assignment.status,
-                    textColor: Colors.black,
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-            SizedBox(height: compact ? 12 : 14),
-            Wrap(
-              spacing: compact ? 6 : 8,
-              runSpacing: compact ? 6 : 8,
-              children: [
-                _DarkMetricPill(label: assignment.showTime),
-                _DarkMetricPill(
-                  label:
-                      assignment.origin.isEmpty
-                          ? 'Origen por definir'
-                          : assignment.origin,
-                ),
-                _DarkMetricPill(
-                  label:
-                      assignment.passengers > 0
-                          ? '${assignment.passengers} pasajeros'
-                          : 'Pasajeros sin dato',
-                ),
-                if (assignment.serviceLevel.isNotEmpty)
-                  _DarkMetricPill(label: assignment.serviceLevel),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _MissionInfoList(assignment: assignment),
             if (assignment.rejectReason.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Motivo registrado: ${assignment.rejectReason}',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Color(0xFF8D1F1A),
-                  fontSize: compact ? 13 : 14,
-                  fontWeight: FontWeight.w700,
-                  height: 1.3,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Text(
+                  'Motivo registrado: ${assignment.rejectReason}',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: compact ? 13 : 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                  ),
                 ),
               ),
             ],
@@ -2692,197 +3104,107 @@ class _MissionHero extends StatelessWidget {
   }
 }
 
-class _MissionInfoList extends StatelessWidget {
-  const _MissionInfoList({required this.assignment});
-
-  final CrewAssignment assignment;
-
-  @override
-  Widget build(BuildContext context) {
-    final compact = MediaQuery.of(context).size.width < 430;
-    final rows = [
-      ('Folio', assignment.code),
-      ('Ruta', assignment.route),
-      ('Empresa', assignment.provider),
-      ('Aeronave', assignment.aircraft),
-      ('Presentacion', assignment.showTime),
-      (
-        'Pasajeros',
-        assignment.passengers > 0 ? '${assignment.passengers} pax' : 'Sin dato',
-      ),
-      ('Estado', assignment.status),
-    ];
-
-    return Column(
-      children: [
-        for (var index = 0; index < rows.length; index++) ...[
-          _MissionInfoRow(
-            label: rows[index].$1,
-            value:
-                rows[index].$2.isEmpty ? 'Pendiente por admin' : rows[index].$2,
-            compact: compact,
-          ),
-          if (index != rows.length - 1) const SizedBox(height: 8),
-        ],
-      ],
-    );
-  }
-}
-
-class _MissionInfoRow extends StatelessWidget {
-  const _MissionInfoRow({
+class _MissionHeroFact extends StatelessWidget {
+  const _MissionHeroFact({
+    required this.icon,
     required this.label,
     required this.value,
-    required this.compact,
+    required this.color,
+    required this.softColor,
+    this.onDarkBackground = false,
+    required this.showRightBorder,
+    required this.showBottomBorder,
   });
 
+  final IconData icon;
   final String label;
   final String value;
-  final bool compact;
+  final Color color;
+  final Color softColor;
+  final bool onDarkBackground;
+  final bool showRightBorder;
+  final bool showBottomBorder;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: compact ? 88 : 96,
-          child: Text(
-            '$label:',
-            style: TextStyle(
-              color: const Color(0xFF5F6975),
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: const Color(0xFF0E2338),
-              fontSize: compact ? 12 : 13,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ignore: unused_element
-class _MissionProgressCard extends StatelessWidget {
-  const _MissionProgressCard({required this.items});
-
-  final List<_MissionProgressItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    final compact = MediaQuery.of(context).size.width < 430;
-
+    final valueColor =
+        onDarkBackground
+            ? label == 'Estado'
+                ? const Color(0xFF7CF0A7)
+                : Colors.white
+            : label == 'Estado'
+            ? const Color(0xFF159A62)
+            : _MissionHero._text;
     return Container(
-      padding: EdgeInsets.all(compact ? 14 : 16),
-      decoration: _panelDecoration(),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+      decoration: BoxDecoration(
+        border: Border(
+          right:
+              showRightBorder
+                  ? BorderSide(
+                    color:
+                        onDarkBackground
+                            ? Colors.white.withValues(alpha: 0.18)
+                            : _MissionHero._line,
+                  )
+                  : BorderSide.none,
+          bottom:
+              showBottomBorder
+                  ? BorderSide(
+                    color:
+                        onDarkBackground
+                            ? Colors.white.withValues(alpha: 0.18)
+                            : _MissionHero._line,
+                  )
+                  : BorderSide.none,
+        ),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Progreso de la mision',
-            style: TextStyle(
-              fontSize: compact ? 16 : 18,
-              fontWeight: FontWeight.w900,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: softColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 2,
+                  style: TextStyle(
+                    color:
+                        onDarkBackground
+                            ? Colors.white.withValues(alpha: 0.78)
+                            : _MissionHero._muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: 3,
+                  style: TextStyle(
+                    color: valueColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    height: 1.2,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          ...List.generate(items.length, (index) {
-            final item = items[index];
-            final colors = _colorsFor(item.tone);
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: index == items.length - 1 ? 0 : 10,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: colors.$1,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colors.$2),
-                    ),
-                    child: Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        color: colors.$3,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.label,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: const Color(0xFF0E2338),
-                            fontSize: compact ? 14 : 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item.state,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.$3,
-                            fontSize: compact ? 12 : 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
         ],
       ),
     );
-  }
-
-  (Color, Color, Color) _colorsFor(_MissionStageTone tone) {
-    return switch (tone) {
-      _MissionStageTone.done => (
-        const Color(0xFFEAF6F0),
-        const Color(0xFFB8E3CA),
-        const Color(0xFF0F8A5F),
-      ),
-      _MissionStageTone.neutral => (
-        const Color(0xFFEAF2F8),
-        const Color(0xFFBFDBFE),
-        const Color(0xFF1D4ED8),
-      ),
-      _MissionStageTone.pending => (
-        const Color(0xFFFFF8E7),
-        const Color(0xFFF2D184),
-        const Color(0xFFB7791F),
-      ),
-    };
   }
 }
 
@@ -3082,7 +3404,7 @@ class _MissionChecklistCard extends StatelessWidget {
                                           child: Icon(
                                             Icons.check_circle_outline_rounded,
                                             size: 16,
-                                            color: Color(0xFF173B55),
+                                            color: CrewColors.navySecondary,
                                           ),
                                         ),
                                         const SizedBox(width: 8),
@@ -3120,12 +3442,12 @@ class _MissionChecklistCard extends StatelessWidget {
     if (normalized.contains('completado') ||
         normalized.contains('confirmado') ||
         normalized.contains('recibido')) {
-      return (const Color(0xFFEAF6F0), const Color(0xFF0F8A5F));
+      return (const Color(0xFFEAF6F0), CrewColors.success);
     }
     if (normalized.contains('admin')) {
-      return (const Color(0xFFEAF2F8), const Color(0xFF173B55));
+      return (const Color(0xFFEAF2F8), CrewColors.navySecondary);
     }
-    return (const Color(0xFFFFF5DE), const Color(0xFFB7791F));
+    return (const Color(0xFFFFF5DE), CrewColors.warning);
   }
 
   String _stageSupportText(_MissionStage stage) {
@@ -3258,7 +3580,7 @@ class _CalendarViewState extends State<_CalendarView> {
                         .toList(),
             calendarStyle: const CalendarStyle(
               markerDecoration: BoxDecoration(
-                color: Color(0xFFE0B86E),
+                color: CrewColors.gold,
                 shape: BoxShape.circle,
               ),
             ),
@@ -3470,9 +3792,9 @@ class _CalendarFlightCard extends StatelessWidget {
                           style: TextStyle(
                             color:
                                 step.$2
-                                    ? const Color(0xFF0F8A5F)
+                                    ? CrewColors.success
                                     : step.$3
-                                    ? const Color(0xFFB7791F)
+                                    ? CrewColors.warning
                                     : const Color(0xFF64748B),
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -3688,11 +4010,36 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                       _dayCell(day, false, isOutsideMonth: true),
               markerBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
-            rowHeight: compact ? 78 : 90,
-            daysOfWeekHeight: 28,
+            rowHeight: compact ? 58 : 60,
+            daysOfWeekHeight: 24,
+            daysOfWeekStyle: const DaysOfWeekStyle(
+              weekdayStyle: TextStyle(
+                color: Color(0xFF6B7A90),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+              weekendStyle: TextStyle(
+                color: Color(0xFF6B7A90),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             headerStyle: const HeaderStyle(
               formatButtonVisible: false,
               titleCentered: true,
+              titleTextStyle: TextStyle(
+                color: Color(0xFF0E2338),
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+              leftChevronIcon: Icon(
+                Icons.chevron_left_rounded,
+                color: Color(0xFF0B63F6),
+              ),
+              rightChevronIcon: Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF0B63F6),
+              ),
             ),
           ),
         ),
@@ -3704,6 +4051,8 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                   ? _operationEditor(operation, selectedRecord)
                   : _availabilityEditor(selectedRecord),
         ),
+        const SizedBox(height: 12),
+        _availabilityLegend(),
         if (activity.isNotEmpty) ...[
           const SizedBox(height: 18),
           Container(
@@ -3806,10 +4155,10 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
 
   Widget _availabilityQuickActions(bool locked) {
     final actions = [
-      ('DISPONIBLE', 'Marcar disponible'),
-      ('DESCANSO', 'Marcar descanso'),
-      ('NO_DISPONIBLE', 'Marcar no disponible'),
-      ('BLOQUEO_SOLICITADO', 'Solicitar bloqueo'),
+      (key: 'DISPONIBLE', label: 'Disponible', icon: Icons.check_rounded),
+      (key: 'DESCANSO', label: 'Descanso', icon: Icons.bedtime_rounded),
+      (key: 'NO_DISPONIBLE', label: 'No disponible', icon: Icons.close_rounded),
+      (key: 'BLOQUEO_SOLICITADO', label: 'Bloqueo', icon: Icons.lock_rounded),
     ];
 
     return Container(
@@ -3823,24 +4172,32 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                actions.map((item) {
-                  final enabled =
-                      !locked &&
-                      widget.statuses.any(
-                        (status) => status.selectable && status.key == item.$1,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final buttonWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children:
+                    actions.map((item) {
+                      final enabled =
+                          !locked &&
+                          widget.statuses.any(
+                            (status) =>
+                                status.selectable && status.key == item.key,
+                          );
+                      return SizedBox(
+                        width: buttonWidth,
+                        child: _availabilityActionButton(
+                          statusKey: item.key,
+                          label: item.label,
+                          icon: item.icon,
+                          enabled: enabled,
+                        ),
                       );
-                  return OutlinedButton(
-                    onPressed:
-                        enabled
-                            ? () => setState(() => _selectedStatus = item.$1)
-                            : null,
-                    child: Text(item.$2),
-                  );
-                }).toList(),
+                    }).toList(),
+              );
+            },
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -3854,6 +4211,13 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                         _selectedStatus,
                         _commentController.text.trim(),
                       ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFF052A46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
               icon: const Icon(Icons.save_rounded),
               label: const Text('Guardar disponibilidad'),
             ),
@@ -3867,58 +4231,46 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
     final record = _recordFor(widget.records, day);
     final operation = _operationFor(day);
     final displayStatus = _displayStatusForDay(day, record, operation);
-    final status = _statusFor(displayStatus.$1);
-    final color =
-        displayStatus.$1 == 'POR_CONFIRMAR'
-            ? const Color(0xFFF8E2BD)
-            : status.color;
     return Center(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 44,
-        height: 66,
+        width: 42,
+        height: 56,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
-          color:
-              isOutsideMonth
-                  ? const Color(0xFFF8F4EC)
-                  : color.withValues(
-                    alpha: displayStatus.$1 == 'POR_CONFIRMAR' ? 0.9 : 0.18,
-                  ),
-          borderRadius: BorderRadius.circular(16),
+          color: selected ? const Color(0xFFEEF5FF) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? const Color(0xFF0E2338) : const Color(0xFFE8EDF2),
+            color: selected ? const Color(0xFF0B63F6) : const Color(0xFFDCE5EF),
             width: selected ? 2 : 1,
           ),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               '${day.day}',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color:
-                    isOutsideMonth
-                        ? const Color(0xFF94A3B8)
+                    selected
+                        ? const Color(0xFF0B63F6)
+                        : isOutsideMonth
+                        ? const Color(0xFF9CA8B8).withValues(alpha: 0.78)
                         : const Color(0xFF15293A),
                 fontWeight: FontWeight.w900,
-                fontSize: 12,
+                fontSize: 13,
               ),
             ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: Text(
-                displayStatus.$2,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color:
-                      isOutsideMonth
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF41566A),
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  fontSize: 10,
-                  height: 1.1,
+            const SizedBox(height: 5),
+            Opacity(
+              opacity: isOutsideMonth ? 0.65 : 1,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: _availabilityColor(displayStatus.$1),
+                  shape: BoxShape.circle,
                 ),
               ),
             ),
@@ -3934,15 +4286,17 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
     CrewAssignment? operation,
   ) {
     if (operation != null) {
-      return ('EN_OPERACION', 'En\noperacion');
+      return ('EN_OPERACION', 'En operacion');
     }
-    if (record == null) return ('POR_CONFIRMAR', 'Por\nconfirmar');
+    if (record == null) return ('POR_CONFIRMAR', 'Por confirmar');
     return switch (record.statusKey) {
       'DISPONIBLE' => ('DISPONIBLE', 'Disponible'),
       'DESCANSO' => ('DESCANSO', 'Descanso'),
-      'NO_DISPONIBLE' => ('NO_DISPONIBLE', 'No\ndisponible'),
-      'BLOQUEO_SOLICITADO' => ('BLOQUEO_SOLICITADO', 'Bloqueo'),
-      'EN_OPERACION' => ('EN_OPERACION', 'En\noperacion'),
+      'NO_DISPONIBLE' => ('NO_DISPONIBLE', 'No disponible'),
+      'BLOQUEO_SOLICITADO' => ('BLOQUEO_SOLICITADO', 'Bloqueo solicitado'),
+      'BLOQUEO_APROBADO' => ('BLOQUEO_APROBADO', 'Bloqueo aprobado'),
+      'BLOQUEO_RECHAZADO' => ('BLOQUEO_RECHAZADO', 'Bloqueo rechazado'),
+      'EN_OPERACION' => ('EN_OPERACION', 'En operacion'),
       _ => (record.statusKey, record.label),
     };
   }
@@ -3954,7 +4308,7 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
       'DESCANSO' => 'Descanso',
       'EN_OPERACION' => 'En operacion',
       'BLOQUEO_SOLICITADO' => 'Bloqueos pendientes',
-      _ => _statusFor(key).label,
+      _ => _statusLabelForKey(key),
     };
   }
 
@@ -3975,23 +4329,43 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
   }
 
   Widget _availabilityStatusBadge(String key) {
-    final status = _statusFor(key);
+    final color = _availabilityColor(key);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.16),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        status.label,
-        style: TextStyle(color: status.color, fontWeight: FontWeight.w800),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _statusLabelForKey(key),
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }
 
   Widget _availabilityEditor(CrewAvailabilityRecord? record) {
-    final selectable =
-        widget.statuses.where((item) => item.selectable).toList();
+    final displayStatus = _displayStatusForDay(
+      widget.selectedDate,
+      record,
+      _operationFor(widget.selectedDate),
+    );
+    final actions = [
+      (key: 'DISPONIBLE', label: 'Disponible', icon: Icons.check_rounded),
+      (key: 'DESCANSO', label: 'Descanso', icon: Icons.bedtime_rounded),
+      (key: 'NO_DISPONIBLE', label: 'No disponible', icon: Icons.close_rounded),
+      (key: 'BLOQUEO_SOLICITADO', label: 'Bloqueo', icon: Icons.lock_rounded),
+    ];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: _panelDecoration(),
@@ -4004,59 +4378,50 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
           const SizedBox(height: 8),
           Text(
-            _dateLabel(widget.selectedDate),
+            _panelDateLabel(widget.selectedDate),
             style: const TextStyle(
               color: Color(0xFF0E2338),
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  record?.label ?? 'Sin estado registrado',
-                  style: TextStyle(
-                    color: record?.color ?? const Color(0xFF5F6975),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              _availabilityStatusBadge(_selectedStatus),
-            ],
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedStatus,
-            decoration: const InputDecoration(
-              labelText: 'Estado',
-              border: OutlineInputBorder(),
-            ),
-            items:
-                selectable
-                    .map(
-                      (status) => DropdownMenuItem(
-                        value: status.key,
-                        child: Text(status.label),
-                      ),
-                    )
-                    .toList(),
-            onChanged:
-                widget.isLoading
-                    ? null
-                    : (value) {
-                      if (value == null) return;
-                      setState(() => _selectedStatus = value);
-                    },
+          const SizedBox(height: 12),
+          _availabilityStatusBadge(displayStatus.$1),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final buttonWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children:
+                    actions.map((item) {
+                      final enabled = widget.statuses.any(
+                        (status) => status.selectable && status.key == item.key,
+                      );
+                      return SizedBox(
+                        width: buttonWidth,
+                        child: _availabilityActionButton(
+                          statusKey: item.key,
+                          label: item.label,
+                          icon: item.icon,
+                          enabled: enabled && !widget.isLoading,
+                        ),
+                      );
+                    }).toList(),
+              );
+            },
           ),
           const SizedBox(height: 14),
           TextField(
             controller: _commentController,
             maxLines: 4,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Comentario',
               hintText: 'Escribe un comentario para Admin / Red Sky',
-              border: OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -4078,6 +4443,13 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                         _selectedStatus,
                         _commentController.text.trim(),
                       ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFF052A46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
               icon: const Icon(Icons.save_rounded),
               label: const Text('Guardar disponibilidad'),
             ),
@@ -4105,33 +4477,21 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
           ),
           const SizedBox(height: 8),
           Text(
-            _dateLabel(widget.selectedDate),
+            _panelDateLabel(widget.selectedDate),
             style: const TextStyle(
               color: Color(0xFF0E2338),
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          _availabilityStatusBadge('EN_OPERACION'),
+          const SizedBox(height: 12),
           Text(
             operation == null
                 ? record?.comment ?? 'La operacion fue asignada por admin.'
                 : '${operation.code} | ${operation.route} | ${operation.showTime}',
             style: const TextStyle(color: Color(0xFF41566A), height: 1.4),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFDBEAFE),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Text(
-              'En operacion',
-              style: TextStyle(
-                color: Color(0xFF1D4ED8),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
           ),
           const SizedBox(height: 12),
           _availabilityMeta(),
@@ -4143,6 +4503,14 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
                   widget.isLoading
                       ? null
                       : () => widget.onRequestChange(widget.selectedDate),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                foregroundColor: const Color(0xFF0B63F6),
+                side: const BorderSide(color: Color(0xFF93C5FD)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
               icon: const Icon(Icons.edit_calendar_rounded),
               label: const Text('Solicitar cambio'),
             ),
@@ -4150,6 +4518,130 @@ class _AvailabilityViewState extends State<_AvailabilityView> {
         ],
       ),
     );
+  }
+
+  Widget _availabilityLegend() {
+    final items = [
+      ('DISPONIBLE', 'Disponible'),
+      ('DESCANSO', 'Descanso'),
+      ('NO_DISPONIBLE', 'No disponible'),
+      ('EN_OPERACION', 'En operacion'),
+      ('POR_CONFIRMAR', 'Por confirmar / bloqueo'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _panelDecoration(),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        children:
+            items.map((item) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _availabilityColor(item.$1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    item.$2,
+                    style: const TextStyle(
+                      color: Color(0xFF41566A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+      ),
+    );
+  }
+
+  Widget _availabilityActionButton({
+    required String statusKey,
+    required String label,
+    required IconData icon,
+    required bool enabled,
+  }) {
+    final selected = _selectedStatus == statusKey;
+    final baseColor = _availabilityColor(statusKey);
+    return OutlinedButton.icon(
+      onPressed:
+          enabled ? () => setState(() => _selectedStatus = statusKey) : null,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(50),
+        foregroundColor: baseColor,
+        backgroundColor:
+            selected ? baseColor.withValues(alpha: 0.12) : Colors.white,
+        side: BorderSide(
+          color: selected ? baseColor : baseColor.withValues(alpha: 0.38),
+          width: selected ? 2 : 1.2,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+      ),
+    );
+  }
+
+  Color _availabilityColor(String? statusKey) {
+    switch (statusKey) {
+      case 'DISPONIBLE':
+        return const Color(0xFF1FAA59);
+      case 'NO_DISPONIBLE':
+      case 'BLOQUEO_RECHAZADO':
+        return const Color(0xFFE5484D);
+      case 'DESCANSO':
+        return const Color(0xFF7C8DA5);
+      case 'EN_OPERACION':
+        return const Color(0xFF0B63F6);
+      case 'BLOQUEO_APROBADO':
+        return const Color(0xFFF08A24);
+      case 'POR_CONFIRMAR':
+      case 'BLOQUEO_SOLICITADO':
+        return const Color(0xFFE5B126);
+      default:
+        return _statusFor(statusKey ?? '').color;
+    }
+  }
+
+  String _statusLabelForKey(String key) {
+    return switch (key) {
+      'POR_CONFIRMAR' => 'Por confirmar',
+      'BLOQUEO_SOLICITADO' => 'Bloqueo solicitado',
+      'BLOQUEO_APROBADO' => 'Bloqueo aprobado',
+      'BLOQUEO_RECHAZADO' => 'Bloqueo rechazado',
+      _ => _statusFor(key).label,
+    };
+  }
+
+  String _panelDateLabel(DateTime date) {
+    const months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   CrewAssignment? _operationFor(DateTime day) {
@@ -4329,6 +4821,83 @@ class _IncidentsView extends StatelessWidget {
         const SizedBox(height: 14),
         ...incidents.map((item) => _IncidentTile(incident: item)),
       ],
+    );
+  }
+}
+
+class _CompactIncidentBanner extends StatelessWidget {
+  const _CompactIncidentBanner({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4F3),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF6D2D0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE8E5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.report_problem_rounded,
+              color: Color(0xFFE53935),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Reportar un problema',
+                  style: TextStyle(
+                    color: Color(0xFFC62828),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Utiliza esta opción si ocurrió algo que el administrador deba conocer.',
+                  style: TextStyle(
+                    color: Color(0xFF687386),
+                    fontSize: 13,
+                    height: 1.3,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFC62828),
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFE53935)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Reportar problema',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4723,14 +5292,39 @@ class _IncidentTile extends StatelessWidget {
     final hasEvidence = evidenceLabel.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      decoration: _panelDecoration(),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1E8EF)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0E2238),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF3FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.airline_seat_recline_normal_rounded,
+                  color: CrewColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
@@ -4750,11 +5344,23 @@ class _IncidentTile extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          _IncidentBadge.priority(
-            priority: incident.priority,
-            label: priorityLabel,
-          ),
+          const SizedBox(height: 10),
+          if (priorityLabel.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFE8E5),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                priorityLabel,
+                style: const TextStyle(
+                  color: Color(0xFFD8433E),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           const SizedBox(height: 10),
           if (incident.description.isNotEmpty) ...[
             Text(
@@ -4762,7 +5368,7 @@ class _IncidentTile extends StatelessWidget {
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF4D5B6A),
+                color: const Color(0xFF687386),
                 height: 1.35,
               ),
             ),
@@ -4792,6 +5398,13 @@ class _IncidentTile extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () => _showIncidentDetailModal(context, incident),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CrewColors.primary,
+                side: const BorderSide(color: Color(0xFFD7E3F4)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
               icon: const Icon(Icons.visibility_rounded),
               label: const Text('Ver detalle'),
             ),
@@ -5237,6 +5850,30 @@ Future<CrewIncident> _resolveIncidentForEvidence(CrewIncident incident) async {
   }
 }
 
+String _incidentCreatedAtLabel(CrewIncident incident) {
+  final raw = incident.createdAt.trim();
+  if (raw.isEmpty) return '';
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  const months = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
+  final hour = parsed.hour.toString().padLeft(2, '0');
+  final minute = parsed.minute.toString().padLeft(2, '0');
+  return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year} · $hour:$minute';
+}
+
 class _IncidentBadge extends StatelessWidget {
   const _IncidentBadge._({
     required this.label,
@@ -5386,18 +6023,36 @@ class _IncidentEvidenceRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(_evidenceIcon(label), color: const Color(0xFF435567), size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF10243E),
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF10243E),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (_incidentCreatedAtLabel(incident).isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'Agregado el ${_incidentCreatedAtLabel(incident)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF687386),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (clickable)

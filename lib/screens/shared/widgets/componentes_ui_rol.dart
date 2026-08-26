@@ -5,6 +5,7 @@ import '../../../models/modelos_mercado.dart';
 import '../../../models/modelos_flujo_trabajo.dart';
 import '../../../providers/proveedor_reservaciones.dart';
 import '../../../providers/proveedor_flujo_trabajo.dart';
+import 'crew_ui_tokens.dart';
 import 'contenedor_espacio_rol.dart';
 import 'hoja_crud_flujo_trabajo.dart';
 
@@ -233,17 +234,17 @@ class _HeaderCard extends StatelessWidget {
 class RoleDashboardPalette {
   const RoleDashboardPalette({
     this.backgroundGradient = const [
-      Color(0xFF07121D),
-      Color(0xFF102438),
-      Color(0xFF15354B),
+      CrewColors.navy,
+      CrewColors.navy,
+      CrewColors.navySecondary,
     ],
-    this.contentBackgroundColor = const Color(0xFFF4F6F9),
-    this.headerGradient = const [Color(0xFF0E2235), Color(0xFF132E45)],
-    this.headerBorderColor = const Color(0x3DE0B86E),
-    this.headerBadgeGradient = const [Color(0xFFE2BD79), Color(0xFFF0D49D)],
-    this.headerBadgeIconColor = const Color(0xFF12273C),
-    this.roleLabelColor = const Color(0xFFE2BD79),
-    this.menuIconColor = const Color(0xFFE2BD79),
+    this.contentBackgroundColor = CrewColors.background,
+    this.headerGradient = const [CrewColors.navy, CrewColors.navySecondary],
+    this.headerBorderColor = const Color(0x40E9BB58),
+    this.headerBadgeGradient = const [CrewColors.gold, Color(0xFFF3D48A)],
+    this.headerBadgeIconColor = CrewColors.navy,
+    this.roleLabelColor = CrewColors.gold,
+    this.menuIconColor = CrewColors.gold,
   });
 
   final List<Color> backgroundGradient;

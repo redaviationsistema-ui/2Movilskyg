@@ -178,17 +178,17 @@ class _MetricGridCard extends StatelessWidget {
         padding: EdgeInsets.all(compact ? 10 : 14),
         decoration: _panelDecoration().copyWith(
           gradient: const LinearGradient(
-            colors: [Color(0xFF0E2235), Color(0xFF173B55)],
+            colors: [CrewColors.navy, CrewColors.navySecondary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0x33E0B86E)),
+          border: Border.all(color: const Color(0x40E9BB58)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(item.icon, color: const Color(0xFFE0B86E)),
+            Icon(item.icon, color: CrewColors.gold),
             SizedBox(height: compact ? 10 : 18),
             Text(
               item.value,
@@ -257,7 +257,7 @@ class _ActionCard extends StatelessWidget {
           final buttonWidget = FilledButton(
             onPressed: onPressed,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0E2338),
+              backgroundColor: CrewColors.navy,
               foregroundColor: Colors.white,
               minimumSize: Size.fromHeight(buttonHeight),
               maximumSize: const Size(double.infinity, double.infinity),
@@ -288,10 +288,10 @@ class _ActionCard extends StatelessWidget {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFF8E7),
+                                color: const Color(0xFFFFF7DF),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Icon(icon, color: const Color(0xFF7A5A18)),
+                              child: Icon(icon, color: CrewColors.warning),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -317,7 +317,7 @@ class _ActionCard extends StatelessWidget {
                                     style:
                                         subtitleStyle ??
                                         TextStyle(
-                                          color: const Color(0xFF5F6975),
+                                          color: CrewColors.textSecondary,
                                           fontSize: compact ? 13 : 14,
                                           height: 1.3,
                                         ),
@@ -337,10 +337,10 @@ class _ActionCard extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF8E7),
+                            color: const Color(0xFFFFF7DF),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(icon, color: const Color(0xFF7A5A18)),
+                          child: Icon(icon, color: CrewColors.warning),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -365,7 +365,7 @@ class _ActionCard extends StatelessWidget {
                                 style:
                                     subtitleStyle ??
                                     const TextStyle(
-                                      color: Color(0xFF5F6975),
+                                      color: CrewColors.textSecondary,
                                       fontSize: 14,
                                       height: 1.3,
                                     ),
@@ -417,10 +417,10 @@ class _InfoTile extends StatelessWidget {
               width: compact ? 36 : 40,
               height: compact ? 36 : 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E7),
+                color: const Color(0xFFFFF7DF),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: const Color(0xFFE0B86E)),
+              child: Icon(icon, color: CrewColors.gold),
             ),
             SizedBox(width: compact ? 10 : 12),
             Expanded(
@@ -670,16 +670,10 @@ class _TextDialogState extends State<_TextDialog> {
 
 BoxDecoration _panelDecoration() {
   return BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(16),
-    border: Border.all(color: const Color(0xFFE5EAF0)),
-    boxShadow: const [
-      BoxShadow(
-        color: Color(0x14000000),
-        blurRadius: 18,
-        offset: Offset(0, 10),
-      ),
-    ],
+    color: CrewColors.card,
+    borderRadius: CrewUi.cardRadius,
+    border: Border.all(color: CrewColors.line),
+    boxShadow: CrewUi.cardShadow,
   );
 }
 

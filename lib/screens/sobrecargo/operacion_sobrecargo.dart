@@ -33,6 +33,24 @@ class CrewOperationView extends StatefulWidget {
 }
 
 class _CrewOperationViewState extends State<CrewOperationView> {
+  static const Color _brandNight = CrewColors.navy;
+  static const Color _brandBlue = CrewColors.navySecondary;
+  static const Color _skyBlue = Color(0xFFEAF3FF);
+  static const Color _mint = CrewColors.success;
+  static const Color _mintSoft = CrewColors.successSoft;
+  static const Color _orange = CrewColors.warning;
+  static const Color _orangeSoft = Color(0xFFFFF3E5);
+  static const Color _teal = CrewColors.turquoise;
+  static const Color _tealSoft = Color(0xFFE8F8F8);
+  static const Color _violet = CrewColors.purple;
+  static const Color _violetSoft = Color(0xFFF2EBFF);
+  static const Color _danger = CrewColors.danger;
+  static const Color _dangerSoft = CrewColors.dangerSoft;
+  static const Color _canvas = CrewColors.background;
+  static const Color _textStrong = CrewColors.textPrimary;
+  static const Color _textMuted = CrewColors.textSecondary;
+  static const Color _line = CrewColors.line;
+
   final ApiClient _api = ApiClient.instance;
   final ImagePicker _picker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
@@ -158,6 +176,387 @@ class _CrewOperationViewState extends State<CrewOperationView> {
               .map((item) => Map<String, dynamic>.from(item))
               .toList()
           : const [];
+
+  ({IconData icon, Color color, Color softColor}) _summaryTone(String label) {
+    switch (label) {
+      case 'Fecha':
+        return (
+          icon: Icons.calendar_month_rounded,
+          color: _brandBlue,
+          softColor: _skyBlue,
+        );
+      case 'Reporte':
+        return (
+          icon: Icons.schedule_rounded,
+          color: _orange,
+          softColor: _orangeSoft,
+        );
+      case 'Pasajeros':
+        return (
+          icon: Icons.groups_rounded,
+          color: _violet,
+          softColor: _violetSoft,
+        );
+      case 'Salida':
+        return (
+          icon: Icons.flight_takeoff_rounded,
+          color: _teal,
+          softColor: _tealSoft,
+        );
+      case 'Llegada':
+        return (
+          icon: Icons.flight_land_rounded,
+          color: _teal,
+          softColor: _tealSoft,
+        );
+      case 'Estado':
+        return (
+          icon: Icons.verified_rounded,
+          color: _mint,
+          softColor: _mintSoft,
+        );
+      default:
+        return (
+          icon: Icons.info_outline_rounded,
+          color: _brandBlue,
+          softColor: _skyBlue,
+        );
+    }
+  }
+
+  ({String title, IconData icon, Color color, Color softColor}) _stepTone(
+    String stepId,
+  ) {
+    switch (stepId) {
+      case 'validation':
+        return (
+          title: 'Vuelo validado',
+          icon: Icons.flight_rounded,
+          color: _mint,
+          softColor: _mintSoft,
+        );
+      case 'preparation':
+        return (
+          title: 'Preparación',
+          icon: Icons.work_outline_rounded,
+          color: _orange,
+          softColor: _orangeSoft,
+        );
+      case 'checklist':
+        return (
+          title: 'Checklist pre-vuelo',
+          icon: Icons.checklist_rounded,
+          color: _teal,
+          softColor: _tealSoft,
+        );
+      case 'tracking':
+        return (
+          title: 'Seguimiento',
+          icon: Icons.track_changes_rounded,
+          color: _violet,
+          softColor: _violetSoft,
+        );
+      case 'closure':
+        return (
+          title: 'Checklist post-vuelo',
+          icon: Icons.assignment_turned_in_rounded,
+          color: _brandNight,
+          softColor: _skyBlue,
+        );
+      default:
+        return (
+          title: 'Paso',
+          icon: Icons.radio_button_checked_rounded,
+          color: _brandBlue,
+          softColor: _skyBlue,
+        );
+    }
+  }
+
+  ({IconData icon, Color color, Color softColor}) _categoryTone(String label) {
+    final normalized = label.toLowerCase();
+    if (normalized.contains('cabina')) {
+      return (
+        icon: Icons.airline_seat_recline_extra_rounded,
+        color: _teal,
+        softColor: _tealSoft,
+      );
+    }
+    if (normalized.contains('seguridad')) {
+      return (
+        icon: Icons.verified_user_rounded,
+        color: _violet,
+        softColor: _violetSoft,
+      );
+    }
+    if (normalized.contains('servicio')) {
+      return (
+        icon: Icons.room_service_rounded,
+        color: _orange,
+        softColor: _orangeSoft,
+      );
+    }
+    if (normalized.contains('pasaj')) {
+      return (
+        icon: Icons.groups_rounded,
+        color: _brandBlue,
+        softColor: _skyBlue,
+      );
+    }
+    return (
+      icon: Icons.checklist_rtl_rounded,
+      color: _brandNight,
+      softColor: _skyBlue,
+    );
+  }
+
+  ({Color color, Color softColor, IconData icon, String label}) _statusTone(
+    String status,
+  ) {
+    switch (status) {
+      case 'completed':
+        return (
+          color: _mint,
+          softColor: _mintSoft,
+          icon: Icons.check_rounded,
+          label: 'Completado',
+        );
+      case 'current':
+        return (
+          color: _brandBlue,
+          softColor: _skyBlue,
+          icon: Icons.radio_button_checked_rounded,
+          label: 'En curso',
+        );
+      case 'blocked':
+        return (
+          color: _textMuted,
+          softColor: Color(0xFFF0F4F8),
+          icon: Icons.lock_rounded,
+          label: 'Bloqueado',
+        );
+      case 'available':
+        return (
+          color: _orange,
+          softColor: _orangeSoft,
+          icon: Icons.schedule_rounded,
+          label: 'Pendiente',
+        );
+      default:
+        return (
+          color: _textMuted,
+          softColor: Colors.white,
+          icon: Icons.radio_button_unchecked_rounded,
+          label: 'Pendiente',
+        );
+    }
+  }
+
+  ButtonStyle _primaryButtonStyle({Color? color}) => FilledButton.styleFrom(
+    backgroundColor: color ?? _brandBlue,
+    foregroundColor: Colors.white,
+    minimumSize: const Size.fromHeight(50),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  );
+
+  ButtonStyle _outlineButtonStyle({
+    Color color = _brandBlue,
+    Color backgroundColor = Colors.white,
+  }) => OutlinedButton.styleFrom(
+    minimumSize: const Size.fromHeight(50),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    backgroundColor: backgroundColor,
+    foregroundColor: color,
+    side: BorderSide(color: color.withValues(alpha: 0.45)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  );
+
+  Widget _statusChip(String status, {bool selected = false}) {
+    final tone = _statusTone(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tone.softColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: tone.color.withValues(alpha: selected ? 0.9 : 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(tone.icon, size: 14, color: tone.color),
+          const SizedBox(width: 6),
+          Text(
+            tone.label.toUpperCase(),
+            style: TextStyle(
+              color: tone.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12062D50),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _stepHeader({
+    required String stepId,
+    required String eyebrow,
+    required String title,
+    required String subtitle,
+  }) {
+    final tone = _stepTone(stepId);
+    final stepNumber = RegExp(r'Paso\\s+(\\d+)').firstMatch(eyebrow)?.group(1);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [tone.softColor, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: tone.color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tone.softColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    stepNumber == null
+                        ? eyebrow.toUpperCase()
+                        : 'PASO $stepNumber',
+                    style: TextStyle(
+                      color: tone.color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: _textStrong,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: _textMuted,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: tone.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(tone.icon, color: tone.color, size: 28),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _progressHeader({
+    required int resolved,
+    required int total,
+    required double progress,
+  }) {
+    final progressColor =
+        progress >= 1
+            ? _mint
+            : progress > 0
+            ? _brandBlue
+            : _orange;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                total == 0
+                    ? '0 de 0 completados'
+                    : '${progress >= 1 ? '✓ ' : ''}$resolved de $total completados',
+                style: const TextStyle(
+                  color: _textStrong,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              '${(progress * 100).round()}%',
+              style: TextStyle(
+                color: progressColor,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 10,
+            backgroundColor: _canvas,
+            valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+          ),
+        ),
+      ],
+    );
+  }
 
   void _setSavingState(bool saving, {String? actionId}) {
     if (!mounted) return;
@@ -1558,84 +1957,168 @@ class _CrewOperationViewState extends State<CrewOperationView> {
 
   Widget _flightSummaryCard() {
     final assignment = widget.assignment;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Mi vuelo',
-              style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: _line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14062D50),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_brandNight, _brandBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
             ),
-            const SizedBox(height: 6),
-            Text(
-              assignment.route,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              assignment.aircraft,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Divider(height: 28),
-            _summaryLine(
-              Icons.calendar_today_rounded,
-              'Fecha',
-              _compactCrewDate(assignment.date),
-            ),
-            _summaryLine(
-              Icons.schedule_rounded,
-              'Reporte',
-              assignment.showTime,
-            ),
-            _summaryLine(
-              Icons.groups_rounded,
-              'Pasajeros',
-              '${assignment.passengers}',
-            ),
-            if (assignment.origin.isNotEmpty)
-              _summaryLine(
-                Icons.flight_takeoff_rounded,
-                'Salida',
-                assignment.origin,
-              ),
-            if (assignment.destination.isNotEmpty)
-              _summaryLine(
-                Icons.flight_land_rounded,
-                'Llegada',
-                assignment.destination,
-              ),
-            _summaryLine(Icons.verified_rounded, 'Estado', assignment.status),
-            if (assignment.code.trim().isNotEmpty && assignment.code != 'OPS')
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Folio: ${assignment.code}',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _mintSoft,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_rounded, size: 14, color: _mint),
+                          SizedBox(width: 6),
+                          Text(
+                            'Confirmado',
+                            style: TextStyle(
+                              color: _mint,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.flight_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-          ],
-        ),
+                const SizedBox(height: 16),
+                Text(
+                  assignment.route,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  assignment.aircraft,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: const Color(0xFFD7E5F4),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _summaryLine('Fecha', _compactCrewDate(assignment.date)),
+                _summaryLine('Reporte', assignment.showTime),
+                _summaryLine('Pasajeros', '${assignment.passengers} pax'),
+                if (assignment.origin.isNotEmpty)
+                  _summaryLine('Salida', assignment.origin),
+                if (assignment.destination.isNotEmpty)
+                  _summaryLine('Llegada', assignment.destination),
+                _summaryLine('Estado', assignment.status),
+                if (assignment.code.trim().isNotEmpty &&
+                    assignment.code != 'OPS')
+                  _summaryLine('Folio', assignment.code),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _summaryLine(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
+  Widget _summaryLine(String label, String value) {
+    final tone = _summaryTone(label);
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _line),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 19, color: const Color(0xFF385A72)),
-          const SizedBox(width: 10),
-          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w800)),
-          Expanded(child: Text(value, textAlign: TextAlign.right)),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: tone.softColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(tone.icon, size: 20, color: tone.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: _textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: _textStrong,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1649,39 +2132,102 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         children:
             steps.map((step) {
               final selected = step.id == _currentStepId;
-              final color = switch (step.status) {
-                'completed' => const Color(0xFF16845B),
-                'current' => const Color(0xFFB7791F),
-                'blocked' => const Color(0xFFBFC7D1),
-                _ => const Color(0xFF385A72),
-              };
+              final tone = _stepTone(step.id);
+              final statusTone = _statusTone(step.status);
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  selected: selected,
-                  label: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(step.label),
-                      Text(
-                        step.status == 'completed'
-                            ? 'Completado'
-                            : step.status == 'current'
-                            ? 'Activo'
-                            : step.status == 'blocked'
-                            ? 'Bloqueado'
-                            : 'Pendiente',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ],
-                  ),
-                  onSelected:
+                padding: const EdgeInsets.only(right: 10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap:
                       step.available
-                          ? (_) => setState(() => _selectedStepId = step.id)
+                          ? () => setState(() => _selectedStepId = step.id)
                           : null,
-                  selectedColor: color.withValues(alpha: 0.16),
-                  side: BorderSide(color: color),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 170,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color:
+                          step.status == 'blocked'
+                              ? const Color(0xFFF6F8FB)
+                              : Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color:
+                            selected
+                                ? tone.color
+                                : statusTone.color.withValues(alpha: 0.3),
+                        width: selected ? 1.6 : 1,
+                      ),
+                      boxShadow:
+                          selected
+                              ? [
+                                BoxShadow(
+                                  color: tone.color.withValues(alpha: 0.14),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ]
+                              : const [],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: tone.softColor,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                tone.icon,
+                                color: tone.color,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: _statusChip(
+                                    step.status,
+                                    selected: selected,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          step.label,
+                          style: TextStyle(
+                            color:
+                                step.status == 'blocked'
+                                    ? _textMuted
+                                    : _textStrong,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        if (selected) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            height: 3,
+                            width: 48,
+                            decoration: BoxDecoration(
+                              color: tone.color,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               );
             }).toList(),
@@ -1718,138 +2264,124 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         onPressed = () => _focusStepSection('closure');
         break;
     }
-    return Card(
+    return Container(
       key: _primaryActionKey,
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Acción principal',
-              style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              action.title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            Text(action.detail),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (action.cta.isNotEmpty)
-                  FilledButton.icon(
-                    onPressed: _saving ? null : onPressed,
-                    icon: _buttonIcon(
-                      Icons.arrow_forward_rounded,
-                      busy: primaryBusy,
-                    ),
-                    label: Text(
-                      _buttonLabel(
-                        action.cta,
-                        busy: primaryBusy,
-                        busyLabel: 'Procesando...',
-                      ),
-                    ),
-                  ),
-                OutlinedButton.icon(
-                  onPressed:
-                      _saving
-                          ? null
-                          : () =>
-                              _showIncidentDialog(actionId: 'primary:incident'),
+      child: _sectionCard(
+        children: [
+          _stepHeader(
+            stepId: _currentStepId,
+            eyebrow: 'Acción principal',
+            title: action.title,
+            subtitle: action.detail,
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              if (action.cta.isNotEmpty)
+                FilledButton.icon(
+                  onPressed: _saving ? null : onPressed,
                   icon: _buttonIcon(
-                    Icons.warning_amber_rounded,
-                    busy: incidentBusy,
-                    color: Theme.of(context).colorScheme.error,
+                    Icons.arrow_forward_rounded,
+                    busy: primaryBusy,
                   ),
+                  style: _primaryButtonStyle(),
                   label: Text(
-                    _buttonLabel('Reportar incidencia', busy: incidentBusy),
+                    _buttonLabel(
+                      action.cta,
+                      busy: primaryBusy,
+                      busyLabel: 'Procesando...',
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
+              OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () =>
+                            _showIncidentDialog(actionId: 'primary:incident'),
+                icon: _buttonIcon(
+                  Icons.warning_amber_rounded,
+                  busy: incidentBusy,
+                  color: _danger,
+                ),
+                style: _outlineButtonStyle(
+                  color: _danger,
+                  backgroundColor: _dangerSoft,
+                ),
+                label: Text(
+                  _buttonLabel('Reportar incidencia', busy: incidentBusy),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _validationStep() {
     final confirmBusy = _isBusyAction('validation:confirm');
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return _sectionCard(
+      children: [
+        _stepHeader(
+          stepId: 'validation',
+          eyebrow: 'Paso 1 · Validar vuelo',
+          title: 'Vuelo validado',
+          subtitle: 'Confirma que recibiste y puedes realizar esta asignación.',
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            const Text(
-              'Paso 1 · Validar vuelo',
-              style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Confirma que recibiste y puedes realizar esta asignación.',
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _factPill('Ruta', widget.assignment.route),
-                _factPill('Fecha', _compactCrewDate(widget.assignment.date)),
-                _factPill('Reporte', widget.assignment.showTime),
-                _factPill('Aeronave', widget.assignment.aircraft),
-                _factPill('Pasajeros', '${widget.assignment.passengers} pax'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!_flow.assignmentConfirmed)
-              FilledButton.icon(
-                onPressed:
-                    _saving
-                        ? null
-                        : () =>
-                            _confirmAssignment(actionId: 'validation:confirm'),
-                icon: _buttonIcon(
-                  Icons.check_circle_outline_rounded,
-                  busy: confirmBusy,
-                ),
-                label: Text(
-                  _buttonLabel(
-                    'Confirmar vuelo',
-                    busy: confirmBusy,
-                    busyLabel: 'Confirmando...',
-                  ),
-                ),
-              )
-            else
-              const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF16845B),
-                ),
-                title: Text('Vuelo confirmado'),
-                subtitle: Text('La asignación ya está validada.'),
-              ),
+            _factPill('Ruta', widget.assignment.route),
+            _factPill('Fecha', _compactCrewDate(widget.assignment.date)),
+            _factPill('Reporte', widget.assignment.showTime),
+            _factPill('Aeronave', widget.assignment.aircraft),
+            _factPill('Pasajeros', '${widget.assignment.passengers} pax'),
           ],
         ),
-      ),
+        const SizedBox(height: 16),
+        if (!_flow.assignmentConfirmed)
+          FilledButton.icon(
+            onPressed:
+                _saving
+                    ? null
+                    : () => _confirmAssignment(actionId: 'validation:confirm'),
+            icon: _buttonIcon(
+              Icons.check_circle_outline_rounded,
+              busy: confirmBusy,
+            ),
+            style: _primaryButtonStyle(color: _mint),
+            label: Text(
+              _buttonLabel(
+                'Confirmar vuelo',
+                busy: confirmBusy,
+                busyLabel: 'Confirmando...',
+              ),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _mintSoft,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _mint.withValues(alpha: 0.28)),
+            ),
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.check_circle_rounded, color: _mint),
+              title: Text(
+                'Vuelo confirmado',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: Text('La asignación ya está validada.'),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1858,9 +2390,9 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       constraints: const BoxConstraints(minWidth: 140),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FB),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE1E7ED)),
+        color: _canvas,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1869,12 +2401,18 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             label,
             style: const TextStyle(
               fontSize: 12,
-              color: Color(0xFF6B7280),
+              color: _textMuted,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: const TextStyle(
+              color: _textStrong,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );
@@ -1899,74 +2437,53 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     final progress =
         summary.total == 0 ? 0.0 : summary.resolved / summary.total;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              eyebrow,
-              style: const TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 9,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text('${(progress * 100).round()}%'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('${summary.resolved} de ${summary.total} completados'),
-            if (summary.total == 0) ...[
-              const SizedBox(height: 16),
-              const _InfoTile(
-                icon: Icons.playlist_remove_rounded,
-                title: 'Checklist sin elementos configurados.',
-                subtitle:
-                    'Esta fase sigue pendiente hasta que backend entregue elementos reales.',
-              ),
-            ],
-            const SizedBox(height: 16),
-            ..._groupedChecklist(checklist).map(
-              (group) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _checklistGroupCard(checklist, group.key, group.value),
-              ),
-            ),
-            if (footer != null || footerAction != null) ...[
-              const SizedBox(height: 14),
-              if (footer != null)
-                Text(
-                  footer,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              if (footerAction != null) ...[
-                const SizedBox(height: 10),
-                footerAction,
-              ],
-            ],
-          ],
+    return _sectionCard(
+      children: [
+        _stepHeader(
+          stepId: _currentStepId,
+          eyebrow: eyebrow,
+          title: title,
+          subtitle:
+              footer ?? 'Completa esta fase para avanzar al siguiente paso.',
         ),
-      ),
+        const SizedBox(height: 18),
+        _progressHeader(
+          resolved: summary.resolved,
+          total: summary.total,
+          progress: progress,
+        ),
+        if (summary.total == 0) ...[
+          const SizedBox(height: 16),
+          const _InfoTile(
+            icon: Icons.playlist_remove_rounded,
+            title: 'Checklist sin elementos configurados.',
+            subtitle:
+                'Esta fase sigue pendiente hasta que backend entregue elementos reales.',
+          ),
+        ],
+        const SizedBox(height: 16),
+        ..._groupedChecklist(checklist).map(
+          (group) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _checklistGroupCard(checklist, group.key, group.value),
+          ),
+        ),
+        if (footer != null || footerAction != null) ...[
+          const SizedBox(height: 8),
+          if (footer != null)
+            Text(
+              footer,
+              style: const TextStyle(
+                color: _textStrong,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          if (footerAction != null) ...[
+            const SizedBox(height: 12),
+            footerAction,
+          ],
+        ],
+      ],
     );
   }
 
@@ -1976,30 +2493,38 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     List<Map<String, dynamic>> items,
   ) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final checklistType = '${checklist['type'] ?? ''}';
     final isExpanded = _isChecklistGroupExpanded(checklistType, label);
     final handled = items.where(_isChecklistHandled).length;
+    final tone = _categoryTone(label);
+    final completed = handled == items.length && items.isNotEmpty;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color:
-              isExpanded
-                  ? scheme.primary.withValues(alpha: 0.22)
-                  : scheme.outlineVariant,
+          color: isExpanded ? tone.color.withValues(alpha: 0.35) : _line,
         ),
       ),
       child: Column(
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             onTap: () => _toggleChecklistGroup(checklistType, label),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Row(
                 children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: tone.softColor,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(tone.icon, color: tone.color, size: 22),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2007,25 +2532,44 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                         Text(
                           label,
                           style: theme.textTheme.titleMedium?.copyWith(
+                            color: _textStrong,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
-                          '$handled/${items.length} registrados',
+                          '${items.length} elementos',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
+                            color: _textMuted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: completed ? _mintSoft : _canvas,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$handled/${items.length}',
+                      style: TextStyle(
+                        color: completed ? _mint : _textMuted,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Icon(
                     isExpanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: scheme.onSurfaceVariant,
+                    color: _textMuted,
                   ),
                 ],
               ),
@@ -2078,20 +2622,17 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color:
-              isExpanded
-                  ? scheme.primary.withValues(alpha: 0.34)
-                  : scheme.outlineVariant,
+          color: isExpanded ? _brandBlue.withValues(alpha: 0.34) : _line,
           width: isExpanded ? 1.4 : 1,
         ),
         boxShadow:
             isExpanded
                 ? [
                   BoxShadow(
-                    color: scheme.shadow.withValues(alpha: 0.06),
+                    color: _brandBlue.withValues(alpha: 0.08),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -2110,7 +2651,15 @@ class _CrewOperationViewState extends State<CrewOperationView> {
               children: [
                 Row(
                   children: [
-                    Icon(icon, color: iconColor, size: 22),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(icon, color: iconColor, size: 22),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -2119,6 +2668,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                           Text(
                             title,
                             style: theme.textTheme.titleSmall?.copyWith(
+                              color: _textStrong,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -2126,7 +2676,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                           Text(
                             _checklistStatusLabel(item),
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
+                              color: _textMuted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -2138,7 +2688,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.chevron_right_rounded,
-                      color: scheme.onSurfaceVariant,
+                      color: _textMuted,
                     ),
                   ],
                 ),
@@ -2182,9 +2732,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         if ('${item['description'] ?? ''}'.trim().isNotEmpty) ...[
           Text(
             '${item['description']}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: _textMuted),
           ),
           const SizedBox(height: 14),
         ],
@@ -2205,9 +2753,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           const SizedBox(height: 6),
           Text(
             '${item['notes']}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: _textMuted),
           ),
         ],
         const SizedBox(height: 12),
@@ -2229,9 +2775,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                   busy: _isBusyAction(completeActionId),
                 ),
                 style: FilledButton.styleFrom(
+                  backgroundColor: _brandBlue,
+                  foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2261,9 +2809,12 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                   color: scheme.primary,
                 ),
                 style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: _brandBlue,
                   minimumSize: const Size.fromHeight(50),
+                  side: BorderSide(color: _brandBlue.withValues(alpha: 0.45)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2293,17 +2844,15 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                 icon: _buttonIcon(
                   Icons.warning_amber_rounded,
                   busy: _isBusyAction(failureActionId),
-                  color: scheme.error,
+                  color: _danger,
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
-                  backgroundColor: scheme.errorContainer.withValues(
-                    alpha: 0.28,
-                  ),
-                  foregroundColor: scheme.error,
-                  side: BorderSide(color: scheme.error.withValues(alpha: 0.25)),
+                  backgroundColor: _dangerSoft,
+                  foregroundColor: _danger,
+                  side: BorderSide(color: _danger.withValues(alpha: 0.28)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2326,15 +2875,15 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                 icon: _buttonIcon(
                   failed ? Icons.edit_note_rounded : Icons.note_add_outlined,
                   busy: _isBusyAction(noteActionId),
-                  color: const Color(0xFF9A6700),
+                  color: _orange,
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
-                  backgroundColor: const Color(0xFFFFF4D6),
-                  foregroundColor: const Color(0xFF9A6700),
-                  side: const BorderSide(color: Color(0xFFE9CF7A)),
+                  backgroundColor: _orangeSoft,
+                  foregroundColor: _orange,
+                  side: BorderSide(color: _orange.withValues(alpha: 0.32)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2376,8 +2925,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  backgroundColor: Colors.white,
+                  foregroundColor: _brandBlue,
+                  side: BorderSide(color: _brandBlue.withValues(alpha: 0.45)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2408,8 +2960,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                 ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  backgroundColor: Colors.white,
+                  foregroundColor: _brandBlue,
+                  side: BorderSide(color: _brandBlue.withValues(alpha: 0.45)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 label: Text(
@@ -2453,9 +3008,9 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                       child: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: scheme.surface,
+                          color: _canvas,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: scheme.outlineVariant),
+                          border: Border.all(color: _line),
                         ),
                         child: Row(
                           children: [
@@ -2464,7 +3019,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                               child: Container(
                                 width: 52,
                                 height: 52,
-                                color: scheme.surfaceContainerHigh,
+                                color: _skyBlue,
                                 child:
                                     url.isEmpty
                                         ? const Icon(Icons.image_rounded)
@@ -2492,7 +3047,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                             const SizedBox(width: 8),
                             Icon(
                               Icons.chevron_right_rounded,
-                              color: scheme.onSurfaceVariant,
+                              color: _textMuted,
                             ),
                           ],
                         ),
@@ -2527,180 +3082,176 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         milestones.where((item) => item.state == 'completed').length;
     final progress = milestones.isEmpty ? 0.0 : completed / milestones.length;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return _sectionCard(
+      children: [
+        _stepHeader(
+          stepId: 'tracking',
+          eyebrow: 'Paso 4 · Seguimiento',
+          title: 'Progreso de la operación',
+          subtitle:
+              'Visualiza qué evento está completado, en curso o pendiente.',
+        ),
+        const SizedBox(height: 18),
+        _progressHeader(
+          resolved: completed,
+          total: milestones.length,
+          progress: progress,
+        ),
+        const SizedBox(height: 16),
+        ...milestones.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => setState(() => _selectedTrackingId = item.id),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: item.id == selected.id ? _violetSoft : Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: item.id == selected.id ? _violet : _line,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _statusTone(item.state).softColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _statusTone(item.state).icon,
+                        color: _statusTone(item.state).color,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.label,
+                            style: const TextStyle(
+                              color: _textStrong,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.timestamp.isNotEmpty
+                                ? item.timestamp
+                                : item.state == 'current'
+                                ? 'Siguiente acción'
+                                : item.state == 'completed'
+                                ? 'Completado'
+                                : 'Pendiente',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _statusChip(item.state),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (selected.id.isNotEmpty) ...[
+          const Divider(height: 28, color: _line),
+          Text(
+            selected.label,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: _textStrong,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(selected.detail, style: const TextStyle(color: _textMuted)),
+          const SizedBox(height: 10),
+          if (selected.timestamp.isNotEmpty)
             const Text(
-              'Paso 4 · Seguimiento',
+              'Registrado',
               style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
+                color: _textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 6),
+          if (selected.timestamp.isNotEmpty)
             Text(
-              'Progreso de la operación',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 9,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text('${(progress * 100).round()}%'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('$completed de ${milestones.length} eventos registrados'),
-            const SizedBox(height: 16),
-            ...milestones.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => setState(() => _selectedTrackingId = item.id),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color:
-                          item.id == selected.id
-                              ? const Color(0xFFEEF5FB)
-                              : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color:
-                            item.id == selected.id
-                                ? const Color(0xFF385A72)
-                                : const Color(0xFFE2E8F0),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          item.state == 'completed'
-                              ? '✓'
-                              : item.state == 'current'
-                              ? '●'
-                              : '○',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.label,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.timestamp.isNotEmpty
-                                    ? item.timestamp
-                                    : item.state == 'current'
-                                    ? 'Siguiente acción'
-                                    : 'Pendiente',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              selected.timestamp,
+              style: const TextStyle(
+                color: _textStrong,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (selected.id.isNotEmpty) ...[
-              const Divider(height: 28),
-              Text(
-                selected.label,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 6),
-              Text(selected.detail),
-              const SizedBox(height: 10),
-              if (selected.timestamp.isNotEmpty)
-                Text('Registrado: ${selected.timestamp}'),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (selected.action != null)
-                    Builder(
-                      builder: (context) {
-                        final actionId = 'tracking:${selected.id}';
-                        final busy = _isBusyAction(actionId);
-                        return FilledButton.icon(
-                          onPressed:
-                              _saving
-                                  ? null
-                                  : () => _runAction(
-                                    selected.action!,
-                                    actionId: actionId,
-                                  ),
-                          icon: _buttonIcon(
-                            _friendlyActionIcon(selected.action!),
-                            busy: busy,
-                          ),
-                          label: Text(
-                            _buttonLabel(
-                              _friendlyActionLabel(selected.action!),
-                              busy: busy,
-                              busyLabel: 'Procesando...',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _saving
-                            ? null
-                            : () => _showIncidentDialog(
-                              actionId: 'tracking:incident',
-                            ),
-                    icon: _buttonIcon(
-                      Icons.warning_amber_rounded,
-                      busy: _isBusyAction('tracking:incident'),
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    label: Text(
-                      _buttonLabel(
-                        'Reportar incidencia',
-                        busy: _isBusyAction('tracking:incident'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (selected.action != null)
+                Builder(
+                  builder: (context) {
+                    final actionId = 'tracking:${selected.id}';
+                    final busy = _isBusyAction(actionId);
+                    return FilledButton.icon(
+                      onPressed:
+                          _saving
+                              ? null
+                              : () => _runAction(
+                                selected.action!,
+                                actionId: actionId,
+                              ),
+                      icon: _buttonIcon(
+                        _friendlyActionIcon(selected.action!),
+                        busy: busy,
                       ),
-                    ),
+                      style: _primaryButtonStyle(),
+                      label: Text(
+                        _buttonLabel(
+                          _friendlyActionLabel(selected.action!),
+                          busy: busy,
+                          busyLabel: 'Procesando...',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              OutlinedButton.icon(
+                onPressed:
+                    _saving
+                        ? null
+                        : () =>
+                            _showIncidentDialog(actionId: 'tracking:incident'),
+                icon: _buttonIcon(
+                  Icons.warning_amber_rounded,
+                  busy: _isBusyAction('tracking:incident'),
+                  color: _danger,
+                ),
+                style: _outlineButtonStyle(
+                  color: _danger,
+                  backgroundColor: _dangerSoft,
+                ),
+                label: Text(
+                  _buttonLabel(
+                    'Reportar incidencia',
+                    busy: _isBusyAction('tracking:incident'),
                   ),
-                ],
+                ),
               ),
             ],
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -2731,6 +3282,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                   Icons.send_rounded,
                   busy: _isBusyAction('closure:submit'),
                 ),
+                style: _primaryButtonStyle(color: _mint),
                 label: Text(
                   _buttonLabel(
                     'Finalizar operación',
@@ -2742,6 +3294,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
               : _finalReport.isNotEmpty
               ? OutlinedButton.icon(
                 onPressed: _showReport,
+                style: _outlineButtonStyle(),
                 icon: const Icon(Icons.description_rounded),
                 label: const Text('Consultar reporte final'),
               )
@@ -2766,112 +3319,109 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             )
             .toList();
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Resumen de operación',
-              style: TextStyle(
-                color: Color(0xFFB7791F),
-                fontWeight: FontWeight.w900,
-              ),
+    return _sectionCard(
+      children: [
+        const Text(
+          'Resumen de operación',
+          style: TextStyle(
+            color: _textStrong,
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 14),
+        ...items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: item.color(scheme).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(item.icon, color: item.color(scheme), size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.label,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: _textStrong,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.statusLabel,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: item.color(scheme),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
+          ),
+        ),
+        if (showClosureState) ...[
+          const SizedBox(height: 4),
+          const Divider(color: _line),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: (_finalReport.isNotEmpty ? _mint : _textMuted)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _finalReport.isNotEmpty
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: _finalReport.isNotEmpty ? _mint : _textMuted,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Icon(
-                        item.icon,
-                        color: item.color(scheme),
-                        size: 20,
+                    Text(
+                      'Cierre de operación',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: _textStrong,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.label,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            item.statusLabel,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: item.color(scheme),
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 2),
+                    Text(
+                      _finalReport.isNotEmpty ? 'Completado' : 'Pendiente',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: _finalReport.isNotEmpty ? _mint : _textMuted,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            if (showClosureState) ...[
-              const SizedBox(height: 4),
-              const Divider(),
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Icon(
-                      _finalReport.isNotEmpty
-                          ? Icons.check_circle_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      color:
-                          _finalReport.isNotEmpty
-                              ? const Color(0xFF16845B)
-                              : scheme.onSurfaceVariant,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Cierre de operación',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _finalReport.isNotEmpty ? 'Completado' : 'Pendiente',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color:
-                                _finalReport.isNotEmpty
-                                    ? const Color(0xFF16845B)
-                                    : scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ],
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -2917,9 +3467,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _canvas,
       key: _scaffoldKey,
       drawer: Drawer(
-        backgroundColor: const Color(0xFF0C1B2A),
+        backgroundColor: CrewColors.navy,
         child: SafeArea(
           child: RoleWorkspaceDrawerContent(
             branchLabel: _resolvedDrawerName,
@@ -2955,6 +3506,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         ),
       ),
       appBar: AppBar(
+        backgroundColor: _brandNight,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
         leading: IconButton(
           tooltip: 'Abrir menú',
@@ -2996,7 +3551,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                 ],
           ),
         ],
-        title: const Text('Mi vuelo'),
+        title: const Text(
+          'Mi vuelo',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
       ),
       body: Stack(
         children: [
@@ -3004,7 +3562,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             onRefresh: _load,
             child: ListView(
               controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
               children: [
                 if (_loading) const LinearProgressIndicator(),
                 if (_saving)
@@ -3057,6 +3615,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
                       onPressed: _showReport,
+                      style: _outlineButtonStyle(),
                       icon: const Icon(Icons.description_rounded),
                       label: const Text('Consultar reporte final'),
                     ),
@@ -3160,9 +3719,9 @@ class _OperationChecklistState {
   Color color(ColorScheme scheme) {
     switch (status) {
       case 'completed':
-        return const Color(0xFF16845B);
+        return CrewColors.success;
       case 'current':
-        return const Color(0xFFB7791F);
+        return CrewColors.warning;
       case 'blocked':
         return scheme.onSurfaceVariant;
       case 'available':
