@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
@@ -18,6 +19,8 @@ import '../../models/aeropuerto.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../services/servicio_aeropuertos.dart';
 import '../../services/servicio_ocr_registro.dart';
+import 'date_text_input_formatter.dart';
+import 'nationality_options.dart';
 import '../marketplace/pantalla_inicio_mercado.dart';
 
 class CrewRegisterScreen extends StatefulWidget {
@@ -310,7 +313,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _scanStatus = rawText.trim().isEmpty ? 'pending' : 'scanned';
       if (fullName != null) _nameController.text = fullName;
       if (birthDate != null) {
-        _birthDateController.text = _normalizeDate(birthDate);
+        _birthDateController.text = normalizeBirthDateForInput(birthDate);
       }
       if (license != null) _licenseController.text = license;
       if (category != null) _licenseCategoryController.text = category.trim();
@@ -491,7 +494,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       phone: _phoneController.text,
       base: _baseLabelForBackend(),
       baseAirportCode: _selectedBaseAirportCode(),
-      birthDate: _birthDateController.text,
+      birthDate: birthDateInputToIso(_birthDateController.text),
       nationality: _nationalityController.text,
       licenseNumber: _licenseController.text,
       licenseType: _licenseTypeController.text,
@@ -556,7 +559,8 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final isProfileStep = _currentStep == 0;
     final progressLabel = isProfileStep ? 'Paso 1 de 4' : 'Paso 2 de 4';
-    final progressSubtitle = isProfileStep ? '25% completado' : '50% completado';
+    final progressSubtitle =
+        isProfileStep ? '25% completado' : '50% completado';
     final progressValue = isProfileStep ? .25 : .50;
 
     return Scaffold(
@@ -567,11 +571,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF04101D),
-              Color(0xFF06111B),
-              Color(0xFF03070D),
-            ],
+            colors: [Color(0xFF04101D), Color(0xFF06111B), Color(0xFF03070D)],
           ),
         ),
         child: Stack(
@@ -579,18 +579,12 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
             Positioned(
               top: 120,
               right: -30,
-              child: _CrewGlow(
-                size: 220,
-                color: const Color(0x1FD9A84F),
-              ),
+              child: _CrewGlow(size: 220, color: const Color(0x1FD9A84F)),
             ),
             Positioned(
               top: 320,
               left: -50,
-              child: _CrewGlow(
-                size: 220,
-                color: const Color(0x143E6DAA),
-              ),
+              child: _CrewGlow(size: 220, color: const Color(0x143E6DAA)),
             ),
             SafeArea(
               bottom: false,
@@ -645,7 +639,9 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                             progressText: 'Registro',
                           ),
                           const SizedBox(height: 18),
-                          _CrewPremiumStepper(activeStep: isProfileStep ? 0 : 1),
+                          _CrewPremiumStepper(
+                            activeStep: isProfileStep ? 0 : 1,
+                          ),
                           const SizedBox(height: 18),
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 260),
@@ -674,7 +670,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _field(_nameController, 'Nombre completo'),
+                                          _field(
+                                            _nameController,
+                                            'Nombre completo',
+                                          ),
                                           _field(
                                             _phoneController,
                                             'Telefono',
@@ -686,10 +685,7 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                             'Fecha de nacimiento',
                                             hint: 'DD / MM / AAAA',
                                           ),
-                                          _field(
-                                            _nationalityController,
-                                            'Nacionalidad',
-                                          ),
+                                          _nationalityField('Nacionalidad'),
                                           const SizedBox(height: 18),
                                           const _CrewSubsectionTitle(
                                             title: 'Licencia de sobrecargo',
@@ -754,11 +750,13 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                                   'Vigencia',
                                                   hint: 'AAAA-MM-DD',
                                                   onChanged:
-                                                      () => _licenseStatusController
-                                                          .text = _documentStatus(
-                                                            _licenseExpirationController
-                                                                .text,
-                                                          ),
+                                                      () =>
+                                                          _licenseStatusController
+                                                                  .text =
+                                                              _documentStatus(
+                                                                _licenseExpirationController
+                                                                    .text,
+                                                              ),
                                                 ),
                                               ),
                                               const SizedBox(width: 12),
@@ -802,7 +800,8 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                           _field(
                                             _emailController,
                                             'Correo',
-                                            keyboard: TextInputType.emailAddress,
+                                            keyboard:
+                                                TextInputType.emailAddress,
                                           ),
                                           Align(
                                             alignment: Alignment.centerRight,
@@ -830,12 +829,14 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                                 color: Colors.white,
                                               ),
                                             ),
-                                            activeThumbColor:
-                                                const Color(0xFFD8B15D),
+                                            activeThumbColor: const Color(
+                                              0xFFD8B15D,
+                                            ),
                                             value: _passwordVisible,
                                             onChanged:
                                                 (value) => setState(
-                                                  () => _passwordVisible = value,
+                                                  () =>
+                                                      _passwordVisible = value,
                                                 ),
                                           ),
                                           _field(
@@ -853,10 +854,10 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
                                                 color: Colors.white,
                                               ),
                                             ),
-                                            activeThumbColor:
-                                                const Color(0xFFD8B15D),
-                                            value:
-                                                _passwordConfirmationVisible,
+                                            activeThumbColor: const Color(
+                                              0xFFD8B15D,
+                                            ),
+                                            value: _passwordConfirmationVisible,
                                             onChanged:
                                                 (value) => setState(
                                                   () =>
@@ -910,8 +911,12 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
       _field(_nameController, 'Nombre completo'),
       _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
       _baseField(),
-      _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
-      _field(_nationalityController, 'Nacionalidad del titular'),
+      _field(
+        _birthDateController,
+        'Fecha de nacimiento',
+        hint: 'DD / MM / AAAA',
+      ),
+      _nationalityField('Nacionalidad del titular'),
       const SizedBox(height: 14),
       const _SectionLabel(
         icon: Icons.workspace_premium_rounded,
@@ -1008,12 +1013,17 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     bool requiredField = true,
     VoidCallback? onChanged,
   }) {
+    final isBirthDateField = identical(controller, _birthDateController);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
         obscureText: obscure,
-        keyboardType: keyboard,
+        keyboardType: isBirthDateField ? TextInputType.number : keyboard,
+        inputFormatters:
+            isBirthDateField
+                ? const <TextInputFormatter>[BirthDateTextInputFormatter()]
+                : null,
         onChanged: (_) => onChanged?.call(),
         style: const TextStyle(
           color: Colors.white,
@@ -1049,6 +1059,75 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
           final text = value?.trim() ?? '';
           if (!requiredField) return null;
           if (text.length < minLength) return 'Completa $label.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _nationalityField(String label, {bool requiredField = true}) {
+    final options =
+        {
+            ...kNationalityOptions,
+            if (_nationalityController.text.trim().isNotEmpty)
+              _nationalityController.text.trim(),
+          }.toList()
+          ..sort();
+
+    final currentValue = _nationalityController.text.trim();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: currentValue.isEmpty ? null : currentValue,
+        items:
+            options
+                .map(
+                  (option) => DropdownMenuItem<String>(
+                    value: option,
+                    child: Text(option, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+        onChanged: (value) {
+          _nationalityController.text = value?.trim() ?? '';
+        },
+        dropdownColor: const Color(0xFF101925),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'Selecciona una nacionalidad',
+          filled: true,
+          fillColor: const Color(0x70101925),
+          prefixIcon: _iconForLabel(label),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 17,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D), width: 1.4),
+          ),
+        ),
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (!requiredField) return null;
+          if (text.isEmpty) return 'Completa $label.';
           return null;
         },
       ),
@@ -1576,9 +1655,7 @@ class _CrewGlow extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0)],
-          ),
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
         ),
       ),
     );
@@ -2111,17 +2188,11 @@ class _CrewBenefitsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Row(
       children: [
-        Expanded(
-          child: _CrewBenefitCard(title: 'Acceso operativo'),
-        ),
+        Expanded(child: _CrewBenefitCard(title: 'Acceso operativo')),
         SizedBox(width: 10),
-        Expanded(
-          child: _CrewBenefitCard(title: 'Misiones privadas'),
-        ),
+        Expanded(child: _CrewBenefitCard(title: 'Misiones privadas')),
         SizedBox(width: 10),
-        Expanded(
-          child: _CrewBenefitCard(title: 'Disponibilidad de vuelos'),
-        ),
+        Expanded(child: _CrewBenefitCard(title: 'Disponibilidad de vuelos')),
       ],
     );
   }

@@ -25,6 +25,12 @@ class RegistrationOcrService {
   );
   static final RegExp _electorKeyPattern = RegExp(r'^[A-Z]{6}\d{8}[A-Z]\d{3}$');
 
+  static String _previewText(String value, {int max = 160}) {
+    final normalizedWhitespace = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalizedWhitespace.length <= max) return normalizedWhitespace;
+    return '${normalizedWhitespace.substring(0, max)}...';
+  }
+
   static Map<String, String> parseIneText(String rawText) {
     return _parseIne(rawText);
   }
@@ -109,10 +115,8 @@ class RegistrationOcrService {
       if (textParts.isNotEmpty) textParts.join('\n\n'),
     ].join('\n\n');
     final parsed = _parseIne(rawText);
-    debugPrint('[INE OCR] OCR TEXT: $rawText');
-    debugPrint('[INE OCR] DATOS EXTRAIDOS: $parsed');
     debugPrint(
-      '[INE OCR] scanIne summary barcodeParts=${barcodeParts.length} textParts=${textParts.length} rawTextLength=${rawText.length}',
+      '[INE OCR] scanIne summary barcodeParts=${barcodeParts.length} textParts=${textParts.length} rawTextLength=${rawText.length} parsedKeys=${parsed.keys.toList()}',
     );
 
     return RegistrationOcrResult(
@@ -136,9 +140,10 @@ class RegistrationOcrService {
       'recognizeText',
       {'path': path},
     );
-    debugPrint('[INE OCR] OCR RESPONSE: $response');
     final text = (response?['text'] ?? '').toString().trim();
-    debugPrint('[INE OCR] OCR TEXT: $text');
+    debugPrint(
+      '[INE OCR] text summary length=${text.length} preview="${_previewText(text)}"',
+    );
     return text;
   }
 
@@ -149,20 +154,18 @@ class RegistrationOcrService {
     debugPrint(
       '[INE PARSE] rawLength=${rawText.length} normalizedLength=${normalized.length} lineCount=${normalizedLines.length}',
     );
+    debugPrint('[INE PARSE] rawPreview=${_previewText(rawText)}');
+    debugPrint('[INE PARSE] normalizedPreview=${_previewText(normalized)}');
     debugPrint(
-      '[INE PARSE] rawPreview=${rawText.substring(0, rawText.length.clamp(0, 700))}',
-    );
-    debugPrint(
-      '[INE PARSE] normalizedPreview=${normalized.substring(0, normalized.length.clamp(0, 700))}',
-    );
-    debugPrint(
-      '[INE PARSE] normalizedLinesPreview=${normalizedLines.take(12).join(' | ')}',
+      '[INE PARSE] normalizedLinesPreview=${_previewText(normalizedLines.take(8).join(' | '))}',
     );
 
     final mrz = _parseMrz(rawText);
     final rawCurp = _findCurp(normalized, compact);
     final rawElectorKey = _findElectorKey(normalized, compact);
-    final rawName = _extractName(rawText);
+    final rawNameSegments = _extractNameSegments(rawText);
+    final rawName = _extractName(rawText, segments: rawNameSegments);
+    final rawLastName = _extractLastName(rawNameSegments);
     final fallbackName = _extractNameFallback(rawText);
     final rawAddress = _extractAddress(rawText);
     final rawCityBase = _extractCityBase(
@@ -187,6 +190,7 @@ class RegistrationOcrService {
           ? mrz['name']!
           : fallbackName,
     );
+    final resolvedLastName = _validateLastName(rawLastName);
     final address = _validateAddress(rawAddress);
     final cityBase = _validateBase(
       rawCityBase.isNotEmpty ? rawCityBase : _extractCityBase(address),
@@ -202,17 +206,11 @@ class RegistrationOcrService {
     final ocr = _validateOcr(rawOcr, birthDate: resolvedBirthDate);
 
     debugPrint(
-      '[INE PARSE] extracted curp=$curp electorKey=$electorKey ocr=$ocr cic=$cic birthDate=$resolvedBirthDate expiration=$resolvedExpiration',
+      '[INE PARSE] extracted flags curp=${curp.isNotEmpty} electorKey=${electorKey.isNotEmpty} ocr=${ocr.isNotEmpty} cic=${cic.isNotEmpty} birthDate=${resolvedBirthDate.isNotEmpty} expiration=${resolvedExpiration.isNotEmpty}',
     );
     debugPrint(
-      '[INE PARSE] extracted name="$resolvedName" base="$cityBase" address="$address" mrz=$mrz',
+      '[INE PARSE] extracted fields name=${resolvedName.isNotEmpty} base=${cityBase.isNotEmpty} address=${address.isNotEmpty} mrzKeys=${mrz.keys.toList()}',
     );
-    if (normalized.contains('FLORES') && normalized.contains('KEVIN')) {
-      debugPrint('[INE TEST] expected name=FLORES DE JESUS KEVIN LAEL');
-    }
-    debugPrint('[INE TEST] parsed name=$resolvedName');
-    debugPrint('[INE TEST] parsed curp=$curp');
-    debugPrint('[INE TEST] parsed expiration=$resolvedExpiration');
 
     return {
       'raw': rawText,
@@ -221,6 +219,7 @@ class RegistrationOcrService {
       'cic': cic,
       'ocr': ocr,
       'name': resolvedName,
+      'last_name': resolvedLastName,
       'address': address,
       'domicilio': address,
       'base': cityBase,
@@ -331,7 +330,7 @@ class RegistrationOcrService {
     final labeled = _extractLabeledAlnum(
       normalized,
       labelPattern:
-          '${_spacedKeywordPattern("CLAVE")}(?:\\s+${_spacedKeywordPattern("DE")})?\\s+${_spacedKeywordPattern("ELECTOR")}',
+          '${_spacedKeywordPattern("CLAVE")}(?:\\s*${_spacedKeywordPattern("DE")})?\\s*${_spacedKeywordPattern("ELECTOR")}',
       minLength: 17,
       maxLength: 26,
     );
@@ -511,36 +510,52 @@ class RegistrationOcrService {
     return '';
   }
 
-  static String _extractName(String rawText) {
+  static List<String> _extractNameSegments(String rawText) {
     final lines = _normalizedLines(rawText);
     final index = lines.indexWhere((line) {
       return RegExp('^${_spacedKeywordPattern("NOMBRE")}').hasMatch(line);
     });
     final collected = <String>[];
 
-    if (index >= 0) {
-      final windowStart = index - 3 < 0 ? 0 : index - 3;
-      final windowEnd =
-          index + 5 >= lines.length ? lines.length - 1 : index + 5;
-      for (var lineIndex = windowStart; lineIndex <= windowEnd; lineIndex++) {
-        if (lineIndex == index) continue;
-        final line = lines[lineIndex];
-        if (_isNameStopLine(line)) continue;
-        if (_shouldSkipNameLine(line)) continue;
-        final cleaned = _cleanupInlineLabelNoise(line);
-        if (_isLikelyNameLine(cleaned)) {
-          collected.add(cleaned);
-          if (collected.length >= 4) break;
-        }
+    if (index < 0) return const <String>[];
+
+    final inlineCandidate = _cleanupInlineLabelNoise(lines[index]);
+    if (_isLikelyIneNameSegment(inlineCandidate)) {
+      collected.add(inlineCandidate);
+    }
+
+    final windowEnd = index + 5 >= lines.length ? lines.length - 1 : index + 5;
+    for (var lineIndex = index + 1; lineIndex <= windowEnd; lineIndex++) {
+      final line = lines[lineIndex];
+      if (_isNameStopLine(line)) break;
+      if (_shouldSkipNameLine(line)) continue;
+      final cleaned = _cleanupInlineLabelNoise(line);
+      if (_isLikelyIneNameSegment(cleaned)) {
+        collected.add(cleaned);
+        if (collected.length >= 4) break;
       }
     }
 
+    return collected
+        .map(_dedupeWords)
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+  }
+
+  static String _extractName(String rawText, {List<String>? segments}) {
+    final collected = segments ?? _extractNameSegments(rawText);
     if (collected.isEmpty) return '';
-    final ordered = _orderNameSegments(collected);
-    final candidate = _dedupeWords(ordered.join(' '));
+    final candidate = _dedupeWords(
+      collected.length == 1 ? collected.first : collected.last,
+    );
     final wordCount =
         candidate.split(' ').where((word) => word.isNotEmpty).length;
-    return wordCount >= 3 ? candidate : '';
+    return wordCount >= 1 ? candidate : '';
+  }
+
+  static String _extractLastName(List<String> segments) {
+    if (segments.length < 2) return '';
+    return _dedupeWords(segments.take(segments.length - 1).join(' '));
   }
 
   static String _extractNameFallback(String rawText) {
@@ -779,6 +794,13 @@ class RegistrationOcrService {
   }
 
   static bool _isLikelyNameLine(String line) {
+    return _isLikelyIneNameSegment(line, allowSingleWord: false);
+  }
+
+  static bool _isLikelyIneNameSegment(
+    String line, {
+    bool allowSingleWord = true,
+  }) {
     if (line.length < 4) return false;
     if (RegExp(r'\d{2,}').hasMatch(line)) return false;
     if (_isBoundaryLine(line)) return false;
@@ -792,7 +814,7 @@ class RegistrationOcrService {
     if (!RegExp(r'^[A-Z ,.]+$').hasMatch(cleaned)) return false;
     if (_containsIneHeaderNoise(cleaned)) return false;
     final words = cleaned.split(' ').where((word) => word.isNotEmpty).toList();
-    return words.length >= 2;
+    return allowSingleWord ? words.isNotEmpty : words.length >= 2;
   }
 
   static bool _containsIneHeaderNoise(String value) {
@@ -805,21 +827,6 @@ class RegistrationOcrService {
     return RegExp(
       r'\b(AV|AVENIDA|CALLE|COL|COLONIA|CP|C\.P\.|NUM|NO|NRO|MANZANA|LOTE|DOMICILIO|INDEPENDENCIA)\b',
     ).hasMatch(value);
-  }
-
-  static List<String> _orderNameSegments(List<String> segments) {
-    final singleWord = <String>[];
-    final multiWord = <String>[];
-    for (final segment in segments) {
-      final wordCount =
-          segment.split(' ').where((word) => word.isNotEmpty).length;
-      if (wordCount == 1) {
-        singleWord.add(segment);
-      } else {
-        multiWord.add(segment);
-      }
-    }
-    return [...singleWord, ...multiWord];
   }
 
   static bool _looksLikeAddressLine(String line) {
@@ -999,9 +1006,23 @@ class RegistrationOcrService {
   }
 
   static String _validateName(String value) {
+    return _validatePersonName(value, allowSingleWord: false);
+  }
+
+  static String _validateLastName(String value) {
+    return _validatePersonName(value, allowSingleWord: true);
+  }
+
+  static String _validatePersonName(
+    String value, {
+    required bool allowSingleWord,
+  }) {
     final normalized = _dedupeWords(_normalizeOcrText(value));
     if (normalized.isEmpty) return '';
-    if (!_isLikelyNameLine(normalized)) {
+    if (!_isLikelyIneNameSegment(
+      normalized,
+      allowSingleWord: allowSingleWord,
+    )) {
       debugPrint(
         '[INE VALIDATION] rejected name=$normalized reason=invalid_name',
       );

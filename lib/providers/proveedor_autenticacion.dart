@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/acceso_comercial_cliente.dart';
 import '../core/auth/secure_session_storage.dart';
@@ -95,6 +95,8 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> registerClient({
     required String name,
+    String fullName = '',
+    String lastName = '',
     required String email,
     required String phone,
     required String password,
@@ -102,11 +104,12 @@ class AuthProvider extends ChangeNotifier {
     String birthDate = '',
     String nationality = '',
     String base = '',
+    String clientType = '',
+    String companyName = '',
+    String taxId = '',
     String documentType = 'INE',
+    String documentIssuingCountry = '',
     String documentNumber = '',
-    String documentIssueDate = '',
-    String documentExpiration = '',
-    String documentStatus = '',
     String ineCurp = '',
     String ineCic = '',
     String ineOcr = '',
@@ -141,6 +144,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       final response = await _api.registerClient(
         name: name.trim(),
+        fullName: fullName.trim(),
+        lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         password: password,
@@ -148,11 +153,12 @@ class AuthProvider extends ChangeNotifier {
         birthDate: birthDate,
         nationality: nationality.trim(),
         base: base.trim(),
+        clientType: clientType.trim(),
+        companyName: companyName.trim(),
+        taxId: taxId.trim(),
         documentType: documentType.trim().isEmpty ? 'INE' : documentType.trim(),
+        documentIssuingCountry: documentIssuingCountry.trim(),
         documentNumber: documentNumber.trim(),
-        documentIssueDate: documentIssueDate.trim(),
-        documentExpiration: documentExpiration.trim(),
-        documentStatus: documentStatus.trim(),
         ineCurp: ineCurp.trim(),
         ineCic: ineCic.trim(),
         ineOcr: ineOcr.trim(),
@@ -189,9 +195,18 @@ class AuthProvider extends ChangeNotifier {
       await PushNotificationsService.syncAuthenticatedDevice();
       return true;
     } on ApiException catch (error) {
+      if (!kReleaseMode) {
+        debugPrint(
+          '[AUTH registerClient] api error status=${error.statusCode} message=${error.message} payloadKeys=${error.payload?.keys.toList()}',
+        );
+      }
       errorMessage = _apiErrorMessage(error);
       return false;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (!kReleaseMode) {
+        debugPrint('[AUTH registerClient] unexpected error=$error');
+        debugPrint('$stackTrace');
+      }
       errorMessage = 'No fue posible crear la cuenta.';
       return false;
     } finally {

@@ -75,17 +75,9 @@ class _CrewCompactHomeView extends StatelessWidget {
       workflow: workflow,
       canRespondToAssignment: operation.canRespondToAssignment,
     );
-    final totalChecklistItems =
-        flow.preparationSummary.total +
-        flow.preflightSummary.total +
-        flow.postflightSummary.total;
-    final resolvedChecklistItems =
-        flow.preparationSummary.resolved +
-        flow.preflightSummary.resolved +
-        flow.postflightSummary.resolved;
     final progress =
-        hasWorkflow && totalChecklistItems > 0
-            ? ((resolvedChecklistItems / totalChecklistItems) * 100).round()
+        hasWorkflow
+            ? flow.progressPercent
             : operation.persistedChecklistProgress;
     final cta =
         hasWorkflow
@@ -158,8 +150,10 @@ String _friendlyHomeWorkflowAction(CrewOperationPrimaryAction action) {
       return 'Completar checklist pre-vuelo';
     case 'open_tracking':
       return 'Abrir seguimiento';
-    case 'open_closure':
+    case 'open_postflight':
       return 'Completar checklist post-vuelo';
+    case 'open_closure':
+      return 'Abrir cierre de operación';
     case 'submit_report':
       return 'Enviar reporte final';
     case 'workflow_action':
@@ -185,6 +179,32 @@ String _friendlyHomeWorkflowAction(CrewOperationPrimaryAction action) {
       return action.cta.isEmpty ? 'Ver mi vuelo' : action.cta;
     default:
       return 'Ver mi vuelo';
+  }
+}
+
+_MissionStageTone _missionProgressTone(String status) {
+  switch (status) {
+    case 'completed':
+      return _MissionStageTone.done;
+    case 'current':
+      return _MissionStageTone.active;
+    case 'locked':
+      return _MissionStageTone.blocked;
+    default:
+      return _MissionStageTone.pending;
+  }
+}
+
+String _missionProgressStateLabel(String status) {
+  switch (status) {
+    case 'completed':
+      return 'Completado';
+    case 'current':
+      return 'Actual';
+    case 'locked':
+      return 'Bloqueado';
+    default:
+      return 'Pendiente';
   }
 }
 
@@ -304,7 +324,7 @@ class _CrewAccountHome extends StatelessWidget {
   const _CrewAccountHome({required this.onOpenSection, required this.onLogout});
 
   final ValueChanged<CrewPortalTab> onOpenSection;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -365,7 +385,7 @@ class _CrewAccountHome extends StatelessWidget {
               'Cerrar sesión',
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
-            onTap: onLogout,
+            onTap: () async => performWorkspaceLogout(context, onLogout),
           ),
         ),
       ],
@@ -1995,6 +2015,7 @@ class _OperationalStrip extends StatelessWidget {
 class _MissionList extends StatefulWidget {
   const _MissionList({
     required this.assignments,
+    required this.workflow,
     required this.coordinationLabel,
     required this.onAccept,
     required this.onReject,
@@ -2004,6 +2025,7 @@ class _MissionList extends StatefulWidget {
   });
 
   final List<CrewAssignment> assignments;
+  final Map<String, dynamic> workflow;
   final String coordinationLabel;
   final ValueChanged<CrewAssignment> onAccept;
   final ValueChanged<CrewAssignment> onReject;
@@ -2034,14 +2056,16 @@ class _MissionListState extends State<_MissionList> {
     }
 
     final selected = _selectedAssignment(activeAssignments);
+    final flow = _workflowForAssignment(selected, activeAssignments);
     final primaryAction = _primaryActionFor(selected);
     final secondaryActions = _secondaryActionsFor(selected);
     final progressItems =
         selected == null
             ? const <_MissionProgressItem>[]
-            : _buildProgress(selected);
+            : _buildProgress(selected, flow: flow);
     final progressPercent =
-        selected == null
+        flow?.progressPercent ??
+        (selected == null
             ? 0
             : ((progressItems
                             .where(
@@ -2050,7 +2074,7 @@ class _MissionListState extends State<_MissionList> {
                             .length /
                         (progressItems.isEmpty ? 1 : progressItems.length)) *
                     100)
-                .round();
+                .round());
     final actionTitle =
         selected == null
             ? 'Acciones principales'
@@ -2168,6 +2192,22 @@ class _MissionListState extends State<_MissionList> {
     if (selected.isNotEmpty) return selected.first;
     _selectedAssignmentId = assignments.first.id;
     return assignments.first;
+  }
+
+  CrewOperationFlowSnapshot? _workflowForAssignment(
+    CrewAssignment? assignment,
+    List<CrewAssignment> activeAssignments,
+  ) {
+    if (assignment == null ||
+        widget.workflow.isEmpty ||
+        activeAssignments.isEmpty) {
+      return null;
+    }
+    if (assignment.id != activeAssignments.first.id) return null;
+    return CrewOperationFlowSnapshot.fromPayload(
+      workflow: widget.workflow,
+      canRespondToAssignment: assignment.canRespondToAssignment,
+    );
   }
 
   _MissionPrimaryAction? _primaryActionFor(CrewAssignment? assignment) {
@@ -2420,7 +2460,21 @@ class _MissionListState extends State<_MissionList> {
     ];
   }
 
-  List<_MissionProgressItem> _buildProgress(CrewAssignment assignment) {
+  List<_MissionProgressItem> _buildProgress(
+    CrewAssignment assignment, {
+    CrewOperationFlowSnapshot? flow,
+  }) {
+    if (flow != null) {
+      return flow.steps
+          .map(
+            (step) => _MissionProgressItem(
+              label: step.label,
+              state: _missionProgressStateLabel(step.status),
+              tone: _missionProgressTone(step.status),
+            ),
+          )
+          .toList();
+    }
     final steps = [
       (label: 'Vuelo validado', done: !assignment.canRespondToAssignment),
       (

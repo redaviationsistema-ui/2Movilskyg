@@ -24,7 +24,7 @@ class CrewOperationView extends StatefulWidget {
   final List<RoleWorkspaceItem>? drawerItems;
   final List<RoleWorkspaceDrawerGroup>? drawerGroups;
   final ValueChanged<CrewWorkspaceSection>? onSelectDrawerSection;
-  final VoidCallback? onLogout;
+  final Future<void> Function()? onLogout;
   final String? initialStepId;
   final bool openIncidentOnLoad;
 
@@ -177,53 +177,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
               .toList()
           : const [];
 
-  ({IconData icon, Color color, Color softColor}) _summaryTone(String label) {
-    switch (label) {
-      case 'Fecha':
-        return (
-          icon: Icons.calendar_month_rounded,
-          color: _brandBlue,
-          softColor: _skyBlue,
-        );
-      case 'Reporte':
-        return (
-          icon: Icons.schedule_rounded,
-          color: _orange,
-          softColor: _orangeSoft,
-        );
-      case 'Pasajeros':
-        return (
-          icon: Icons.groups_rounded,
-          color: _violet,
-          softColor: _violetSoft,
-        );
-      case 'Salida':
-        return (
-          icon: Icons.flight_takeoff_rounded,
-          color: _teal,
-          softColor: _tealSoft,
-        );
-      case 'Llegada':
-        return (
-          icon: Icons.flight_land_rounded,
-          color: _teal,
-          softColor: _tealSoft,
-        );
-      case 'Estado':
-        return (
-          icon: Icons.verified_rounded,
-          color: _mint,
-          softColor: _mintSoft,
-        );
-      default:
-        return (
-          icon: Icons.info_outline_rounded,
-          color: _brandBlue,
-          softColor: _skyBlue,
-        );
-    }
-  }
-
   ({String title, IconData icon, Color color, Color softColor}) _stepTone(
     String stepId,
   ) {
@@ -256,12 +209,19 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           color: _violet,
           softColor: _violetSoft,
         );
-      case 'closure':
+      case 'postflight':
         return (
           title: 'Checklist post-vuelo',
           icon: Icons.assignment_turned_in_rounded,
           color: _brandNight,
           softColor: _skyBlue,
+        );
+      case 'closure':
+        return (
+          title: 'Cierre de operación',
+          icon: Icons.fact_check_rounded,
+          color: _mint,
+          softColor: _mintSoft,
         );
       default:
         return (
@@ -329,13 +289,14 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           label: 'En curso',
         );
       case 'blocked':
+      case 'locked':
         return (
           color: _textMuted,
           softColor: Color(0xFFF0F4F8),
           icon: Icons.lock_rounded,
           label: 'Bloqueado',
         );
-      case 'available':
+      case 'pending':
         return (
           color: _orange,
           softColor: _orangeSoft,
@@ -344,8 +305,8 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         );
       default:
         return (
-          color: _textMuted,
-          softColor: Colors.white,
+          color: _orange,
+          softColor: _orangeSoft,
           icon: Icons.radio_button_unchecked_rounded,
           label: 'Pendiente',
         );
@@ -630,6 +591,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   String _bestEvidenceStepId() {
     if (_currentStepId == 'preparation' ||
         _currentStepId == 'checklist' ||
+        _currentStepId == 'postflight' ||
         _currentStepId == 'closure') {
       return _currentStepId;
     }
@@ -646,6 +608,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         return CrewWorkspaceSection.missionChecklist;
       case 'tracking':
         return CrewWorkspaceSection.missionTracking;
+      case 'postflight':
       case 'closure':
         return CrewWorkspaceSection.missionClosure;
       default:
@@ -1616,7 +1579,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         return _preparationChecklist;
       case 'checklist':
         return _preflightChecklist;
-      case 'closure':
+      case 'postflight':
         return _postflightChecklist;
       default:
         return null;
@@ -1633,7 +1596,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       case 'preflight':
         return 'checklist';
       case 'postflight':
-        return 'closure';
+        return 'postflight';
       default:
         return '';
     }
@@ -1955,175 +1918,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     }
   }
 
-  Widget _flightSummaryCard() {
-    final assignment = widget.assignment;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: _line),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14062D50),
-            blurRadius: 28,
-            offset: Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [_brandNight, _brandBlue],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _mintSoft,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_rounded, size: 14, color: _mint),
-                          SizedBox(width: 6),
-                          Text(
-                            'Confirmado',
-                            style: TextStyle(
-                              color: _mint,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white12,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(
-                        Icons.flight_rounded,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  assignment.route,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.6,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  assignment.aircraft,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFFD7E5F4),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _summaryLine('Fecha', _compactCrewDate(assignment.date)),
-                _summaryLine('Reporte', assignment.showTime),
-                _summaryLine('Pasajeros', '${assignment.passengers} pax'),
-                if (assignment.origin.isNotEmpty)
-                  _summaryLine('Salida', assignment.origin),
-                if (assignment.destination.isNotEmpty)
-                  _summaryLine('Llegada', assignment.destination),
-                _summaryLine('Estado', assignment.status),
-                if (assignment.code.trim().isNotEmpty &&
-                    assignment.code != 'OPS')
-                  _summaryLine('Folio', assignment.code),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryLine(String label, String value) {
-    final tone = _summaryTone(label);
-    return Container(
-      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _line),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: tone.softColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(tone.icon, size: 20, color: tone.color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: _textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: _textStrong,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _stepper() {
     final steps = _flow.steps;
     return SingleChildScrollView(
@@ -2148,7 +1942,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color:
-                          step.status == 'blocked'
+                          step.status == 'locked'
                               ? const Color(0xFFF6F8FB)
                               : Colors.white,
                       borderRadius: BorderRadius.circular(22),
@@ -2208,7 +2002,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                           step.label,
                           style: TextStyle(
                             color:
-                                step.status == 'blocked'
+                                step.status == 'locked'
                                     ? _textMuted
                                     : _textStrong,
                             fontWeight: FontWeight.w900,
@@ -2259,6 +2053,9 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         break;
       case 'open_tracking':
         onPressed = () => _focusStepSection('tracking');
+        break;
+      case 'open_postflight':
+        onPressed = () => _focusStepSection('postflight');
         break;
       case 'open_closure':
         onPressed = () => _focusStepSection('closure');
@@ -3255,59 +3052,84 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     );
   }
 
-  Widget _closureStep() {
-    final readyToClose =
-        _postflightChecklist != null &&
-        _postflightSummary.isComplete &&
-        _finalReport.isEmpty;
+  Widget _postflightStep() {
     return _checklistStep(
       eyebrow: 'Paso 5 · Checklist post-vuelo',
       title: 'Cierre operativo',
       checklist: _postflightChecklist,
       summary: _postflightSummary,
       footer:
-          readyToClose
-              ? 'Checklist completo. Ya puedes enviar el cierre final.'
-              : _finalReport.isNotEmpty
-              ? 'El reporte final ya fue enviado.'
+          _postflightSummary.isComplete
+              ? 'Checklist completo. Ya puedes continuar al cierre de la operación.'
               : 'Completa el checklist post-vuelo para habilitar el cierre.',
-      footerAction:
-          readyToClose
-              ? FilledButton.icon(
-                onPressed:
-                    _saving
-                        ? null
-                        : () => _showReport(actionId: 'closure:submit'),
-                icon: _buttonIcon(
-                  Icons.send_rounded,
-                  busy: _isBusyAction('closure:submit'),
-                ),
-                style: _primaryButtonStyle(color: _mint),
-                label: Text(
-                  _buttonLabel(
-                    'Finalizar operación',
-                    busy: _isBusyAction('closure:submit'),
-                    busyLabel: 'Enviando...',
-                  ),
-                ),
-              )
-              : _finalReport.isNotEmpty
-              ? OutlinedButton.icon(
-                onPressed: _showReport,
-                style: _outlineButtonStyle(),
-                icon: const Icon(Icons.description_rounded),
-                label: const Text('Consultar reporte final'),
-              )
-              : null,
+    );
+  }
+
+  Widget _closureStep() {
+    final reportSubmitted = _finalReport.isNotEmpty;
+    return _sectionCard(
+      children: [
+        _stepHeader(
+          stepId: 'closure',
+          eyebrow: 'Paso 6 · Cierre de operación',
+          title: 'Cierre final',
+          subtitle:
+              reportSubmitted
+                  ? 'El reporte final ya fue enviado y quedó disponible para consulta.'
+                  : 'Envía el cierre final para completar la operación.',
+        ),
+        const SizedBox(height: 16),
+        if (!reportSubmitted)
+          FilledButton.icon(
+            onPressed:
+                _saving ? null : () => _showReport(actionId: 'closure:submit'),
+            icon: _buttonIcon(
+              Icons.send_rounded,
+              busy: _isBusyAction('closure:submit'),
+            ),
+            style: _primaryButtonStyle(color: _mint),
+            label: Text(
+              _buttonLabel(
+                'Finalizar operación',
+                busy: _isBusyAction('closure:submit'),
+                busyLabel: 'Enviando...',
+              ),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _mintSoft,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _mint.withValues(alpha: 0.28)),
+            ),
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.check_circle_rounded, color: _mint),
+              title: Text(
+                'Cierre enviado',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: Text('La operación quedó cerrada correctamente.'),
+            ),
+          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _showReport,
+          style: _outlineButtonStyle(),
+          icon: const Icon(Icons.description_rounded),
+          label: Text(
+            reportSubmitted ? 'Consultar reporte final' : 'Capturar cierre',
+          ),
+        ),
+      ],
     );
   }
 
   Widget _operationSummaryCard() {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final workflowStatus = _token(_flow.workflowStatus);
-    final showClosureState =
-        workflowStatus == 'report pending' || _finalReport.isNotEmpty;
 
     final items =
         _flow.steps
@@ -3372,55 +3194,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             ),
           ),
         ),
-        if (showClosureState) ...[
-          const SizedBox(height: 4),
-          const Divider(color: _line),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: (_finalReport.isNotEmpty ? _mint : _textMuted)
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _finalReport.isNotEmpty
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  color: _finalReport.isNotEmpty ? _mint : _textMuted,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Cierre de operación',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: _textStrong,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _finalReport.isNotEmpty ? 'Completado' : 'Pendiente',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: _finalReport.isNotEmpty ? _mint : _textMuted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -3457,6 +3230,8 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         );
       case 'tracking':
         return _trackingStep();
+      case 'postflight':
+        return _postflightStep();
       case 'closure':
         return _closureStep();
       default:
@@ -3511,10 +3286,28 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         elevation: 0,
         scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
-        leading: IconButton(
-          tooltip: 'Abrir menú',
-          icon: const Icon(Icons.menu_rounded),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        leadingWidth: 72,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16, top: 8, bottom: 8),
+          child: Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              tooltip: 'Abrir menú',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
+              icon: const Icon(
+                Icons.menu_rounded,
+                size: 27,
+                color: CrewColors.gold,
+              ),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
+          ),
         ),
         actions: [
           PopupMenuButton<String>(
@@ -3602,8 +3395,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                     ),
                   ),
                 if (_workflow.isNotEmpty) ...[
-                  _flightSummaryCard(),
-                  const SizedBox(height: 16),
                   _stepper(),
                   const SizedBox(height: 16),
                   KeyedSubtree(key: _stepContentKey, child: _stepContent()),
@@ -3693,9 +3484,10 @@ class _OperationChecklistState {
       case 'current':
         return 'Actual';
       case 'blocked':
+      case 'locked':
         return 'Bloqueado';
-      case 'available':
-        return 'Disponible';
+      case 'pending':
+        return 'Pendiente';
       default:
         return 'Pendiente';
     }
@@ -3708,8 +3500,9 @@ class _OperationChecklistState {
       case 'current':
         return Icons.trip_origin_rounded;
       case 'blocked':
-        return Icons.radio_button_unchecked_rounded;
-      case 'available':
+      case 'locked':
+        return Icons.lock_rounded;
+      case 'pending':
         return Icons.radio_button_unchecked_rounded;
       default:
         return Icons.radio_button_unchecked_rounded;
@@ -3723,8 +3516,9 @@ class _OperationChecklistState {
       case 'current':
         return CrewColors.warning;
       case 'blocked':
+      case 'locked':
         return scheme.onSurfaceVariant;
-      case 'available':
+      case 'pending':
         return scheme.primary;
       default:
         return scheme.onSurfaceVariant;

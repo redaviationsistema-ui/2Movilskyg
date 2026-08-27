@@ -34,6 +34,12 @@ class CrewOperationFlowSnapshot {
       trackingMilestones.isNotEmpty &&
       trackingMilestones.every((item) => item.state == 'completed');
 
+  int get completedStepsCount =>
+      steps.where((step) => step.status == 'completed').length;
+
+  int get progressPercent =>
+      steps.isEmpty ? 0 : ((completedStepsCount / steps.length) * 100).round();
+
   static CrewOperationFlowSnapshot fromPayload({
     required Map<String, dynamic> workflow,
     required bool canRespondToAssignment,
@@ -76,6 +82,8 @@ class CrewOperationFlowSnapshot {
       preflightSummary: preflightSummary,
       postflightSummary: postflightSummary,
       trackingMilestones: trackingMilestones,
+      workflowStatus: workflowStatus,
+      finalReportAvailable: finalReportAvailable,
     );
 
     final currentStepId =
@@ -303,10 +311,14 @@ List<CrewOperationStepState> _buildSteps({
   required CrewOperationChecklistSummary preflightSummary,
   required CrewOperationChecklistSummary postflightSummary,
   required List<CrewOperationTrackingMilestone> trackingMilestones,
+  required String workflowStatus,
+  required bool finalReportAvailable,
 }) {
   final trackingComplete =
       trackingMilestones.isNotEmpty &&
       trackingMilestones.every((item) => item.state == 'completed');
+  final closureComplete =
+      finalReportAvailable || _isCrewClosureComplete(workflowStatus);
 
   final baseSteps = [
     (
@@ -326,10 +338,11 @@ List<CrewOperationStepState> _buildSteps({
     ),
     (id: 'tracking', label: 'Seguimiento', complete: trackingComplete),
     (
-      id: 'closure',
+      id: 'postflight',
       label: 'Checklist post-vuelo',
       complete: postflightSummary.isComplete,
     ),
+    (id: 'closure', label: 'Cierre de operación', complete: closureComplete),
   ];
 
   var previousStepsComplete = true;
@@ -337,21 +350,21 @@ List<CrewOperationStepState> _buildSteps({
   return baseSteps.map((step) {
     late final String status;
     if (!previousStepsComplete) {
-      status = 'blocked';
+      status = 'locked';
     } else if (step.complete) {
       status = 'completed';
     } else if (!currentFound) {
       status = 'current';
       currentFound = true;
     } else {
-      status = 'available';
+      status = 'pending';
     }
     previousStepsComplete = previousStepsComplete && step.complete;
     return CrewOperationStepState(
       id: step.id,
       label: step.label,
       status: status,
-      available: status != 'blocked',
+      available: status != 'locked',
       complete: status == 'completed',
     );
   }).toList();
@@ -424,8 +437,18 @@ CrewOperationPrimaryAction _buildPrimaryAction({
                 : 'workflow_action',
         action: currentTracking?.action,
       );
+    case 'postflight':
+      return CrewOperationPrimaryAction(
+        title: 'Siguiente paso: Checklist post-vuelo',
+        detail:
+            postflightSummary.total > 0
+                ? 'Completa los elementos pendientes antes de continuar.'
+                : 'Completa el checklist post-vuelo antes de continuar.',
+        cta: 'Completar checklist post-vuelo',
+        kind: 'open_postflight',
+      );
     case 'closure':
-      if (_token(workflowStatus) == 'report pending' && !finalReportAvailable) {
+      if (!_isCrewClosureComplete(workflowStatus) && !finalReportAvailable) {
         return const CrewOperationPrimaryAction(
           title: 'Siguiente paso: Finalizar operación',
           detail:
@@ -434,15 +457,7 @@ CrewOperationPrimaryAction _buildPrimaryAction({
           kind: 'submit_report',
         );
       }
-      return CrewOperationPrimaryAction(
-        title: 'Siguiente paso: Checklist post-vuelo',
-        detail:
-            postflightSummary.total > 0
-                ? 'Completa los elementos pendientes antes de continuar.'
-                : 'Completa el checklist post-vuelo antes de continuar.',
-        cta: 'Completar checklist post-vuelo',
-        kind: 'open_closure',
-      );
+      break;
   }
 
   return const CrewOperationPrimaryAction(
@@ -562,6 +577,14 @@ bool _isHandledStatus(Map<String, dynamic> item) {
   return status == 'completed' ||
       status == 'not applicable' ||
       status == 'failed';
+}
+
+bool _isCrewClosureComplete(String workflowStatus) {
+  final status = _token(workflowStatus);
+  return status == 'crew completed' ||
+      status == 'completed' ||
+      status == 'finalized' ||
+      status == 'finalizada';
 }
 
 String normalizeCrewChecklistType(dynamic type) {

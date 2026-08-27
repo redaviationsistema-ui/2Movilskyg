@@ -427,6 +427,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   _AvailabilityFocusSection _availabilityFocus =
       _AvailabilityFocusSection.status;
 
+  void _setStateIfMounted(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -435,6 +440,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     _refreshPortal();
     unawaited(_connectLiveAssignments());
     _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      if (!mounted) return;
       unawaited(_refreshPortal(silent: true));
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -454,6 +460,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    if (!mounted) return;
     unawaited(_refreshPortal());
   }
 
@@ -478,9 +485,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _loadPortal({bool silent = false}) async {
+    if (!mounted) return;
     final syncStopwatch = Stopwatch()..start();
     if (!silent) {
-      setState(() {
+      _setStateIfMounted(() {
         _isLoading = true;
       });
     }
@@ -532,12 +540,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
       if (notificationsData != null) {
         final source = _payloadSource(notificationsData);
-        if (mounted) {
-          setState(() {
-            _unreadNotifications =
-                int.tryParse('${source['unread_count'] ?? 0}') ?? 0;
-          });
-        }
+        _setStateIfMounted(() {
+          _unreadNotifications =
+              int.tryParse('${source['unread_count'] ?? 0}') ?? 0;
+        });
       }
 
       _logCrewPayload('dashboard', dashboardData);
@@ -557,13 +563,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           'missions',
           'misiones',
         ]);
-        if (mounted) {
-          setState(() {
-            _assignments
-              ..clear()
-              ..addAll(assignments.map(CrewAssignment.fromJson));
-          });
-        }
+        _setStateIfMounted(() {
+          _assignments
+            ..clear()
+            ..addAll(assignments.map(CrewAssignment.fromJson));
+        });
         loadedAnyResource = true;
         await _loadActiveWorkflowForHome();
       }
@@ -571,14 +575,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       if (profileData != null) {
         final source = _payloadSource(profileData);
         final profile = _pickMap(source, const ['profile', 'user', 'data']);
-        if (mounted) {
-          setState(() {
-            _mergeProfileData(
-              profile,
-              _pickMap(profile, const ['preferences']),
-            );
-          });
-        }
+        _setStateIfMounted(() {
+          _mergeProfileData(profile, _pickMap(profile, const ['preferences']));
+        });
         loadedAnyResource = true;
       }
 
@@ -590,13 +589,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           'data',
           'items',
         ]);
-        if (mounted) {
-          setState(() {
-            _documents
-              ..clear()
-              ..addAll(documents.map(CrewDocument.fromJson));
-          });
-        }
+        _setStateIfMounted(() {
+          _documents
+            ..clear()
+            ..addAll(documents.map(CrewDocument.fromJson));
+        });
         loadedAnyResource = true;
       }
 
@@ -608,13 +605,11 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           'data',
           'items',
         ]);
-        if (mounted) {
-          setState(() {
-            _incidents
-              ..clear()
-              ..addAll(_dedupeIncidents(incidents.map(CrewIncident.fromJson)));
-          });
-        }
+        _setStateIfMounted(() {
+          _incidents
+            ..clear()
+            ..addAll(_dedupeIncidents(incidents.map(CrewIncident.fromJson)));
+        });
         loadedAnyResource = true;
       }
 
@@ -640,18 +635,16 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           'settings',
           'config',
         ]);
-        if (mounted && payments.isNotEmpty) {
-          setState(() {
+        if (payments.isNotEmpty) {
+          _setStateIfMounted(() {
             _payments
               ..clear()
               ..addAll(payments.map(CrewPaymentRecord.fromJson));
           });
         }
-        if (mounted) {
-          setState(() {
-            _mergeProfileData(profile, preferences);
-          });
-        }
+        _setStateIfMounted(() {
+          _mergeProfileData(profile, preferences);
+        });
         loadedAnyResource = true;
       }
 
@@ -697,27 +690,23 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           'config',
         ]);
 
-        if (mounted) {
-          setState(() {
-            _assignments
-              ..clear()
-              ..addAll(assignments.map(CrewAssignment.fromJson));
-            _incidents
-              ..clear()
-              ..addAll(_dedupeIncidents(incidents.map(CrewIncident.fromJson)));
-            _documents
-              ..clear()
-              ..addAll(documents.map(CrewDocument.fromJson));
-            _payments
-              ..clear()
-              ..addAll(payments.map(CrewPaymentRecord.fromJson));
-          });
-        }
-        if (mounted) {
-          setState(() {
-            _mergeProfileData(profile, preferences);
-          });
-        }
+        _setStateIfMounted(() {
+          _assignments
+            ..clear()
+            ..addAll(assignments.map(CrewAssignment.fromJson));
+          _incidents
+            ..clear()
+            ..addAll(_dedupeIncidents(incidents.map(CrewIncident.fromJson)));
+          _documents
+            ..clear()
+            ..addAll(documents.map(CrewDocument.fromJson));
+          _payments
+            ..clear()
+            ..addAll(payments.map(CrewPaymentRecord.fromJson));
+        });
+        _setStateIfMounted(() {
+          _mergeProfileData(profile, preferences);
+        });
         loadedAnyResource = true;
       }
 
@@ -738,9 +727,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         _showSyncMessage('No se pudo sincronizar el portal operativo.');
       }
     } finally {
-      if (!silent && mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!silent) _setStateIfMounted(() => _isLoading = false);
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _emitNavigationSnapshot();
@@ -750,6 +737,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _refreshPortal({bool silent = false}) async {
+    if (!mounted) return;
     await Future.wait([
       _loadPortal(silent: silent),
       _loadAvailability(_selectedDate, silent: silent),
@@ -760,11 +748,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     DateTime focusedDay, {
     bool silent = false,
   }) async {
+    if (!mounted) return;
     final from = DateTime(focusedDay.year, focusedDay.month);
     final to = DateTime(focusedDay.year, focusedDay.month + 1, 0);
-    if (!silent && mounted) {
-      setState(() => _availabilityLoading = true);
-    }
+    if (!silent) _setStateIfMounted(() => _availabilityLoading = true);
 
     try {
       final data = await _api.getCrewAvailability(from: from, to: to);
@@ -782,8 +769,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         'catalog',
         'catalogo',
       ]);
-      if (!mounted) return;
-      setState(() {
+      _setStateIfMounted(() {
         _availability
           ..clear()
           ..addAll(_expandAvailabilityRecords(records));
@@ -797,13 +783,12 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         _showSyncMessage('No se pudo cargar la disponibilidad del servidor.');
       }
     } finally {
-      if (!silent && mounted) {
-        setState(() => _availabilityLoading = false);
-      }
+      if (!silent) _setStateIfMounted(() => _availabilityLoading = false);
     }
   }
 
   Future<void> _connectLiveAssignments() async {
+    if (!mounted) return;
     final origin = ApiClient.instance.backendOrigin;
     final parsedOrigin = Uri.tryParse(origin);
     if (parsedOrigin == null || parsedOrigin.host.isEmpty) {
@@ -1056,6 +1041,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           children: [
             _MissionList(
               assignments: _assignments,
+              workflow: _activeWorkflow,
               coordinationLabel: _coordinationLabel,
               onAccept: (item) => _respondAssignment(item, 'Confirmado'),
               onReject: _rejectAssignment,
@@ -1181,6 +1167,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _openLocalTab(CrewPortalTab tab) {
+    if (!mounted) return;
     if (tab != CrewPortalTab.notifications) {
       _previousTabBeforeNotifications = null;
     }
@@ -1197,7 +1184,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       return;
     }
     if (_currentTab == tab) return;
-    setState(() => _currentTab = tab);
+    _setStateIfMounted(() => _currentTab = tab);
     if (tab != CrewPortalTab.notifications) {
       _emitNavigationSnapshot();
     }
@@ -1219,11 +1206,12 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   Future<void> _loadActiveWorkflowForHome() async {
+    if (!mounted) return;
     final active = _assignments.where(
       (item) => !item.isFinalized && item.resolvedOperationId.isNotEmpty,
     );
     if (active.isEmpty) {
-      if (mounted) setState(() => _activeWorkflow = const {});
+      _setStateIfMounted(() => _activeWorkflow = const {});
       return;
     }
     try {
@@ -1234,9 +1222,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
           response['data'] is Map
               ? Map<String, dynamic>.from(response['data'])
               : response;
-      if (mounted) setState(() => _activeWorkflow = workflow);
+      _setStateIfMounted(() => _activeWorkflow = workflow);
     } catch (_) {
-      if (mounted) setState(() => _activeWorkflow = const {});
+      _setStateIfMounted(() => _activeWorkflow = const {});
     }
   }
 
@@ -1263,10 +1251,14 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
                 ),
           ),
         )
-        .then((_) => _refreshPortal());
+        .then((_) {
+          if (!mounted) return;
+          unawaited(_refreshPortal());
+        });
   }
 
   void openDrawerSection(CrewWorkspaceSection section) {
+    if (!mounted) return;
     switch (section) {
       case CrewWorkspaceSection.home:
         _setDrawerTab(CrewPortalTab.dashboard);
@@ -1296,7 +1288,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         unawaited(_openOperationFromDrawer(stepId: 'closure'));
         break;
       case CrewWorkspaceSection.availabilityStatus:
-        setState(() {
+        _setStateIfMounted(() {
           _availabilityFocus = _AvailabilityFocusSection.status;
           _currentTab = CrewPortalTab.availability;
         });
@@ -1306,7 +1298,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         _setDrawerTab(CrewPortalTab.calendar);
         break;
       case CrewWorkspaceSection.availabilityRegister:
-        setState(() {
+        _setStateIfMounted(() {
           _availabilityFocus = _AvailabilityFocusSection.register;
           _currentTab = CrewPortalTab.availability;
         });
@@ -1334,7 +1326,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _setDrawerTab(CrewPortalTab tab) {
-    setState(() {
+    if (!mounted) return;
+    _setStateIfMounted(() {
       _currentTab = tab;
       if (tab == CrewPortalTab.availability) {
         _availabilityFocus = _AvailabilityFocusSection.status;
@@ -1385,7 +1378,10 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
                 ),
           ),
         )
-        .then((_) => _refreshPortal());
+        .then((_) {
+          if (!mounted) return;
+          unawaited(_refreshPortal());
+        });
   }
 
   CrewAssignment? get _activeAssignment {
@@ -1530,7 +1526,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
 
   Future<void> _respondAssignment(CrewAssignment item, String status) async {
     if (_assignmentSaving) return;
-    setState(() => _assignmentSaving = true);
+    if (!mounted) return;
+    _setStateIfMounted(() => _assignmentSaving = true);
     _showSyncMessage('Enviando respuesta a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(item, status: status);
@@ -1539,7 +1536,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     } on ApiException catch (error) {
       _showSyncMessage(_assignmentResponseErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _assignmentSaving = false);
+      _setStateIfMounted(() => _assignmentSaving = false);
     }
   }
 
@@ -1552,8 +1549,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       initial: 'No disponible para esa ventana operativa',
     );
     if (reason == null || reason.trim().isEmpty) return;
+    if (!mounted) return;
 
-    setState(() => _assignmentSaving = true);
+    _setStateIfMounted(() => _assignmentSaving = true);
     _showSyncMessage('Enviando rechazo a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(
@@ -1566,7 +1564,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     } catch (error) {
       _showSyncMessage('No se pudo sincronizar el rechazo.');
     } finally {
-      if (mounted) setState(() => _assignmentSaving = false);
+      _setStateIfMounted(() => _assignmentSaving = false);
     }
   }
 
@@ -1579,8 +1577,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       initial: 'Solicito revision de horario, ruta o condicion operativa',
     );
     if (reason == null || reason.trim().isEmpty) return;
+    if (!mounted) return;
 
-    setState(() => _assignmentSaving = true);
+    _setStateIfMounted(() => _assignmentSaving = true);
     _showSyncMessage('Solicitando revision a admin...', persist: true);
     try {
       await _submitCrewAssignmentResponse(
@@ -1593,7 +1592,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     } catch (_) {
       _showSyncMessage('No se pudo solicitar la revision.');
     } finally {
-      if (mounted) setState(() => _assignmentSaving = false);
+      _setStateIfMounted(() => _assignmentSaving = false);
     }
   }
 
@@ -1650,7 +1649,8 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         endsAt: endsAt,
         reason: '$blockType | $reason',
       );
-      setState(() {
+      if (!mounted) return;
+      _setStateIfMounted(() {
         _agendaBlockForm['reason'] = '';
         _agendaBlockForm['blockType'] = '';
       });
@@ -1662,7 +1662,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _updateAgendaBlockField(String key, dynamic value) {
-    setState(() => _agendaBlockForm[key] = value);
+    _setStateIfMounted(() => _agendaBlockForm[key] = value);
   }
 
   String get _coordinationLabel {
@@ -1718,7 +1718,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _updateProfileField(String key, dynamic value) {
-    setState(() => _profileForm[key] = value);
+    _setStateIfMounted(() => _profileForm[key] = value);
   }
 
   Future<void> _saveProfile() async {
@@ -1760,7 +1760,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
   }
 
   void _updateConfigField(String key, dynamic value) {
-    setState(() => _configForm[key] = value);
+    _setStateIfMounted(() => _configForm[key] = value);
   }
 
   Future<void> _saveConfig() async {
@@ -1978,8 +1978,9 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
       final path = picked?.files.single.path;
       if (path != null) evidence = File(path);
     }
+    if (!mounted) return;
     _showSyncMessage('Sincronizando incidencia...', persist: true);
-    setState(() => _incidentSaving = true);
+    _setStateIfMounted(() => _incidentSaving = true);
     try {
       await _api.createCrewIncident(
         operationId: assignment.resolvedOperationId,
@@ -1995,7 +1996,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
     } catch (error) {
       _showSyncMessage('No se pudo crear la incidencia: $error');
     } finally {
-      if (mounted) setState(() => _incidentSaving = false);
+      _setStateIfMounted(() => _incidentSaving = false);
     }
   }
 

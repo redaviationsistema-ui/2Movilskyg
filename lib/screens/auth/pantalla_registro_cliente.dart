@@ -6,7 +6,9 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
@@ -18,8 +20,37 @@ import '../../core/app_theme.dart';
 import '../../core/cliente_api.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../services/servicio_ocr_registro.dart';
+import 'date_text_input_formatter.dart';
+import 'nationality_options.dart';
 import '../cliente/tema_cliente.dart';
 import '../marketplace/pantalla_inicio_mercado.dart';
+
+Map<String, Object> _optimizeImageBytesForProcessing(
+  Map<String, Object> payload,
+) {
+  final bytes = payload['bytes'] as Uint8List;
+  final maxDimension = payload['maxDimension'] as int;
+  final quality = payload['quality'] as int;
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) {
+    return {'ok': false};
+  }
+
+  final resized =
+      decoded.width > maxDimension || decoded.height > maxDimension
+          ? img.copyResize(
+            decoded,
+            width: decoded.width >= decoded.height ? maxDimension : null,
+            height: decoded.height > decoded.width ? maxDimension : null,
+            interpolation: img.Interpolation.average,
+          )
+          : decoded;
+
+  return {
+    'ok': true,
+    'bytes': Uint8List.fromList(img.encodeJpg(resized, quality: quality)),
+  };
+}
 
 class ClientRegisterScreen extends StatefulWidget {
   const ClientRegisterScreen({super.key});
@@ -34,16 +65,21 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   final _picker = ImagePicker();
   final _api = ApiClient.instance;
   final _nameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _countryCodeController = TextEditingController(text: '+52');
   final _phoneController = TextEditingController();
   final _birthDateController = TextEditingController();
   final _nationalityController = TextEditingController(text: 'Mexicana');
+  final _clientTypeController = TextEditingController(text: 'individual');
+  final _companyNameController = TextEditingController();
+  final _taxIdController = TextEditingController();
   final _baseController = TextEditingController();
   final _documentTypeController = TextEditingController(text: 'INE');
+  final _documentIssuingCountryController = TextEditingController(
+    text: 'México',
+  );
   final _documentNumberController = TextEditingController();
-  final _documentIssueDateController = TextEditingController();
-  final _documentExpirationController = TextEditingController();
-  final _documentStatusController = TextEditingController();
   final _ineCurpController = TextEditingController();
   final _ineCicController = TextEditingController();
   final _ineOcrController = TextEditingController();
@@ -52,16 +88,20 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   late final AnimationController _entryController;
 
   File? _ineFront;
+  File? _ineBack;
   File? _registrationPdf;
   File? _selfie;
   String? _registrationIdentificationId;
   int _currentStep = 0;
   _IdentityDocumentMode? _documentMode;
   bool _scanningDocument = false;
+  bool _processingDocumentImage = false;
   bool _validatingSelfie = false;
+  bool _processingSelfie = false;
   bool _uploadingRegistrationPdf = false;
   bool _passwordVisible = false;
   bool _passwordConfirmationVisible = false;
+  bool _acceptedTerms = false;
   bool _selfieHasFace = false;
   bool _biometricImageSaved = false;
   bool? _faceOccluded;
@@ -81,6 +121,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   String _identityVerificationMessage = '';
   String _documentScanMessage = '';
   String _selfieMessage = '';
+  String _submissionStatusMessage = '';
 
   @override
   void initState() {
@@ -91,16 +132,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     )..repeat();
     for (final controller in [
       _nameController,
+      _lastNameController,
       _emailController,
+      _countryCodeController,
       _phoneController,
       _birthDateController,
       _nationalityController,
+      _clientTypeController,
+      _companyNameController,
+      _taxIdController,
       _baseController,
       _documentTypeController,
+      _documentIssuingCountryController,
       _documentNumberController,
-      _documentIssueDateController,
-      _documentExpirationController,
-      _documentStatusController,
       _ineCurpController,
       _ineCicController,
       _ineOcrController,
@@ -117,16 +161,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     _entryController.dispose();
     for (final controller in [
       _nameController,
+      _lastNameController,
       _emailController,
+      _countryCodeController,
       _phoneController,
       _birthDateController,
       _nationalityController,
+      _clientTypeController,
+      _companyNameController,
+      _taxIdController,
       _baseController,
       _documentTypeController,
+      _documentIssuingCountryController,
       _documentNumberController,
-      _documentIssueDateController,
-      _documentExpirationController,
-      _documentStatusController,
       _ineCurpController,
       _ineCicController,
       _ineOcrController,
@@ -136,16 +183,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       controller.removeListener(_refreshStepProgress);
     }
     _nameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
+    _countryCodeController.dispose();
     _phoneController.dispose();
     _birthDateController.dispose();
     _nationalityController.dispose();
+    _clientTypeController.dispose();
+    _companyNameController.dispose();
+    _taxIdController.dispose();
     _baseController.dispose();
     _documentTypeController.dispose();
+    _documentIssuingCountryController.dispose();
     _documentNumberController.dispose();
-    _documentIssueDateController.dispose();
-    _documentExpirationController.dispose();
-    _documentStatusController.dispose();
     _ineCurpController.dispose();
     _ineCicController.dispose();
     _ineOcrController.dispose();
@@ -159,10 +209,22 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     setState(() {});
   }
 
+  bool get _isDocumentBusy => _processingDocumentImage || _scanningDocument;
+
+  bool get _isSelfieBusy => _processingSelfie || _validatingSelfie;
+
   Future<void> _pickIneFront() async {
+    if (_isDocumentBusy) return;
     _activateIdentityMode(_IdentityDocumentMode.ineScan);
     final selected = await _selectDocumentImage('INE');
-    if (selected == null) return;
+    if (selected == null) {
+      if (mounted) {
+        _showMessage(
+          'No se obtuvo una imagen desde la cámara. Intenta de nuevo o usa Subir archivo.',
+        );
+      }
+      return;
+    }
     await _logFileDiagnostics('INE selected', selected);
     final optimized = await _optimizeImageForProcessing(selected);
     if (!mounted) return;
@@ -240,6 +302,164 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     await _scanIneLocally();
   }
 
+  void _onClientTypeChanged(String? value) {
+    final normalized = (value ?? 'individual').trim();
+    setState(() {
+      _clientTypeController.text = normalized;
+      if (normalized != 'company') {
+        _companyNameController.clear();
+        _taxIdController.clear();
+      }
+    });
+  }
+
+  void _onDocumentTypeChanged(String? value) {
+    final normalized = (value ?? 'INE').trim();
+    setState(() {
+      _documentTypeController.text = normalized;
+      _documentNumberController.clear();
+      _ineCurpController.clear();
+      _ineCicController.clear();
+      _ineOcrController.clear();
+      _ineScanRaw = '';
+      _ineScanStatus = '';
+      _registrationIdentificationId = null;
+      _documentScanMessage = '';
+      if (normalized == 'PASSPORT') {
+        _documentIssuingCountryController.text =
+            _documentIssuingCountryController.text.trim().isEmpty
+                ? 'México'
+                : _documentIssuingCountryController.text.trim();
+        _ineBack = null;
+      } else {
+        _documentIssuingCountryController.text = 'México';
+      }
+    });
+  }
+
+  Future<void> _pickDocumentFrontFromCamera() async {
+    await _pickDocumentImage(
+      source: _DocumentImageSource.camera,
+      backSide: false,
+    );
+  }
+
+  Future<void> _pickDocumentFrontFromFiles() async {
+    await _pickDocumentUpload(backSide: false);
+  }
+
+  Future<void> _pickDocumentBackFromCamera() async {
+    await _pickDocumentImage(
+      source: _DocumentImageSource.camera,
+      backSide: true,
+    );
+  }
+
+  Future<void> _pickDocumentBackFromFiles() async {
+    await _pickDocumentUpload(backSide: true);
+  }
+
+  Future<void> _pickDocumentImage({
+    required _DocumentImageSource source,
+    required bool backSide,
+  }) async {
+    if (_isDocumentBusy) return;
+    final sideLabel = backSide ? 'reverso del documento' : 'documento';
+    File? selected;
+    if (source == _DocumentImageSource.camera) {
+      final hasPermission = await _ensureCameraPermission(
+        contextLabel: 'capturar $sideLabel',
+      );
+      if (!hasPermission) return;
+      final picked = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 96,
+      );
+      if (picked == null) {
+        if (mounted) {
+          _showMessage(
+            'La cámara no devolvió una imagen. Intenta nuevamente o usa Subir archivo.',
+          );
+        }
+        return;
+      }
+      selected = File(picked.path);
+    } else {
+      final picked = await FilePicker.pickFiles(type: FileType.image);
+      final selectedPath = picked?.files.single.path;
+      if (selectedPath == null) return;
+      selected = File(selectedPath);
+    }
+    final optimized = await _optimizeImageForProcessing(selected);
+    if (!mounted) return;
+
+    setState(() {
+      _documentMode = _IdentityDocumentMode.ineScan;
+      _registrationPdf = null;
+      _registrationIdentificationId = null;
+      if (backSide) {
+        _ineBack = optimized;
+        _documentScanMessage = 'Reverso del documento cargado.';
+      } else {
+        _ineFront = optimized;
+        _documentScanMessage =
+            _isIneDocument
+                ? 'Escaneando datos de la INE en el dispositivo...'
+                : 'Documento cargado. Completa o revisa los datos detectados.';
+      }
+    });
+
+    if (!backSide && _isIneDocument) {
+      await _scanIneLocally();
+    }
+  }
+
+  Future<void> _pickDocumentUpload({required bool backSide}) async {
+    if (_isDocumentBusy) return;
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+    );
+    final selectedPath = result?.files.single.path;
+    if (selectedPath == null || !mounted) return;
+    final selectedFile = File(selectedPath);
+    final extension = path.extension(selectedPath).toLowerCase();
+    final isPdf = extension == '.pdf';
+    final resolvedFile =
+        isPdf ? selectedFile : await _optimizeImageForProcessing(selectedFile);
+    if (!mounted) return;
+
+    setState(() {
+      _registrationIdentificationId = null;
+      if (isPdf) {
+        _documentMode = _IdentityDocumentMode.pdf;
+        _registrationPdf = resolvedFile;
+        _ineFront = null;
+        _ineBack = null;
+        _documentScanMessage =
+            'Archivo PDF cargado. Completa los datos del documento para continuar.';
+      } else {
+        _documentMode = _IdentityDocumentMode.ineScan;
+        _registrationPdf = null;
+        if (backSide) {
+          _ineBack = resolvedFile;
+          _documentScanMessage = 'Reverso del documento cargado.';
+        } else {
+          _ineFront = resolvedFile;
+          _documentScanMessage =
+              _isIneDocument
+                  ? 'Escaneando datos de la INE en el dispositivo...'
+                  : 'Documento cargado. Completa los datos del documento.';
+        }
+      }
+    });
+
+    if (!backSide && !isPdf && _isIneDocument) {
+      await _scanIneLocally();
+    }
+  }
+
   Future<File?> _selectDocumentImage(String title) async {
     final source = await showModalBottomSheet<_DocumentImageSource>(
       context: context,
@@ -286,6 +506,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         imageQuality: 96,
       );
       debugPrint('[INE] PATH IMAGEN: ${picked?.path}');
+      if (picked == null && mounted) {
+        _showMessage(
+          'La cámara no devolvió una imagen para $title. Intenta nuevamente o usa archivos.',
+        );
+      }
       return picked == null ? null : File(picked.path);
     }
 
@@ -296,6 +521,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   }
 
   Future<void> _scanIneLocally() async {
+    if (_scanningDocument) return;
     final images = <File>[if (_ineFront != null) _ineFront!];
     if (images.isEmpty) return;
 
@@ -309,11 +535,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     );
     try {
       final result = await RegistrationOcrService.scanIne(images);
+      if (!mounted) return;
       debugPrint(
-        '[INE] Resultado local: method=${result.method} rawTextLength=${result.rawText.length} fields=${result.fields}',
+        '[INE] Resultado local: method=${result.method} rawTextLength=${result.rawText.length} fieldsCount=${result.fields.length}',
       );
-      debugPrint('[INE] OCR TEXT: ${result.rawText}');
-      debugPrint('[INE] DATOS EXTRAIDOS: ${result.fields}');
       _applyLocalIneResult(result);
     } catch (error) {
       debugPrint(
@@ -364,21 +589,17 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
               ? 'scanned'
               : 'partial';
       _applyAcceptedIneData(data);
-      _documentStatusController.text = _documentStatus(
-        _documentExpirationController.text,
-      );
       final detected = [
         if (_documentNumberController.text.isNotEmpty) 'documento',
         if (_ineCurpController.text.isNotEmpty) 'CURP',
         if (_nameController.text.isNotEmpty) 'nombre',
-        if (_documentExpirationController.text.isNotEmpty) 'vigencia',
       ];
       _documentScanMessage =
           detected.isEmpty
               ? 'No se detectaron datos claros. Intenta con fotos derechas, completas y sin reflejos.'
               : 'Escaneo ${result.method} completado: ${detected.join(', ')}. Revisa los datos.';
     });
-    debugPrint('[INE APPLY] final accepted values=${jsonEncode(data)}');
+    debugPrint('[INE APPLY] final accepted keys=${data.keys.toList()}');
     _logControllerValues('post_local_apply');
   }
 
@@ -392,12 +613,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         document: image,
         documentType: 'INE',
       );
-      debugPrint('[INE] OCR RESPONSE: ${jsonEncode(response)}');
-      debugPrint('[INE] Respuesta backend completa: ${jsonEncode(response)}');
+      debugPrint('[INE] OCR RESPONSE received keys=${response.keys.toList()}');
       _applyBackendIneResponse(response);
       if (_hasUsefulIneData()) {
         debugPrint(
-          '[INE] Backend detecto datos utiles: document=${_documentNumberController.text} curp=${_ineCurpController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
+          '[INE] Backend detecto datos utiles: document=${_documentNumberController.text} curp=${_ineCurpController.text} name=${_nameController.text}',
         );
         return;
       }
@@ -433,19 +653,25 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         rawText.isEmpty
             ? const <String, String>{}
             : RegistrationOcrService.parseIneText(rawText);
-    debugPrint('[INE] OCR TEXT: $rawText');
-    debugPrint('[INE] DATOS EXTRAIDOS: $parsedRaw');
     debugPrint(
-      '[INE] Backend parse: rawTextLength=${rawText.length} parsedRaw=$parsedRaw',
+      '[INE] Backend parse: rawTextLength=${rawText.length} parsedFields=${parsedRaw.keys.toList()}',
     );
     final sanitized = _sanitizeIneData({
       if (rawText.isNotEmpty) 'raw': rawText,
       'name':
+          parsedRaw['name'] ??
           data['name'] ??
           data['holder_name'] ??
           data['nombre'] ??
           data['nombre_completo'] ??
-          parsedRaw['name'],
+          data['full_name'],
+      'last_name':
+          parsedRaw['last_name'] ??
+          data['last_name'] ??
+          data['surname'] ??
+          data['apellidos'] ??
+          data['apellido'] ??
+          data['paternal_surname'],
       'birth_date':
           data['birth_date'] ??
           data['fecha_nacimiento'] ??
@@ -466,16 +692,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
           data['numero'] ??
           data['clave_elector'] ??
           parsedRaw['document_number'],
-      'document_issue_date':
-          data['document_issue_date'] ??
-          data['issue_date'] ??
-          data['fecha_emision'],
-      'document_expiration':
-          data['document_expiration'] ??
-          data['expiration_date'] ??
-          data['fecha_vencimiento'] ??
-          data['vigencia'] ??
-          parsedRaw['document_expiration'],
       'curp': data['curp'] ?? parsedRaw['curp'],
       'cic': data['cic'] ?? parsedRaw['cic'],
       'ocr':
@@ -493,19 +709,16 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         _ineScanRaw = rawText;
       }
       _applyAcceptedIneData(sanitized);
-      _documentStatusController.text = _documentStatus(
-        _documentExpirationController.text,
-      );
       _ineScanStatus = _hasUsefulIneData() ? 'scanned' : 'partial';
       _documentScanMessage =
           _hasUsefulIneData()
               ? 'Escaneo de INE completado. Revisa los datos detectados antes de continuar.'
               : 'Se leyo parcialmente la INE. Completa los campos faltantes manualmente.';
     });
-    debugPrint('[INE APPLY] final accepted values=${jsonEncode(sanitized)}');
+    debugPrint('[INE APPLY] final accepted keys=${sanitized.keys.toList()}');
     _logControllerValues('post_backend_apply');
     debugPrint(
-      '[INE] Estado final tras backend: status=$_ineScanStatus document=${_documentNumberController.text} curp=${_ineCurpController.text} cic=${_ineCicController.text} ocr=${_ineOcrController.text} name=${_nameController.text} expiration=${_documentExpirationController.text}',
+      '[INE] Estado final tras backend: status=$_ineScanStatus document=${_documentNumberController.text.isNotEmpty} curp=${_ineCurpController.text.isNotEmpty} cic=${_ineCicController.text.isNotEmpty} ocr=${_ineOcrController.text.isNotEmpty} name=${_nameController.text.isNotEmpty}',
     );
   }
 
@@ -536,23 +749,41 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   bool _hasUsefulIneData() {
     return _documentNumberController.text.isNotEmpty ||
         _ineCurpController.text.isNotEmpty ||
-        _nameController.text.isNotEmpty ||
-        _documentExpirationController.text.isNotEmpty;
+        _nameController.text.isNotEmpty;
   }
 
   Future<void> _captureSelfie() async {
+    if (_isSelfieBusy) return;
+    setState(() {
+      _processingSelfie = true;
+      _selfieMessage = 'Abriendo camara para capturar selfie...';
+    });
     final hasPermission = await _ensureCameraPermission(
       contextLabel: 'capturar la selfie',
     );
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() => _processingSelfie = false);
+      }
+      return;
+    }
     final picked = await _picker.pickImage(
       source: ImageSource.camera,
       preferredCameraDevice: CameraDevice.front,
       imageQuality: 88,
     );
-    if (picked == null) return;
+    if (picked == null) {
+      if (mounted) {
+        setState(() => _processingSelfie = false);
+        _showMessage(
+          'No se capturó la selfie. Intenta nuevamente con buena luz y el rostro centrado.',
+        );
+      }
+      return;
+    }
     final optimizedSelfie = await _optimizeImageForProcessing(
       File(picked.path),
+      trackDocumentState: false,
     );
     if (!mounted) return;
 
@@ -560,7 +791,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _selfie = optimizedSelfie;
       _validatingSelfie = true;
       _selfieHasFace = false;
-      _selfieMessage = 'Selfie capturada. Validando rostro en ...';
+      _selfieMessage = 'Selfie capturada. Validando rostro...';
     });
 
     try {
@@ -634,30 +865,32 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       });
     } finally {
       if (mounted) {
-        setState(() => _validatingSelfie = false);
+        setState(() {
+          _validatingSelfie = false;
+          _processingSelfie = false;
+        });
       }
     }
   }
 
-  Future<File> _optimizeImageForProcessing(File source) async {
+  Future<File> _optimizeImageForProcessing(
+    File source, {
+    bool trackDocumentState = true,
+  }) async {
+    if (trackDocumentState && mounted) {
+      setState(() => _processingDocumentImage = true);
+    }
     try {
       await _logFileDiagnostics('Image before optimization', source);
       final bytes = await source.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return source;
+      final optimized = await compute(_optimizeImageBytesForProcessing, {
+        'bytes': bytes,
+        'maxDimension': 1600,
+        'quality': 85,
+      });
+      if (optimized['ok'] != true) return source;
 
-      const maxDimension = 1600;
-      final resized =
-          decoded.width > maxDimension || decoded.height > maxDimension
-              ? img.copyResize(
-                decoded,
-                width: decoded.width >= decoded.height ? maxDimension : null,
-                height: decoded.height > decoded.width ? maxDimension : null,
-                interpolation: img.Interpolation.average,
-              )
-              : decoded;
-
-      final output = img.encodeJpg(resized, quality: 85);
+      final output = optimized['bytes'] as Uint8List;
       final tempDir = await _processingDirectory();
       final fileName =
           '${path.basenameWithoutExtension(source.path)}_${DateTime.now().millisecondsSinceEpoch}_optimized.jpg';
@@ -665,8 +898,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       await optimizedFile.writeAsBytes(output, flush: true);
       await _logFileDiagnostics('Image after optimization', optimizedFile);
       return optimizedFile;
-    } catch (_) {
+    } catch (error) {
+      debugPrint(
+        '[IMAGE OPT] optimization failed path=${source.path} error=$error',
+      );
       return source;
+    } finally {
+      if (trackDocumentState && mounted) {
+        setState(() => _processingDocumentImage = false);
+      }
     }
   }
 
@@ -674,36 +914,46 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     if (!mounted) return;
     setState(() {
       _documentMode = mode;
-      _documentTypeController.text = 'INE';
-      if (mode == _IdentityDocumentMode.ineScan) {
-        _registrationPdf = null;
-        _registrationIdentificationId = null;
-      } else {
-        _ineFront = null;
-        _ineScanRaw = '';
-        _ineScanStatus = '';
-      }
     });
   }
+
+  String get _documentType =>
+      _documentTypeController.text.trim().isEmpty
+          ? 'INE'
+          : _documentTypeController.text.trim();
+
+  bool get _isCompanyClient =>
+      _clientTypeController.text.trim().toLowerCase() == 'company';
+
+  bool get _isIneDocument => _documentType == 'INE';
 
   bool get _usesScannedIdentity =>
       _documentMode == _IdentityDocumentMode.ineScan;
 
   bool get _usesPdfIdentity => _documentMode == _IdentityDocumentMode.pdf;
 
+  bool get _hasDocumentFilesReady {
+    if (_registrationPdf != null) return true;
+    if (_ineFront == null) return false;
+    if (_isIneDocument) return _ineBack != null;
+    return true;
+  }
+
   bool get _hasIdentityDocumentReady =>
-      _usesScannedIdentity
-          ? _ineFront != null
-          : _usesPdfIdentity && _registrationPdf != null;
+      _documentNumberController.text.trim().isNotEmpty &&
+      _documentIssuingCountryController.text.trim().isNotEmpty &&
+      _hasDocumentFilesReady;
 
   String _identityPromptMessage() {
-    if (_documentMode == null) {
-      return 'Selecciona una opción: escanear INE o subir PDF.';
+    if (!_hasDocumentFilesReady) {
+      if (_registrationPdf == null && _ineFront == null) {
+        return 'Sube tu documento o toma una foto para continuar.';
+      }
+      if (_isIneDocument && _ineBack == null) {
+        return 'Agrega el reverso de la INE para continuar.';
+      }
     }
-    if (_usesScannedIdentity) {
-      return 'Escanea tu INE antes de continuar.';
-    }
-    return 'Selecciona el PDF de tu identificación antes de continuar.';
+    return 'Completa los datos del documento antes de continuar.';
   }
 
   Future<String?> _ensureRegistrationIdentificationUploaded() async {
@@ -718,11 +968,13 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
     final missingFields = <String>[
       if (_nameController.text.trim().isEmpty) 'nombre',
+      if (_lastNameController.text.trim().isEmpty) 'apellidos',
       if (_phoneController.text.trim().isEmpty) 'teléfono',
       if (_birthDateController.text.trim().isEmpty) 'fecha de nacimiento',
       if (_nationalityController.text.trim().isEmpty) 'nacionalidad',
       if (_documentNumberController.text.trim().isEmpty) 'número de documento',
-      if (_ineCurpController.text.trim().isEmpty) 'CURP',
+      if (_documentIssuingCountryController.text.trim().isEmpty) 'país emisor',
+      if (_isIneDocument && _ineCurpController.text.trim().isEmpty) 'CURP',
     ];
     if (missingFields.isNotEmpty) {
       _showMessage(
@@ -739,13 +991,16 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     try {
       final response = await _api.storeRegistrationIdentification(
         file: pdf,
-        fullName: _nameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        birthDate: _birthDateController.text.trim(),
+        fullName: _resolvedFullNameForSubmission(),
+        phone:
+            '${_countryCodeController.text.trim()} ${_phoneController.text.trim()}'
+                .trim(),
+        birthDate: birthDateInputToIso(_birthDateController.text.trim()),
         documentNumber: _documentNumberController.text.trim(),
         nationality: _nationalityController.text.trim(),
         curp: _ineCurpController.text.trim(),
-        expiresAt: _documentExpirationController.text.trim(),
+        documentType: _documentTypeController.text.trim(),
+        documentIssuingCountry: _documentIssuingCountryController.text.trim(),
         replaceDocumentId: existingId,
       );
       final document = _map(response['document']);
@@ -779,6 +1034,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   }
 
   Future<void> _submit() async {
+    if (!_acceptedTerms) {
+      _showMessage(
+        'Acepta los términos y el aviso de privacidad para continuar.',
+      );
+      return;
+    }
     if (_passwordController.text != _passwordConfirmationController.text) {
       _showMessage('Las contraseñas no coinciden.');
       return;
@@ -801,6 +1062,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
     final authProvider = context.read<AuthProvider>();
 
+    if (mounted) {
+      setState(() {
+        _submissionStatusMessage = 'Preparando registro...';
+      });
+    }
+
     final identificationDocumentId =
         _usesPdfIdentity
             ? await _ensureRegistrationIdentificationUploaded()
@@ -811,18 +1078,30 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _submissionStatusMessage =
+            'Creando cuenta y subiendo documentos verificados...';
+      });
+    }
+
     final ok = await authProvider.registerClient(
-      name: _nameController.text,
+      name: _resolvedGivenNamesForSubmission(),
+      fullName: _resolvedFullNameForSubmission(),
+      lastName: _resolvedLastNameForSubmission(),
       email: _emailController.text,
-      phone: _phoneController.text,
-      birthDate: _birthDateController.text,
+      phone:
+          '${_countryCodeController.text.trim()} ${_phoneController.text.trim()}'
+              .trim(),
+      birthDate: birthDateInputToIso(_birthDateController.text),
       nationality: _nationalityController.text,
       base: _baseController.text,
       documentType: _documentTypeController.text,
+      documentIssuingCountry: _documentIssuingCountryController.text,
       documentNumber: _documentNumberController.text,
-      documentIssueDate: _documentIssueDateController.text,
-      documentExpiration: _documentExpirationController.text,
-      documentStatus: _documentStatusController.text,
+      clientType: _clientTypeController.text,
+      companyName: _companyNameController.text,
+      taxId: _taxIdController.text,
       ineCurp: _ineCurpController.text,
       ineCic: _ineCicController.text,
       ineOcr: _ineOcrController.text,
@@ -849,18 +1128,24 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       password: _passwordController.text,
       passwordConfirmation: _passwordConfirmationController.text,
       ineFront: _usesScannedIdentity ? _ineFront : null,
-      ineBack: null,
+      ineBack: _usesScannedIdentity && _isIneDocument ? _ineBack : null,
       selfieBiometric: _selfie,
     );
 
     if (!mounted) return;
     if (!ok) {
+      setState(() {
+        _submissionStatusMessage = '';
+      });
       _showMessage(
         authProvider.errorMessage ?? 'No fue posible crear la cuenta.',
       );
       return;
     }
 
+    setState(() {
+      _submissionStatusMessage = '';
+    });
     final auth = context.read<AuthProvider>();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => MarketplaceHomeScreen(role: auth.role)),
@@ -868,90 +1153,150 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     );
   }
 
-  void _continueToAccess() {
-    if (!_formKey.currentState!.validate()) return;
-    if (!_hasIdentityDocumentReady) {
-      _showMessage(_identityPromptMessage());
+  bool get _isPersonalDataReady =>
+      _nameController.text.trim().isNotEmpty &&
+      _lastNameController.text.trim().isNotEmpty &&
+      _emailController.text.trim().isNotEmpty &&
+      _phoneController.text.trim().isNotEmpty &&
+      _birthDateController.text.trim().isNotEmpty &&
+      _nationalityController.text.trim().isNotEmpty &&
+      _clientTypeController.text.trim().isNotEmpty;
+
+  bool get _isAccountDataReady =>
+      _passwordController.text.length >= 8 &&
+      _passwordController.text == _passwordConfirmationController.text &&
+      _acceptedTerms;
+
+  List<bool> get _stepCompletion => [
+    _isPersonalDataReady,
+    _hasIdentityDocumentReady,
+    _selfieHasFace,
+    _isAccountDataReady,
+  ];
+
+  int get _completedStepCount => _stepCompletion.where((done) => done).length;
+
+  double get _progressValue =>
+      _stepCompletion.isEmpty
+          ? 0
+          : _completedStepCount / _stepCompletion.length;
+
+  String get _progressLabel => 'Paso ${_currentStep + 1} de 4';
+
+  String get _progressSubtitle =>
+      '${(_progressValue * 100).round()}% completado';
+
+  String get _currentStepTitle {
+    switch (_currentStep) {
+      case 0:
+        return 'Datos personales';
+      case 1:
+        return 'Verifica tu identidad';
+      case 2:
+        return 'Verificacion facial';
+      case 3:
+        return 'Cuenta';
+      default:
+        return 'Crear cuenta';
+    }
+  }
+
+  String get _currentStepDescription {
+    switch (_currentStep) {
+      case 0:
+        return 'Completa tu perfil base antes de validar identidad.';
+      case 1:
+        return 'Sube tu documento y define los datos oficiales que validaremos.';
+      case 2:
+        return 'Necesitamos confirmar que el documento pertenece a la persona que está creando la cuenta.';
+      case 3:
+        return 'Configura tu acceso final para entrar al portal privado.';
+      default:
+        return '';
+    }
+  }
+
+  String get _primaryButtonLabel {
+    switch (_currentStep) {
+      case 0:
+      case 1:
+        return 'Continuar';
+      case 2:
+        return _selfieHasFace ? 'Continuar' : 'Tomar selfie';
+      case 3:
+        return 'Crear cuenta';
+      default:
+        return 'Continuar';
+    }
+  }
+
+  bool _isStepUnlocked(int stepIndex) {
+    if (stepIndex <= 0) return true;
+    final completion = _stepCompletion;
+    for (var index = 0; index < stepIndex; index++) {
+      if (!completion[index]) return false;
+    }
+    return true;
+  }
+
+  void _handlePremiumStepTap(int targetStep) {
+    if (!_isStepUnlocked(targetStep)) {
+      if (targetStep == 1) {
+        _showMessage('Completa primero los datos personales.');
+      } else if (targetStep == 2) {
+        _showMessage(
+          'Completa la verificación de identidad antes de abrir la selfie.',
+        );
+      } else if (targetStep == 3) {
+        _showMessage('Valida la selfie antes de configurar tu cuenta.');
+      }
       return;
     }
-    if (_selfie == null || !_selfieHasFace) {
-      _showMessage(
-        _identityVerificationMessage.isNotEmpty
-            ? _identityVerificationMessage
-            : 'Valida la selfie biometrica antes de continuar.',
-      );
+    setState(() => _currentStep = targetStep);
+  }
+
+  void _continueFromPersonalStep() {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_isPersonalDataReady) {
+      _showMessage('Completa todos los datos personales requeridos.');
       return;
     }
     setState(() => _currentStep = 1);
   }
 
-  bool get _isPersonalDataReady =>
-      _nameController.text.trim().isNotEmpty &&
-      _phoneController.text.trim().isNotEmpty &&
-      _birthDateController.text.trim().isNotEmpty;
-
-  bool get _isAccessDataReady =>
-      _emailController.text.trim().isNotEmpty &&
-      _passwordController.text.length >= 8 &&
-      _passwordController.text == _passwordConfirmationController.text;
-
-  int get _premiumActiveStep {
-    if (_currentStep == 1) return 3;
-    if (_selfieHasFace) return 2;
-    if (_hasIdentityDocumentReady) return 1;
-    return 0;
+  void _continueFromIdentityStep() {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_hasIdentityDocumentReady) {
+      _showMessage(_identityPromptMessage());
+      return;
+    }
+    setState(() => _currentStep = 2);
   }
 
-  bool _canOpenPremiumStep(int targetStep) {
-    switch (targetStep) {
+  Future<void> _continueFromSelfieStep() async {
+    if (!_selfieHasFace) {
+      await _captureSelfie();
+      if (!_selfieHasFace || !mounted) return;
+    }
+    setState(() => _currentStep = 3);
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    switch (_currentStep) {
       case 0:
-        return true;
+        _continueFromPersonalStep();
+        break;
       case 1:
-        return _isPersonalDataReady;
+        _continueFromIdentityStep();
+        break;
       case 2:
-        return _isPersonalDataReady && _hasIdentityDocumentReady;
+        await _continueFromSelfieStep();
+        break;
       case 3:
-        return _isPersonalDataReady &&
-            _hasIdentityDocumentReady &&
-            _selfieHasFace;
-      default:
-        return false;
-    }
-  }
-
-  void _handlePremiumStepTap(int targetStep) {
-    if (!_canOpenPremiumStep(targetStep)) {
-      switch (targetStep) {
-        case 1:
-          _showMessage('Completa primero tus datos personales para continuar.');
-          break;
-        case 2:
-          _showMessage(
-            _hasIdentityDocumentReady
-                ? 'Completa tus datos personales antes de continuar.'
-                : _identityPromptMessage(),
-          );
-          break;
-        case 3:
-          _showMessage(
-            _selfieHasFace
-                ? 'Completa los datos requeridos antes de abrir Acceso.'
-                : 'Debes completar datos, documento y selfie antes de abrir Acceso.',
-          );
-          break;
-      }
-      return;
-    }
-
-    if (targetStep == 3) {
-      if (_formKey.currentState!.validate()) {
-        setState(() => _currentStep = 1);
-      }
-      return;
-    }
-
-    if (_currentStep != 0) {
-      setState(() => _currentStep = 0);
+        if (_formKey.currentState!.validate()) {
+          await _submit();
+        }
+        break;
     }
   }
 
@@ -977,11 +1322,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    final isIdentityStep = _currentStep == 0;
-    final progressValue = isIdentityStep ? .25 : 1.0;
-    final progressLabel = isIdentityStep ? 'Paso 1 de 4' : 'Paso 4 de 4';
-    final progressSubtitle =
-        isIdentityStep ? '25% completado' : '100% completado';
+    final footerStatusMessage =
+        auth.isLoading
+            ? (_submissionStatusMessage.isNotEmpty
+                ? _submissionStatusMessage
+                : 'Creando cuenta...')
+            : '';
 
     return Scaffold(
       backgroundColor: const Color(0xFF030813),
@@ -1045,7 +1391,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            isIdentityStep ? 'Crear cuenta' : 'Acceso',
+                            _currentStepTitle,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 38,
@@ -1056,9 +1402,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            isIdentityStep
-                                ? 'Valida tu identidad para comenzar a reservar vuelos privados.'
-                                : 'Crea tus credenciales para terminar tu acceso privado.',
+                            _currentStepDescription,
                             style: const TextStyle(
                               color: Color(0xFFC0C8D2),
                               fontSize: 18,
@@ -1067,11 +1411,13 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                           ),
                           const SizedBox(height: 20),
                           _ClientRegisterPremiumHero(
-                            showIdentityBadge: isIdentityStep,
+                            currentStep: _currentStep,
+                            progressPercent: (_progressValue * 100).round(),
                           ),
                           const SizedBox(height: 18),
                           _PremiumStepper(
-                            activeStep: _premiumActiveStep,
+                            activeStep: _currentStep,
+                            isStepUnlocked: _isStepUnlocked,
                             onStepTap: _handlePremiumStepTap,
                           ),
                           const SizedBox(height: 18),
@@ -1090,223 +1436,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                                     child: child,
                                   ),
                                 ),
-                            child:
-                                isIdentityStep
-                                    ? _PremiumGlassSection(
-                                      key: const ValueKey('identity'),
-                                      title: 'Datos personales',
-                                      icon: Icons.person_outline_rounded,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _field(
-                                            _nameController,
-                                            'Nombre completo',
-                                          ),
-                                          _field(
-                                            _emailController,
-                                            'Correo',
-                                            keyboard:
-                                                TextInputType.emailAddress,
-                                          ),
-                                          _field(
-                                            _phoneController,
-                                            'Telefono',
-                                            keyboard: TextInputType.phone,
-                                          ),
-                                          _field(
-                                            _birthDateController,
-                                            'Fecha de nacimiento',
-                                            hint: 'DD / MM / AAAA',
-                                          ),
-                                          _field(
-                                            _nationalityController,
-                                            'Nacionalidad',
-                                          ),
-                                          _field(
-                                            _baseController,
-                                            'Ciudad base',
-                                            requiredField: false,
-                                          ),
-                                          const SizedBox(height: 18),
-                                          const _PremiumSubsectionTitle(
-                                            title: 'Documento oficial',
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: _UploadOptionCard(
-                                                  title: 'Escanear INE',
-                                                  icon:
-                                                      Icons.credit_card_rounded,
-                                                  buttonLabel: 'Escanear',
-                                                  accent: const Color(
-                                                    0xFFD8B15D,
-                                                  ),
-                                                  selected:
-                                                      _usesScannedIdentity,
-                                                  loaded:
-                                                      _usesScannedIdentity &&
-                                                      _ineFront != null,
-                                                  loadedLabel: _ineFileLabel(),
-                                                  onTap: _pickIneFront,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: _UploadOptionCard(
-                                                  title: 'Subir PDF',
-                                                  icon:
-                                                      Icons
-                                                          .picture_as_pdf_rounded,
-                                                  buttonLabel:
-                                                      'Seleccionar archivo',
-                                                  accent: const Color(
-                                                    0xFF3D6EA9,
-                                                  ),
-                                                  selected: _usesPdfIdentity,
-                                                  loaded:
-                                                      _usesPdfIdentity &&
-                                                      _registrationPdf != null,
-                                                  loadedLabel:
-                                                      _uploadingRegistrationPdf
-                                                          ? 'Guardando PDF...'
-                                                          : _pdfFileLabel(),
-                                                  onTap: _pickDocumentPdf,
-                                                  secondary: true,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          if (_documentScanMessage
-                                              .isNotEmpty) ...[
-                                            const SizedBox(height: 10),
-                                            _PremiumInlineNote(
-                                              message: _documentScanMessage,
-                                            ),
-                                          ],
-                                          const SizedBox(height: 16),
-                                          _field(
-                                            _documentNumberController,
-                                            'Numero de documento',
-                                            requiredField: false,
-                                          ),
-                                          _field(
-                                            _documentExpirationController,
-                                            'Fecha de vencimiento',
-                                            hint: 'AAAA-MM-DD',
-                                            requiredField: false,
-                                            onChanged:
-                                                () =>
-                                                    _documentStatusController
-                                                        .text = _documentStatus(
-                                                      _documentExpirationController
-                                                          .text,
-                                                    ),
-                                          ),
-                                          _field(
-                                            _documentStatusController,
-                                            'Estado del documento',
-                                            requiredField: false,
-                                          ),
-                                          const SizedBox(height: 14),
-                                          _BiometricValidationCard(
-                                            ready: _selfieHasFace,
-                                            loading: _validatingSelfie,
-                                            message: _selfieMessage,
-                                            onTap: _captureSelfie,
-                                          ),
-                                          const SizedBox(height: 18),
-                                          const _PremiumSecurityGrid(),
-                                        ],
-                                      ),
-                                    )
-                                    : _PremiumGlassSection(
-                                      key: const ValueKey('access'),
-                                      title: 'Acceso',
-                                      icon: Icons.lock_outline_rounded,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _field(
-                                            _emailController,
-                                            'Correo',
-                                            keyboard:
-                                                TextInputType.emailAddress,
-                                          ),
-                                          Align(
-                                            alignment: Alignment.centerRight,
-                                            child: TextButton.icon(
-                                              onPressed: _generatePassword,
-                                              icon: const Icon(
-                                                Icons.auto_fix_high_rounded,
-                                              ),
-                                              label: const Text(
-                                                'Generar contrasena',
-                                              ),
-                                            ),
-                                          ),
-                                          _field(
-                                            _passwordController,
-                                            'Contrasena',
-                                            obscure: !_passwordVisible,
-                                            minLength: 8,
-                                          ),
-                                          SwitchListTile.adaptive(
-                                            contentPadding: EdgeInsets.zero,
-                                            title: const Text(
-                                              'Mostrar contrasena',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                            activeThumbColor: const Color(
-                                              0xFFD8B15D,
-                                            ),
-                                            value: _passwordVisible,
-                                            onChanged:
-                                                (value) => setState(
-                                                  () =>
-                                                      _passwordVisible = value,
-                                                ),
-                                          ),
-                                          _field(
-                                            _passwordConfirmationController,
-                                            'Confirmar contrasena',
-                                            obscure:
-                                                !_passwordConfirmationVisible,
-                                            minLength: 8,
-                                          ),
-                                          SwitchListTile.adaptive(
-                                            contentPadding: EdgeInsets.zero,
-                                            title: const Text(
-                                              'Mostrar confirmacion',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                            activeThumbColor: const Color(
-                                              0xFFD8B15D,
-                                            ),
-                                            value: _passwordConfirmationVisible,
-                                            onChanged:
-                                                (value) => setState(
-                                                  () =>
-                                                      _passwordConfirmationVisible =
-                                                          value,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          const _PremiumInlineNote(
-                                            message:
-                                                'Al terminar tendras acceso inmediato a una cotizacion gratis y despues podras activar la membresia Executive.',
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                            child: _buildStepSection(),
                           ),
                         ]),
                       ),
@@ -1319,22 +1449,543 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         ),
       ),
       bottomNavigationBar: _ClientRegisterFooter(
-        progressLabel: progressLabel,
-        progressSubtitle: progressSubtitle,
-        progress: progressValue,
+        progressLabel: _progressLabel,
+        progressSubtitle: _progressSubtitle,
+        progress: _progressValue,
         loading: auth.isLoading,
-        buttonLabel: isIdentityStep ? 'Continuar' : 'Completar acceso',
-        onPressed:
-            auth.isLoading
-                ? null
-                : () {
-                  if (isIdentityStep) {
-                    _continueToAccess();
-                  } else if (_formKey.currentState!.validate()) {
-                    _submit();
-                  }
-                },
+        statusMessage: footerStatusMessage,
+        buttonLabel: _primaryButtonLabel,
+        onPressed: auth.isLoading ? null : () => _handlePrimaryAction(),
       ),
+    );
+  }
+
+  Widget _buildStepSection() {
+    switch (_currentStep) {
+      case 0:
+        return _PremiumGlassSection(
+          key: const ValueKey('step-personal'),
+          title: '1. Datos',
+          icon: Icons.person_outline_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _PremiumInlineNote(
+                message:
+                    'Usaremos estos datos únicamente para gestionar tu cuenta y tu validación inicial.',
+              ),
+              const SizedBox(height: 14),
+              _clientTypeField(),
+              _field(_nameController, 'Nombre(s)'),
+              _field(_lastNameController, 'Apellidos'),
+              _field(
+                _emailController,
+                'Correo',
+                keyboard: TextInputType.emailAddress,
+              ),
+              Row(
+                children: [
+                  SizedBox(width: 112, child: _countryCodeField()),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _field(
+                      _phoneController,
+                      'Telefono',
+                      keyboard: TextInputType.phone,
+                    ),
+                  ),
+                ],
+              ),
+              _field(
+                _birthDateController,
+                'Fecha de nacimiento',
+                hint: 'DD / MM / AAAA',
+              ),
+              _nationalityField('Nacionalidad'),
+              _field(
+                _baseController,
+                'Ciudad de residencia',
+                requiredField: false,
+              ),
+              if (_isCompanyClient) ...[
+                _field(
+                  _companyNameController,
+                  'Empresa / razon social',
+                  requiredField: false,
+                ),
+                _field(_taxIdController, 'RFC / Tax ID', requiredField: false),
+              ],
+              const SizedBox(height: 4),
+              _PrivacyCompactNotice(onTap: _showPrivacyNotice),
+            ],
+          ),
+        );
+      case 1:
+        return _PremiumGlassSection(
+          key: const ValueKey('step-identity'),
+          title: '2. Identidad',
+          icon: Icons.badge_outlined,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _PremiumInlineNote(
+                message:
+                    'Selecciona tu documento, completa sus datos y carga evidencia clara en foto o archivo.',
+              ),
+              const SizedBox(height: 14),
+              _documentTypeField(),
+              _field(_documentNumberController, 'Numero de documento'),
+              _documentCountryField(),
+              if (_isIneDocument)
+                _field(_ineCurpController, 'CURP', requiredField: false),
+              const SizedBox(height: 6),
+              _DocumentUploadPanel(
+                title:
+                    _isIneDocument
+                        ? 'INE / identificación nacional'
+                        : 'Pasaporte',
+                subtitle:
+                    _isIneDocument
+                        ? 'Carga frente y reverso. Puedes tomar foto o subir archivo.'
+                        : 'Carga la página principal con foto. Puedes tomar foto o subir archivo.',
+                showBackSide: _isIneDocument,
+                frontLabel:
+                    _registrationPdf != null
+                        ? _pdfFileLabel()
+                        : (_ineFront == null ? '' : _ineFileLabel()),
+                backLabel:
+                    _ineBack == null ? '' : path.basename(_ineBack!.path),
+                pdfLabel: _registrationPdf == null ? '' : _pdfFileLabel(),
+                onFrontCamera: _pickDocumentFrontFromCamera,
+                onFrontFile: _pickDocumentFrontFromFiles,
+                onBackCamera: _pickDocumentBackFromCamera,
+                onBackFile: _pickDocumentBackFromFiles,
+              ),
+              if (_documentScanMessage.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _PremiumInlineNote(message: _documentScanMessage),
+              ],
+            ],
+          ),
+        );
+      case 2:
+        return _PremiumGlassSection(
+          key: const ValueKey('step-selfie'),
+          title: '3. Selfie',
+          icon: Icons.face_retouching_natural_outlined,
+          child: _BiometricValidationCard(
+            ready: _selfieHasFace,
+            loading: _isSelfieBusy,
+            message: _selfieMessage,
+            onTap: _captureSelfie,
+          ),
+        );
+      case 3:
+        return _PremiumGlassSection(
+          key: const ValueKey('step-account'),
+          title: '4. Cuenta',
+          icon: Icons.lock_outline_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _AccountReadyBanner(verified: _selfieHasFace),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _generatePassword,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Generar contrasena'),
+                ),
+              ),
+              _field(
+                _passwordController,
+                'Contrasena',
+                obscure: !_passwordVisible,
+                minLength: 8,
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Mostrar contrasena',
+                  style: TextStyle(color: Colors.white),
+                ),
+                activeThumbColor: const Color(0xFFD8B15D),
+                value: _passwordVisible,
+                onChanged: (value) => setState(() => _passwordVisible = value),
+              ),
+              _field(
+                _passwordConfirmationController,
+                'Confirmar contrasena',
+                obscure: !_passwordConfirmationVisible,
+                minLength: 8,
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Mostrar confirmacion',
+                  style: TextStyle(color: Colors.white),
+                ),
+                activeThumbColor: const Color(0xFFD8B15D),
+                value: _passwordConfirmationVisible,
+                onChanged:
+                    (value) =>
+                        setState(() => _passwordConfirmationVisible = value),
+              ),
+              CheckboxListTile(
+                value: _acceptedTerms,
+                onChanged:
+                    (value) => setState(() => _acceptedTerms = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                activeColor: const Color(0xFFD8B15D),
+                checkColor: const Color(0xFF12161D),
+                title: const Text(
+                  'Acepto los términos y condiciones y el aviso de privacidad.',
+                  style: TextStyle(color: Colors.white, height: 1.35),
+                ),
+                subtitle: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _showPrivacyNotice,
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                    child: const Text('Aviso de privacidad'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _clientTypeField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue:
+            _clientTypeController.text.trim().isEmpty
+                ? null
+                : _clientTypeController.text.trim(),
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        items: const [
+          DropdownMenuItem(value: 'individual', child: Text('Particular')),
+          DropdownMenuItem(value: 'company', child: Text('Empresa')),
+        ],
+        onChanged: _onClientTypeChanged,
+        dropdownColor: const Color(0xFF101B29),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: 'Tipo de cliente',
+          hintText: 'Selecciona el tipo de cuenta',
+          prefixIcon: _iconForLabel('Tipo de cliente'),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 17,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
+        ),
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (text.isEmpty) return 'Completa Tipo de cliente.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _countryCodeField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue:
+            _countryCodeController.text.trim().isEmpty
+                ? null
+                : _countryCodeController.text.trim(),
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        items:
+            const ['+52', '+1', '+34', '+57', '+54', '+55', '+507']
+                .map(
+                  (item) => DropdownMenuItem<String>(
+                    value: item,
+                    child: Text(
+                      item,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+        onChanged: (value) {
+          _countryCodeController.text = value?.trim() ?? '+52';
+          _refreshStepProgress();
+        },
+        dropdownColor: const Color(0xFF101B29),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: 'Codigo',
+          hintText: '+52',
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
+        ),
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (text.isEmpty) return 'Completa Codigo.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _documentTypeField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: _documentType,
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        items: const [
+          DropdownMenuItem(value: 'INE', child: Text('INE')),
+          DropdownMenuItem(value: 'PASSPORT', child: Text('Pasaporte')),
+        ],
+        onChanged: _onDocumentTypeChanged,
+        dropdownColor: const Color(0xFF101B29),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: 'Tipo de documento',
+          hintText: 'Selecciona una opción',
+          prefixIcon: _iconForLabel('Tipo de documento'),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 17,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
+        ),
+        validator: (value) {
+          final text = value?.trim() ?? '';
+          if (text.isEmpty) return 'Completa Tipo de documento.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _documentCountryField() {
+    final options =
+        {
+            'México',
+            ...kNationalityOptions.map((option) {
+              if (option == 'Mexicana') return 'México';
+              return option.replaceAll(RegExp(r'[aeiou]na$'), '');
+            }),
+            _documentIssuingCountryController.text.trim(),
+          }.where((item) => item.trim().isNotEmpty).toList()
+          ..sort();
+    return _dropdownField(
+      label: 'Pais emisor',
+      value:
+          _documentIssuingCountryController.text.trim().isEmpty
+              ? null
+              : _documentIssuingCountryController.text.trim(),
+      items: options,
+      onChanged: (value) {
+        _documentIssuingCountryController.text = value?.trim() ?? '';
+        _refreshStepProgress();
+      },
+      hint: 'Selecciona el país emisor',
+    );
+  }
+
+  Widget _dropdownField({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    String? hint,
+    bool requiredField = true,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        items:
+            items
+                .map(
+                  (item) => DropdownMenuItem<String>(
+                    value: item,
+                    child: Text(
+                      item,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+        onChanged: onChanged,
+        dropdownColor: const Color(0xFF101B29),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixIcon: _iconForLabel(label),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 40,
+          ),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
+        ),
+        validator: (selected) {
+          if (!requiredField) return null;
+          final text = selected?.trim() ?? '';
+          if (text.isEmpty) return 'Completa $label.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPrivacyNotice() async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0D1724),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder:
+          (context) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Aviso de privacidad',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Tus datos están protegidos y se utilizan únicamente para gestionar tu cuenta, verificar tu identidad y habilitar el acceso a tus vuelos.',
+                    style: TextStyle(color: Color(0xFFC7CFD8), height: 1.45),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFD8B15D),
+                        foregroundColor: const Color(0xFF12161D),
+                      ),
+                      child: const Text('Entendido'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
     );
   }
 
@@ -1358,7 +2009,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _RegisterChecklistItem(
         icon: Icons.lock_rounded,
         label: 'Acceso',
-        ready: _isAccessDataReady,
+        ready: _isAccountDataReady,
       ),
     ];
   }
@@ -1382,14 +2033,14 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _FileButton(
         title: 'ESCANEA TU INE ',
         value: _ineFront == null ? null : _ineFileLabel(),
-        loading: _scanningDocument,
-        onTap: _pickIneFront,
+        loading: _isDocumentBusy,
+        onTap: _isDocumentBusy ? () {} : _pickIneFront,
       ),
       if (_documentScanMessage.isNotEmpty) _HintText(_documentScanMessage),
       if (_ineFront != null) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: _scanningDocument ? null : _scanIneLocally,
+          onPressed: _isDocumentBusy ? null : _scanIneLocally,
           icon: const Icon(Icons.document_scanner_rounded),
           label: const Text('Reescanear INE'),
           style: OutlinedButton.styleFrom(
@@ -1406,28 +2057,16 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
       _field(_nameController, 'Nombre completo'),
       _field(_phoneController, 'Telefono', keyboard: TextInputType.phone),
-      _field(_birthDateController, 'Fecha de nacimiento', hint: 'AAAA-MM-DD'),
-      _field(_nationalityController, 'Nacionalidad'),
+      _field(
+        _birthDateController,
+        'Fecha de nacimiento',
+        hint: 'DD / MM / AAAA',
+      ),
+      _nationalityField('Nacionalidad'),
       _field(_baseController, 'Ciudad/base', requiredField: false),
 
       const SizedBox(height: 10),
       _field(_documentTypeController, 'Identificacion'),
-      _field(_documentNumberController, 'Numero de documento'),
-      _field(
-        _documentExpirationController,
-        'Vigencia del documento',
-        hint: 'AAAA-MM-DD',
-        onChanged:
-            () =>
-                _documentStatusController.text = _documentStatus(
-                  _documentExpirationController.text,
-                ),
-      ),
-      _field(
-        _documentStatusController,
-        'Estado del documento',
-        requiredField: false,
-      ),
       _field(_ineCurpController, 'CURP', requiredField: false),
       const SizedBox(height: 14),
       const _SectionLabel(
@@ -1440,8 +2079,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                 ? 'Abrir camara y capturar selfie'
                 : 'Repetir selfie',
         value: _selfie == null ? null : _selfieFileLabel(),
-        loading: _validatingSelfie,
-        onTap: _captureSelfie,
+        loading: _isSelfieBusy,
+        onTap: _isSelfieBusy ? () {} : _captureSelfie,
       ),
       if (_selfieMessage.isNotEmpty) _HintText(_selfieMessage),
       if (_selfie != null)
@@ -1555,12 +2194,17 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     TextInputType? keyboard,
     VoidCallback? onChanged,
   }) {
+    final isDateField = identical(controller, _birthDateController);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
         obscureText: obscure,
-        keyboardType: keyboard,
+        keyboardType: isDateField ? TextInputType.number : keyboard,
+        inputFormatters:
+            isDateField
+                ? const <TextInputFormatter>[BirthDateTextInputFormatter()]
+                : null,
         onChanged: (_) => onChanged?.call(),
         style: const TextStyle(
           color: Colors.white,
@@ -1596,6 +2240,87 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
           final text = value?.trim() ?? '';
           if (!requiredField) return null;
           if (text.length < minLength) return 'Completa $label.';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _nationalityField(String label, {bool requiredField = true}) {
+    final options =
+        {
+            ...kNationalityOptions,
+            if (_nationalityController.text.trim().isNotEmpty)
+              _nationalityController.text.trim(),
+          }.toList()
+          ..sort();
+
+    final currentValue = _nationalityController.text.trim();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: currentValue.isEmpty ? null : currentValue,
+        isExpanded: true,
+        isDense: true,
+        iconSize: 18,
+        items:
+            options
+                .map(
+                  (option) => DropdownMenuItem<String>(
+                    value: option,
+                    child: Text(
+                      option,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+        onChanged: (value) {
+          _nationalityController.text = value?.trim() ?? '';
+          _refreshStepProgress();
+        },
+        dropdownColor: const Color(0xFF101B29),
+        iconEnabledColor: const Color(0xFFD8B15D),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'Selecciona una nacionalidad',
+          prefixIcon: _iconForLabel(label),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 40,
+          ),
+          labelStyle: const TextStyle(color: Color(0xFFD0D6DF)),
+          hintStyle: const TextStyle(color: Color(0xFF6F7B8A)),
+          filled: true,
+          fillColor: const Color(0x70101B29),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x2AFFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0xFFD8B15D)),
+          ),
+        ),
+        validator: (value) {
+          if (!requiredField) return null;
+          final text = value?.trim() ?? '';
+          if (text.isEmpty) return 'Completa $label.';
           return null;
         },
       ),
@@ -1687,17 +2412,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       );
   }
 
-  String _documentStatus(String expirationDate) {
-    final expiration = DateTime.tryParse(expirationDate);
-    if (expiration == null) return '';
-    final today = DateTime.now();
-    final normalizedToday = DateTime(today.year, today.month, today.day);
-    final days = expiration.difference(normalizedToday).inDays;
-    if (days < 0) return 'Vencida';
-    if (days <= 30) return 'Por vencer';
-    return 'Vigente';
-  }
-
   Map<String, dynamic> _map(dynamic value) {
     if (value is Map) return Map<String, dynamic>.from(value);
     return const {};
@@ -1730,9 +2444,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _nationalityController,
       _baseController,
       _documentNumberController,
-      _documentIssueDateController,
-      _documentExpirationController,
-      _documentStatusController,
       _ineCurpController,
       _ineCicController,
       _ineOcrController,
@@ -1745,12 +2456,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
   void _applyAcceptedIneData(Map<String, String> data) {
     _setIfPresent(_nameController, data['name']);
+    _setIfPresent(_lastNameController, data['last_name']);
     _setIfPresent(_birthDateController, data['birth_date']);
     _setIfPresent(_nationalityController, data['nationality']);
     _setIfPresent(_baseController, data['base']);
     _setIfPresent(_documentNumberController, data['document_number']);
-    _setIfPresent(_documentIssueDateController, data['document_issue_date']);
-    _setIfPresent(_documentExpirationController, data['document_expiration']);
     _setIfPresent(_ineCurpController, data['curp']);
     _setIfPresent(_ineCicController, data['cic']);
     _setIfPresent(_ineOcrController, data['ocr']);
@@ -1764,11 +2474,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     final sanitized = <String, String>{};
     final validCurp = _validatedCurp(data['curp'] ?? '');
     final validBirthDate = _validatedBirthDate(data['birth_date'] ?? '');
-    final validExpiration = _validatedExpiration(
-      data['document_expiration'] ?? '',
-      birthDate: validBirthDate,
-    );
     final validName = _validatedName(data['name'] ?? '');
+    final validLastName = _validatedLastName(data['last_name'] ?? '');
     final validBase = _validatedBase(data['base'] ?? '');
     final validDocumentNumber = _validatedDocumentNumber(
       data['document_number'] ?? '',
@@ -1784,13 +2491,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     );
 
     if (validName.isNotEmpty) sanitized['name'] = validName;
+    if (validLastName.isNotEmpty) sanitized['last_name'] = validLastName;
     if (validBirthDate.isNotEmpty) sanitized['birth_date'] = validBirthDate;
     if (validBase.isNotEmpty) sanitized['base'] = validBase;
     if (validDocumentNumber.isNotEmpty) {
       sanitized['document_number'] = validDocumentNumber;
-    }
-    if (validExpiration.isNotEmpty) {
-      sanitized['document_expiration'] = validExpiration;
     }
     if (validCurp.isNotEmpty) sanitized['curp'] = validCurp;
     if (validCic.isNotEmpty) sanitized['cic'] = validCic;
@@ -1799,13 +2504,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     final nationality = data['nationality'] ?? '';
     if (nationality.isNotEmpty && nationality.toLowerCase().contains('mex')) {
       sanitized['nationality'] = 'Mexicana';
-    }
-
-    final issueDate = data['document_issue_date'] ?? '';
-    if (issueDate.isNotEmpty &&
-        DateTime.tryParse(issueDate) != null &&
-        issueDate != validBirthDate) {
-      sanitized['document_issue_date'] = issueDate;
     }
 
     return sanitized;
@@ -1851,42 +2549,47 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     return text;
   }
 
-  String _validatedExpiration(String value, {required String birthDate}) {
-    final text = value.trim();
+  String _validatedName(String value) {
+    final text = value.trim().toUpperCase();
     if (text.isEmpty) return '';
-    final parsed = DateTime.tryParse(text);
-    if (parsed == null) {
-      debugPrint(
-        '[INE VALIDATION] rejected expiration=$text reason=invalid_date',
-      );
+    if (_containsInvalidPersonNameContent(text)) {
+      debugPrint('[INE VALIDATION] rejected name=$text reason=invalid_name');
       return '';
     }
-    if (birthDate.isNotEmpty && text == birthDate) {
-      debugPrint(
-        '[INE VALIDATION] rejected expiration=$text reason=matches_birth_date',
-      );
-      return '';
-    }
-    if (parsed.year < DateTime.now().year - 15) {
-      debugPrint('[INE VALIDATION] rejected expiration=$text reason=too_old');
+    if (!_hasAtLeastWords(text, 2)) {
+      debugPrint('[INE VALIDATION] rejected name=$text reason=missing_words');
       return '';
     }
     return text;
   }
 
-  String _validatedName(String value) {
+  String _validatedLastName(String value) {
     final text = value.trim().toUpperCase();
     if (text.isEmpty) return '';
+    if (_containsInvalidPersonNameContent(text)) {
+      debugPrint(
+        '[INE VALIDATION] rejected last_name=$text reason=invalid_name',
+      );
+      return '';
+    }
+    return text;
+  }
+
+  bool _containsInvalidPersonNameContent(String text) {
     if (RegExp(r'\d').hasMatch(text) ||
         _containsAddressKeyword(text) ||
         RegExp(
           r'\b(MEX|MEX\.|DOMICILIO|SECCI[O0]N|VIGENCIA|FECHA|CURP|CLAVE|LERMA)\b',
         ).hasMatch(text) ||
         !RegExp(r'^[A-Z ,.]+$').hasMatch(text)) {
-      debugPrint('[INE VALIDATION] rejected name=$text reason=invalid_name');
-      return '';
+      return true;
     }
-    return text;
+    return false;
+  }
+
+  bool _hasAtLeastWords(String text, int minimumWords) {
+    return text.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).length >=
+        minimumWords;
   }
 
   String _validatedBase(String value) {
@@ -1953,13 +2656,141 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     return '${match.group(3)}${match.group(2)}${match.group(1)}';
   }
 
+  String _normalizePersonNameValue(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _personNameComparisonKey(String value) {
+    const replacements = <String, String>{
+      'Á': 'A',
+      'À': 'A',
+      'Ä': 'A',
+      'Â': 'A',
+      'á': 'a',
+      'à': 'a',
+      'ä': 'a',
+      'â': 'a',
+      'É': 'E',
+      'È': 'E',
+      'Ë': 'E',
+      'Ê': 'E',
+      'é': 'e',
+      'è': 'e',
+      'ë': 'e',
+      'ê': 'e',
+      'Í': 'I',
+      'Ì': 'I',
+      'Ï': 'I',
+      'Î': 'I',
+      'í': 'i',
+      'ì': 'i',
+      'ï': 'i',
+      'î': 'i',
+      'Ó': 'O',
+      'Ò': 'O',
+      'Ö': 'O',
+      'Ô': 'O',
+      'ó': 'o',
+      'ò': 'o',
+      'ö': 'o',
+      'ô': 'o',
+      'Ú': 'U',
+      'Ù': 'U',
+      'Ü': 'U',
+      'Û': 'U',
+      'ú': 'u',
+      'ù': 'u',
+      'ü': 'u',
+      'û': 'u',
+      'Ñ': 'N',
+      'ñ': 'n',
+    };
+
+    final normalized = _normalizePersonNameValue(value);
+    return normalized
+        .split('')
+        .map((char) => replacements[char] ?? char)
+        .join()
+        .toUpperCase();
+  }
+
+  String _resolvedLastNameForSubmission() {
+    return _normalizePersonNameValue(_lastNameController.text);
+  }
+
+  String _resolvedGivenNamesForSubmission() {
+    final rawGivenNames = _normalizePersonNameValue(_nameController.text);
+    final lastName = _resolvedLastNameForSubmission();
+    if (rawGivenNames.isEmpty || lastName.isEmpty) return rawGivenNames;
+
+    final givenTokens = rawGivenNames.split(RegExp(r'\s+'));
+    final lastNameTokens = lastName.split(RegExp(r'\s+'));
+    final normalizedGivenTokens =
+        givenTokens.map(_personNameComparisonKey).toList();
+    final normalizedLastNameTokens =
+        lastNameTokens.map(_personNameComparisonKey).toList();
+
+    final startsWithLastName =
+        normalizedGivenTokens.length >= normalizedLastNameTokens.length &&
+        _listEquals(
+          normalizedGivenTokens.take(normalizedLastNameTokens.length).toList(),
+          normalizedLastNameTokens,
+        );
+    if (startsWithLastName) {
+      return _normalizePersonNameValue(
+        givenTokens.skip(lastNameTokens.length).join(' '),
+      );
+    }
+
+    final endsWithLastName =
+        normalizedGivenTokens.length >= normalizedLastNameTokens.length &&
+        _listEquals(
+          normalizedGivenTokens
+              .skip(
+                normalizedGivenTokens.length - normalizedLastNameTokens.length,
+              )
+              .toList(),
+          normalizedLastNameTokens,
+        );
+    if (endsWithLastName) {
+      return _normalizePersonNameValue(
+        givenTokens.take(givenTokens.length - lastNameTokens.length).join(' '),
+      );
+    }
+
+    return _personNameComparisonKey(rawGivenNames) ==
+            _personNameComparisonKey(lastName)
+        ? ''
+        : rawGivenNames;
+  }
+
+  String _resolvedFullNameForSubmission() {
+    final givenNames = _resolvedGivenNamesForSubmission();
+    final lastName = _resolvedLastNameForSubmission();
+    return _normalizePersonNameValue('$givenNames $lastName');
+  }
+
+  bool _listEquals(List<String> left, List<String> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _setIfPresent(TextEditingController controller, dynamic value) {
     final text = value?.toString().trim() ?? '';
     if (text.isNotEmpty) {
+      final resolvedText =
+          identical(controller, _birthDateController)
+              ? normalizeBirthDateForInput(text)
+              : text;
       debugPrint(
-        '[INE] Controller update target=${_controllerLabel(controller)} old="${controller.text}" new="$text"',
+        '[INE] Controller update target=${_controllerLabel(controller)} old="${controller.text}" new="$resolvedText"',
       );
-      controller.text = text;
+      controller.text = resolvedText;
       return;
     }
     debugPrint(
@@ -1975,15 +2806,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
     if (identical(controller, _documentNumberController)) {
       return 'document_number';
     }
-    if (identical(controller, _documentIssueDateController)) {
-      return 'document_issue_date';
-    }
-    if (identical(controller, _documentExpirationController)) {
-      return 'document_expiration';
-    }
-    if (identical(controller, _documentStatusController)) {
-      return 'document_status';
-    }
     if (identical(controller, _ineCurpController)) return 'ine_curp';
     if (identical(controller, _ineCicController)) return 'ine_cic';
     if (identical(controller, _ineOcrController)) return 'ine_ocr';
@@ -1998,9 +2820,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       'nationality="${_nationalityController.text}", '
       'base="${_baseController.text}", '
       'document_number="${_documentNumberController.text}", '
-      'document_issue_date="${_documentIssueDateController.text}", '
-      'document_expiration="${_documentExpirationController.text}", '
-      'document_status="${_documentStatusController.text}", '
       'curp="${_ineCurpController.text}", '
       'cic="${_ineCicController.text}", '
       'ocr="${_ineOcrController.text}"',
@@ -2078,13 +2897,13 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   String _ineFileLabel() {
     if (_ineFront == null) return '';
     if (_hasUsefulIneData()) return 'INE escaneada';
-    if (_scanningDocument) return 'Procesando INE...';
+    if (_isDocumentBusy) return 'Procesando INE...';
     return 'INE cargada';
   }
 
   String _selfieFileLabel() {
     if (_selfie == null) return '';
-    if (_validatingSelfie) return 'Validando selfie...';
+    if (_isSelfieBusy) return 'Validando selfie...';
     if (_selfieHasFace) return 'Selfie validada';
     return 'Selfie cargada';
   }
@@ -2160,9 +2979,13 @@ class _PremiumCircleButton extends StatelessWidget {
 }
 
 class _ClientRegisterPremiumHero extends StatelessWidget {
-  const _ClientRegisterPremiumHero({required this.showIdentityBadge});
+  const _ClientRegisterPremiumHero({
+    required this.currentStep,
+    required this.progressPercent,
+  });
 
-  final bool showIdentityBadge;
+  final int currentStep;
+  final int progressPercent;
 
   @override
   Widget build(BuildContext context) {
@@ -2209,20 +3032,20 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: const Color(0x66D8B15D)),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Registro',
+                      'Paso ${currentStep + 1}',
                       style: TextStyle(
                         color: Color(0xFFF5D89A),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      '25%',
+                      '$progressPercent%',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -2233,14 +3056,14 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
                 ),
               ),
             ),
-            const Positioned(
+            Positioned(
               left: 18,
               right: 18,
               bottom: 18,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'RED SKY GROUP',
                     style: TextStyle(
                       color: Color(0xFFF4D38B),
@@ -2251,7 +3074,7 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Cabina Privada',
+                    currentStep < 3 ? 'Cabina Privada' : 'Cuenta verificada',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 26,
@@ -2261,7 +3084,9 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'Registro seguro para clientes.',
+                    currentStep < 3
+                        ? 'Registro seguro para clientes.'
+                        : 'Último paso para activar tu acceso privado.',
                     style: TextStyle(
                       color: Color(0xFFD0D7E0),
                       fontSize: 14.5,
@@ -2279,9 +3104,14 @@ class _ClientRegisterPremiumHero extends StatelessWidget {
 }
 
 class _PremiumStepper extends StatelessWidget {
-  const _PremiumStepper({required this.activeStep, required this.onStepTap});
+  const _PremiumStepper({
+    required this.activeStep,
+    required this.isStepUnlocked,
+    required this.onStepTap,
+  });
 
   final int activeStep;
+  final bool Function(int stepIndex) isStepUnlocked;
   final ValueChanged<int> onStepTap;
 
   @override
@@ -2290,7 +3120,7 @@ class _PremiumStepper extends StatelessWidget {
       ('Datos', Icons.person_outline_rounded),
       ('Identidad', Icons.badge_outlined),
       ('Selfie', Icons.face_retouching_natural_outlined),
-      ('Acceso', Icons.lock_outline_rounded),
+      ('Cuenta', Icons.lock_outline_rounded),
     ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -2317,11 +3147,12 @@ class _PremiumStepper extends StatelessWidget {
           final stepIndex = index ~/ 2;
           final isActive = stepIndex == activeStep;
           final isDone = stepIndex < activeStep;
+          final isUnlocked = isStepUnlocked(stepIndex);
           final step = steps[stepIndex];
           return Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
-              onTap: () => onStepTap(stepIndex),
+              onTap: isUnlocked ? () => onStepTap(stepIndex) : null,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
@@ -2340,15 +3171,23 @@ class _PremiumStepper extends StatelessWidget {
                           color:
                               isActive || isDone
                                   ? const Color(0xFFD8B15D)
-                                  : const Color(0x2CFFFFFF),
+                                  : isUnlocked
+                                  ? const Color(0x2CFFFFFF)
+                                  : const Color(0x16FFFFFF),
                         ),
                       ),
                       child: Icon(
-                        isDone ? Icons.check_rounded : step.$2,
+                        isDone
+                            ? Icons.check_rounded
+                            : isUnlocked
+                            ? step.$2
+                            : Icons.lock_outline_rounded,
                         color:
                             isActive || isDone
                                 ? const Color(0xFFD8B15D)
-                                : const Color(0x7DFFFFFF),
+                                : isUnlocked
+                                ? const Color(0x7DFFFFFF)
+                                : const Color(0x46FFFFFF),
                         size: 22,
                       ),
                     ),
@@ -2360,7 +3199,9 @@ class _PremiumStepper extends StatelessWidget {
                         color:
                             isActive
                                 ? const Color(0xFFF3D38A)
-                                : const Color(0x95FFFFFF),
+                                : isUnlocked
+                                ? const Color(0x95FFFFFF)
+                                : const Color(0x46FFFFFF),
                         fontSize: 13,
                         fontWeight:
                             isActive ? FontWeight.w700 : FontWeight.w500,
@@ -2606,6 +3447,254 @@ class _PremiumInlineNote extends StatelessWidget {
   }
 }
 
+class _PrivacyCompactNotice extends StatelessWidget {
+  const _PrivacyCompactNotice({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.lock_outline_rounded, color: Color(0xFFD8B15D)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tus datos están protegidos y se utilizan únicamente para gestionar tu cuenta y tus vuelos.',
+                  style: TextStyle(
+                    color: Color(0xFFC3CBD7),
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: onTap,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Aviso de privacidad'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DocumentUploadPanel extends StatelessWidget {
+  const _DocumentUploadPanel({
+    required this.title,
+    required this.subtitle,
+    required this.showBackSide,
+    required this.frontLabel,
+    required this.backLabel,
+    required this.pdfLabel,
+    required this.onFrontCamera,
+    required this.onFrontFile,
+    required this.onBackCamera,
+    required this.onBackFile,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool showBackSide;
+  final String frontLabel;
+  final String backLabel;
+  final String pdfLabel;
+  final VoidCallback onFrontCamera;
+  final VoidCallback onFrontFile;
+  final VoidCallback onBackCamera;
+  final VoidCallback onBackFile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: Color(0xFFB7C0CB),
+            fontSize: 13,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _DocumentEvidenceCard(
+          title: showBackSide ? 'Frente del documento' : 'Documento',
+          value: frontLabel,
+          onCamera: onFrontCamera,
+          onFile: onFrontFile,
+        ),
+        if (showBackSide) ...[
+          const SizedBox(height: 12),
+          _DocumentEvidenceCard(
+            title: 'Reverso del documento',
+            value: backLabel,
+            onCamera: onBackCamera,
+            onFile: onBackFile,
+          ),
+        ],
+        if (pdfLabel.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _PremiumInlineNote(message: pdfLabel),
+        ],
+      ],
+    );
+  }
+}
+
+class _DocumentEvidenceCard extends StatelessWidget {
+  const _DocumentEvidenceCard({
+    required this.title,
+    required this.value,
+    required this.onCamera,
+    required this.onFile,
+  });
+
+  final String title;
+  final String value;
+  final VoidCallback onCamera;
+  final VoidCallback onFile;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 320;
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .03),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0x24FFFFFF)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.badge_rounded, color: Color(0xFFD8B15D)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (value.trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Color(0xFF89E39A),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (compact) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onCamera,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFD8B15D),
+                      foregroundColor: const Color(0xFF0E131A),
+                      minimumSize: const Size.fromHeight(44),
+                    ),
+                    icon: const Icon(Icons.camera_alt_rounded),
+                    label: const Text('Tomar foto'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onFile,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                      foregroundColor: const Color(0xFFD8B15D),
+                      side: const BorderSide(color: Color(0x55D8B15D)),
+                    ),
+                    icon: const Icon(Icons.upload_file_rounded),
+                    label: const Text('Subir archivo'),
+                  ),
+                ),
+              ] else
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: onCamera,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFD8B15D),
+                          foregroundColor: const Color(0xFF0E131A),
+                          minimumSize: const Size.fromHeight(44),
+                        ),
+                        icon: const Icon(Icons.camera_alt_rounded),
+                        label: const Text('Tomar foto'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onFile,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          foregroundColor: const Color(0xFFD8B15D),
+                          side: const BorderSide(color: Color(0x55D8B15D)),
+                        ),
+                        icon: const Icon(Icons.upload_file_rounded),
+                        label: const Text('Subir archivo'),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _BiometricValidationCard extends StatelessWidget {
   const _BiometricValidationCard({
     required this.ready,
@@ -2656,7 +3745,7 @@ class _BiometricValidationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Validacion biometrica',
+                      'Verificacion facial',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -2665,7 +3754,7 @@ class _BiometricValidationCard extends StatelessWidget {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Verificaremos que eres el propietario del documento.',
+                      'Necesitamos confirmar que el documento pertenece a la persona que está creando la cuenta.',
                       style: TextStyle(
                         color: Color(0xFFB7C0CB),
                         fontSize: 13,
@@ -2691,7 +3780,7 @@ class _BiometricValidationCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                ready ? 'Selfie validada' : 'Tomar selfie',
+                ready ? 'Selfie verificada' : 'Tomar selfie',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -2714,65 +3803,44 @@ class _BiometricValidationCard extends StatelessWidget {
   }
 }
 
-class _PremiumSecurityGrid extends StatelessWidget {
-  const _PremiumSecurityGrid();
+class _AccountReadyBanner extends StatelessWidget {
+  const _AccountReadyBanner({required this.verified});
 
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Expanded(
-          child: _MiniSecurityCard(
-            icon: Icons.shield_outlined,
-            title: 'Datos cifrados',
-          ),
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: _MiniSecurityCard(
-            icon: Icons.lock_outline_rounded,
-            title: 'Informacion privada',
-          ),
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: _MiniSecurityCard(
-            icon: Icons.verified_rounded,
-            title: 'Plataforma certificada',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MiniSecurityCard extends StatelessWidget {
-  const _MiniSecurityCard({required this.icon, required this.title});
-
-  final IconData icon;
-  final String title;
+  final bool verified;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .03),
+        color:
+            verified
+                ? const Color(0x165FD07D)
+                : Colors.white.withValues(alpha: .03),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x1FFFFFFF)),
+        border: Border.all(
+          color: verified ? const Color(0x445FD07D) : const Color(0x1FFFFFFF),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Icon(icon, color: const Color(0xFFD8B15D), size: 22),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12.5,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
+          Icon(
+            verified ? Icons.verified_user_rounded : Icons.pending_rounded,
+            color: verified ? const Color(0xFF89E39A) : const Color(0xFFD8B15D),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              verified
+                  ? 'Cuenta verificada. Solo define tu contraseña para terminar.'
+                  : 'La cuenta se habilitará cuando tu identidad quede verificada.',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -2787,6 +3855,7 @@ class _ClientRegisterFooter extends StatelessWidget {
     required this.progressSubtitle,
     required this.progress,
     required this.loading,
+    required this.statusMessage,
     required this.buttonLabel,
     required this.onPressed,
   });
@@ -2795,6 +3864,7 @@ class _ClientRegisterFooter extends StatelessWidget {
   final String progressSubtitle;
   final double progress;
   final bool loading;
+  final String statusMessage;
   final String buttonLabel;
   final VoidCallback? onPressed;
 
@@ -2813,45 +3883,11 @@ class _ClientRegisterFooter extends StatelessWidget {
               top: BorderSide(color: Colors.white.withValues(alpha: .06)),
             ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      progressLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      progressSubtitle,
-                      style: const TextStyle(
-                        color: Color(0xFFAEB8C4),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 6,
-                        backgroundColor: Colors.white.withValues(alpha: .08),
-                        color: const Color(0xFFD8B15D),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 18),
-              SizedBox(
-                width: 186,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stackVertically = constraints.maxWidth < 390;
+              final button = SizedBox(
+                width: stackVertically ? double.infinity : 186,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -2883,6 +3919,7 @@ class _ClientRegisterFooter extends StatelessWidget {
                             )
                             : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Flexible(
                                   child: Text(
@@ -2902,10 +3939,119 @@ class _ClientRegisterFooter extends StatelessWidget {
                             ),
                   ),
                 ),
-              ),
-            ],
+              );
+
+              final progressBlock = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    progressLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    progressSubtitle,
+                    style: const TextStyle(
+                      color: Color(0xFFAEB8C4),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: Colors.white.withValues(alpha: .08),
+                      color: const Color(0xFFD8B15D),
+                    ),
+                  ),
+                ],
+              );
+
+              if (stackVertically) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (loading && statusMessage.trim().isNotEmpty) ...[
+                      _LoadingStatusChip(message: statusMessage),
+                      const SizedBox(height: 12),
+                    ],
+                    progressBlock,
+                    const SizedBox(height: 16),
+                    button,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (loading && statusMessage.trim().isNotEmpty) ...[
+                          _LoadingStatusChip(message: statusMessage),
+                          const SizedBox(height: 12),
+                        ],
+                        progressBlock,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  button,
+                ],
+              );
+            },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _LoadingStatusChip extends StatelessWidget {
+  const _LoadingStatusChip({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFFD9E2EC),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

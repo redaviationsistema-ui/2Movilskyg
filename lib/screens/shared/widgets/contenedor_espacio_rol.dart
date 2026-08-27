@@ -4,6 +4,19 @@ import 'package:provider/provider.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import 'crew_ui_tokens.dart';
 
+Future<void> performWorkspaceLogout(
+  BuildContext context,
+  Future<void> Function() onLogout, {
+  bool closeCurrentRoute = false,
+}) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  if (closeCurrentRoute) {
+    Navigator.of(context).pop();
+  }
+  navigator.popUntil((route) => route.isFirst);
+  await onLogout();
+}
+
 class RoleWorkspaceShellScope extends InheritedWidget {
   const RoleWorkspaceShellScope({
     super.key,
@@ -376,7 +389,7 @@ class _WorkspaceSidebar extends StatelessWidget {
   final List<RoleWorkspaceItem> items;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +435,7 @@ class _WorkspaceSidebar extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: onLogout,
+              onPressed: () async => performWorkspaceLogout(context, onLogout),
               icon: const Icon(Icons.logout_rounded),
               label: const Text('Cerrar sesion'),
               style: OutlinedButton.styleFrom(
@@ -468,7 +481,7 @@ class _WorkspaceDrawer extends StatefulWidget {
   final Object? activeSection;
   final ValueChanged<int> onSelect;
   final void Function(int workspaceIndex, {Object? section}) onSelectSection;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   @override
   State<_WorkspaceDrawer> createState() => _WorkspaceDrawerState();
@@ -527,7 +540,7 @@ class RoleWorkspaceDrawerContent extends StatefulWidget {
   final Object? activeSection;
   final ValueChanged<int> onSelect;
   final void Function(int workspaceIndex, {Object? section}) onSelectSection;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   @override
   State<RoleWorkspaceDrawerContent> createState() =>
@@ -537,6 +550,14 @@ class RoleWorkspaceDrawerContent extends StatefulWidget {
 class _RoleWorkspaceDrawerContentState
     extends State<RoleWorkspaceDrawerContent> {
   int? _expandedGroupIndex;
+
+  Future<void> _handleLogout() async {
+    await performWorkspaceLogout(
+      context,
+      widget.onLogout,
+      closeCurrentRoute: true,
+    );
+  }
 
   @override
   void initState() {
@@ -638,7 +659,7 @@ class _RoleWorkspaceDrawerContentState
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: widget.onLogout,
+              onPressed: _handleLogout,
               icon: const Icon(Icons.logout_rounded),
               label: const Text('Cerrar sesion'),
               style: OutlinedButton.styleFrom(

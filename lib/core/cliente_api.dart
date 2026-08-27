@@ -126,6 +126,8 @@ class ApiClient {
 
   Future<Map<String, dynamic>> registerClient({
     required String name,
+    String fullName = '',
+    String lastName = '',
     required String email,
     required String phone,
     required String password,
@@ -133,11 +135,12 @@ class ApiClient {
     String birthDate = '',
     String nationality = '',
     String base = '',
+    String clientType = '',
+    String companyName = '',
+    String taxId = '',
     String documentType = 'INE',
+    String documentIssuingCountry = '',
     String documentNumber = '',
-    String documentIssueDate = '',
-    String documentExpiration = '',
-    String documentStatus = '',
     String ineCurp = '',
     String ineCic = '',
     String ineOcr = '',
@@ -165,10 +168,13 @@ class ApiClient {
     File? ineBack,
     File? selfieBiometric,
   }) {
+    final normalizedBaseAirport = _normalizeAirportCodeCandidate(base);
     return postMultipartFirstAvailable(
       const ['/auth/register'],
       fields: {
         'name': name,
+        'full_name': fullName,
+        'last_name': lastName,
         'email': email,
         'phone': phone,
         'password': password,
@@ -178,12 +184,14 @@ class ApiClient {
         'nationality': nationality,
         'base': base,
         'city': base,
-        'base_airport': base,
+        'base_airport': normalizedBaseAirport,
+        'client_type': clientType,
+        'company_name': companyName,
+        'tax_id': taxId,
         'document_type': documentType,
+        'document_issuing_country': documentIssuingCountry,
+        'issuing_country': documentIssuingCountry,
         'document_number': documentNumber,
-        'document_issue_date': documentIssueDate,
-        'document_expiration': documentExpiration,
-        'document_status': documentStatus,
         'identity_validation_required': identityValidationRequired ? '1' : '0',
         'identification_document_id': identificationDocumentId,
         'ine_curp': ineCurp,
@@ -233,12 +241,12 @@ class ApiClient {
     required String documentNumber,
     required String nationality,
     required String curp,
+    required String documentType,
+    String documentIssuingCountry = '',
     String documentName = 'Identificación oficial',
-    String documentType = 'ine',
     String documentCategory = 'user_identification',
     String documentSlot = 'official_identification',
     bool requiresIdentityValidation = true,
-    String expiresAt = '',
     String replaceDocumentId = '',
   }) {
     return postMultipartFirstAvailable(
@@ -254,8 +262,8 @@ class ApiClient {
         'document_number': documentNumber,
         'nationality': nationality,
         'curp': curp,
+        'document_issuing_country': documentIssuingCountry,
         'requires_identity_validation': requiresIdentityValidation ? '1' : '0',
-        'expires_at': expiresAt,
         'replace_document_id': replaceDocumentId,
       },
       files: {'file': file},
@@ -1797,9 +1805,11 @@ class ApiClient {
     final fileName = _normalizedUploadFileName(file);
     final contentType = _contentTypeForFile(fileName);
 
-    debugPrint(
-      '[API multipart] file path=${file.path} name=$fileName bytes=${bytes.length} field=$fieldName contentType=${contentType.mimeType}',
-    );
+    if (AppEnvironment.current.allowsDiagnosticLogs) {
+      debugPrint(
+        '[API multipart] file name=$fileName bytes=${bytes.length} field=$fieldName contentType=${contentType.mimeType}',
+      );
+    }
 
     return http.MultipartFile.fromBytes(
       fieldName,
@@ -1976,6 +1986,14 @@ class ApiClient {
     };
   }
 
+  String _normalizeAirportCodeCandidate(String value) {
+    final normalized = value.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z0-9]{3,4}$').hasMatch(normalized)) {
+      return '';
+    }
+    return normalized;
+  }
+
   bool _shouldTryAlternative(
     ApiException error,
     Set<int>? fallbackStatusCodes,
@@ -1985,6 +2003,12 @@ class ApiClient {
       return fallbackStatusCodes.contains(status);
     }
     return status == 0 || status == 404 || status == 405 || status >= 500;
+  }
+
+  String _debugPreviewBody(String body, {int max = 600}) {
+    final normalized = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return '${normalized.substring(0, max)}...';
   }
 
   Map<String, dynamic> _decode(
@@ -2029,6 +2053,11 @@ class ApiClient {
             : <String, dynamic>{'data': decodedRaw};
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (AppEnvironment.current.allowsDiagnosticLogs) {
+        debugPrint(
+          '[API error] status=${response.statusCode} bodyPreview="${_debugPreviewBody(response.body)}"',
+        );
+      }
       if (response.statusCode == 401 && _unauthorizedHandler != null) {
         unawaited(_unauthorizedHandler!.call());
       }
