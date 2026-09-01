@@ -186,6 +186,13 @@ class AuthProvider extends ChangeNotifier {
         ineBack: ineBack,
         selfieBiometric: selfieBiometric,
       );
+      _validateRegisteredClientResponse(
+        response,
+        expectedEmail: email.trim().toLowerCase(),
+        expectedDocumentNumber: documentNumber.trim(),
+        expectsIdentityValidation: identityValidationRequired,
+        expectsBiometricSelfie: selfieBiometric != null,
+      );
 
       final token = _resolveToken(response);
       if (token != null) _api.setToken(token);
@@ -512,5 +519,84 @@ class AuthProvider extends ChangeNotifier {
     return details.isEmpty
         ? error.message
         : '${error.message}\n${details.join('\n')}';
+  }
+
+  void _validateRegisteredClientResponse(
+    Map<String, dynamic> response, {
+    required String expectedEmail,
+    required String expectedDocumentNumber,
+    required bool expectsIdentityValidation,
+    required bool expectsBiometricSelfie,
+  }) {
+    final data = _asMap(response['data']) ?? const {};
+    final rawUser = response['user'] ?? data['user'] ?? data['account'];
+    if (rawUser is! Map) {
+      throw const ApiException(
+        'El backend no devolvio el usuario registrado para confirmar el alta.',
+      );
+    }
+
+    final user = Map<String, dynamic>.from(rawUser);
+    final profile = _asMap(user['profile']) ?? const {};
+    final responseEmail = user['email']?.toString().trim().toLowerCase() ?? '';
+    if (responseEmail.isEmpty || responseEmail != expectedEmail) {
+      throw const ApiException(
+        'El backend respondio con un correo distinto al registrado.',
+      );
+    }
+
+    if (expectedDocumentNumber.isNotEmpty) {
+      final responseDocumentNumber =
+          profile['document_number']?.toString().trim() ?? '';
+      if (responseDocumentNumber.isEmpty ||
+          responseDocumentNumber != expectedDocumentNumber) {
+        throw const ApiException(
+          'El backend no confirmo el numero de documento guardado en el perfil.',
+        );
+      }
+    }
+
+    if (expectsIdentityValidation) {
+      final identityValidationRequired =
+          profile['identity_validation_required'] == true ||
+          profile['identity_validation_required']?.toString() == '1';
+      if (!identityValidationRequired) {
+        throw const ApiException(
+          'El backend no confirmo que la validacion de identidad quedo activa.',
+        );
+      }
+    }
+
+    if (expectsBiometricSelfie) {
+      final status =
+          user['identity_verification_status']
+              ?.toString()
+              .trim()
+              .toLowerCase() ??
+          '';
+      final imageSaved =
+          user['biometric_image_saved'] == true ||
+          user['biometric_image_saved']?.toString() == '1';
+      final selfiePath =
+          user['biometric_selfie_path']?.toString().trim() ??
+          user['biometric_selfie_url']?.toString().trim() ??
+          '';
+
+      if (status != 'approved') {
+        throw const ApiException(
+          'El backend no confirmo una selfie biometrica aprobada al cerrar el registro.',
+        );
+      }
+      if (!imageSaved) {
+        throw const ApiException(
+          'El backend no confirmo que la selfie biometrica quedo guardada.',
+        );
+      }
+      if (selfiePath.isEmpty) {
+        throw const ApiException(
+          'El backend no devolvio la referencia de la selfie biometrica guardada.',
+        );
+      }
+    }
   }
 }

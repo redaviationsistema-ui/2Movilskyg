@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -74,6 +75,118 @@ void main() {
       expect(provider.isAuthenticated, isFalse);
       expect(storage.token, isNull);
     });
+  });
+
+  group('AuthProvider registerClient', () {
+    test(
+      'fails closed when backend omits the persisted document number',
+      () async {
+        final storage = MemorySessionStorage(null);
+        final provider = AuthProvider(
+          api: _api((request) async {
+            expect(request.url.path, '/api/v1/auth/register');
+            return _json(201, {
+              'success': true,
+              'token': 'register-token',
+              'login_context': {'effective_role': 'client'},
+              'user': {
+                'id': 8,
+                'name': 'Client',
+                'email': 'client@example.test',
+                'role': 'client',
+                'profile': {
+                  'identity_validation_required': true,
+                  'document_number': '',
+                },
+                'identity_verification_status': 'approved',
+                'biometric_image_saved': true,
+                'biometric_selfie_path': 'biometrics/selfies/client.jpg',
+              },
+            });
+          }),
+          sessionStorage: storage,
+        );
+
+        final ok = await provider.registerClient(
+          name: 'Client',
+          email: 'client@example.test',
+          phone: '+52 5555555555',
+          password: 'Password123!',
+          passwordConfirmation: 'Password123!',
+          documentNumber: 'ABC123456',
+          identityValidationRequired: true,
+        );
+
+        expect(ok, isFalse);
+        expect(
+          provider.errorMessage,
+          'El backend no confirmo el numero de documento guardado en el perfil.',
+        );
+        expect(provider.isAuthenticated, isFalse);
+        expect(storage.token, isNull);
+      },
+    );
+
+    test(
+      'fails closed when backend omits the saved biometric selfie reference',
+      () async {
+        final storage = MemorySessionStorage(null);
+        final selfie = File(
+          '${Directory.systemTemp.path}/auth_provider_register_client_selfie.jpg',
+        );
+        await selfie.writeAsBytes(List<int>.filled(32, 1), flush: true);
+        addTearDown(() async {
+          if (await selfie.exists()) {
+            await selfie.delete();
+          }
+        });
+
+        final provider = AuthProvider(
+          api: _api((request) async {
+            expect(request.url.path, '/api/v1/auth/register');
+            return _json(201, {
+              'success': true,
+              'token': 'register-token',
+              'login_context': {'effective_role': 'client'},
+              'user': {
+                'id': 9,
+                'name': 'Client',
+                'email': 'client@example.test',
+                'role': 'client',
+                'profile': {
+                  'identity_validation_required': true,
+                  'document_number': 'ABC123456',
+                },
+                'identity_verification_status': 'approved',
+                'biometric_image_saved': true,
+                'biometric_selfie_path': '',
+                'biometric_selfie_url': '',
+              },
+            });
+          }),
+          sessionStorage: storage,
+        );
+
+        final ok = await provider.registerClient(
+          name: 'Client',
+          email: 'client@example.test',
+          phone: '+52 5555555555',
+          password: 'Password123!',
+          passwordConfirmation: 'Password123!',
+          documentNumber: 'ABC123456',
+          identityValidationRequired: true,
+          selfieBiometric: selfie,
+        );
+
+        expect(ok, isFalse);
+        expect(
+          provider.errorMessage,
+          'El backend no devolvio la referencia de la selfie biometrica guardada.',
+        );
+        expect(provider.isAuthenticated, isFalse);
+        expect(storage.token, isNull);
+      },
+    );
   });
 }
 

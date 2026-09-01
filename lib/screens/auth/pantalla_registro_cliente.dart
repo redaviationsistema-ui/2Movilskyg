@@ -213,6 +213,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
 
   bool get _isSelfieBusy => _processingSelfie || _validatingSelfie;
 
+  bool get _isSelfieValidationConfirmed =>
+      _selfieHasFace &&
+      _biometricImageSaved &&
+      _identityVerificationStatus.trim().toLowerCase() == 'approved';
+
   Future<void> _pickIneFront() async {
     if (_isDocumentBusy) return;
     _activateIdentityMode(_IdentityDocumentMode.ineScan);
@@ -805,8 +810,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       final detected = _asBool(
         result['faceDetected'] ?? result['face_detected'],
       );
+      final saved = _asBool(
+        result['biometricImageSaved'] ?? result['biometric_image_saved'],
+      );
+      final status =
+          (result['identityVerificationStatus'] ??
+                  result['identity_verification_status'] ??
+                  '')
+              .toString()
+              .trim();
+      final approved =
+          verified && detected && saved && status.toLowerCase() == 'approved';
       setState(() {
-        _selfieHasFace = verified;
+        _selfieHasFace = approved;
         _facesCount = _asInt(result['facesCount'] ?? result['faces_count']);
         _faceConfidence = _asDouble(
           result['faceConfidence'] ?? result['face_confidence'],
@@ -823,11 +839,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         _faceOccluded = _asNullableBool(
           result['faceOccluded'] ?? result['face_occluded'],
         );
-        _biometricImageSaved = _asBool(
-          result['biometricImageSaved'] ??
-              result['biometric_image_saved'] ??
-              true,
-        );
+        _biometricImageSaved = saved;
         _biometricCapturedAt = DateTime.now().toIso8601String();
         _biometricProvider =
             (result['biometricProvider'] ??
@@ -839,21 +851,19 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                     result['biometric_template_type'] ??
                     'selfie-photo')
                 .toString();
-        _identityVerificationStatus =
-            (result['identityVerificationStatus'] ??
-                    result['identity_verification_status'] ??
-                    (verified ? 'approved' : 'rejected'))
-                .toString();
+        _identityVerificationStatus = status.isEmpty ? 'rejected' : status;
         _identityVerificationMessage =
             (result['message'] ??
-                    (verified
+                    (approved
                         ? 'Rostro validado correctamente.'
                         : 'La selfie fue analizada, pero no quedo aprobada.'))
                 .toString();
         _selfieMessage =
-            detected
-                ? _identityVerificationMessage
-                : 'No se detecto un rostro valido. Captura una nueva selfie.';
+            !detected
+                ? 'No se detecto un rostro valido. Captura una nueva selfie.'
+                : !saved
+                ? 'El backend analizo la selfie, pero no confirmo su guardado. Intenta de nuevo.'
+                : _identityVerificationMessage;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -1055,8 +1065,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       return;
     }
 
-    if (!_selfieHasFace) {
-      _showMessage('La selfie debe tener un rostro detectado.');
+    if (!_isSelfieValidationConfirmed) {
+      _showMessage(
+        'La selfie debe quedar validada y confirmada por el backend antes de continuar.',
+      );
       return;
     }
 
@@ -1170,7 +1182,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   List<bool> get _stepCompletion => [
     _isPersonalDataReady,
     _hasIdentityDocumentReady,
-    _selfieHasFace,
+    _isSelfieValidationConfirmed,
     _isAccountDataReady,
   ];
 
@@ -1222,7 +1234,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       case 1:
         return 'Continuar';
       case 2:
-        return _selfieHasFace ? 'Continuar' : 'Tomar selfie';
+        return _isSelfieValidationConfirmed ? 'Continuar' : 'Tomar selfie';
       case 3:
         return 'Crear cuenta';
       default:
@@ -1274,9 +1286,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   }
 
   Future<void> _continueFromSelfieStep() async {
-    if (!_selfieHasFace) {
+    if (!_isSelfieValidationConfirmed) {
       await _captureSelfie();
-      if (!_selfieHasFace || !mounted) return;
+      if (!_isSelfieValidationConfirmed || !mounted) return;
     }
     setState(() => _currentStep = 3);
   }
@@ -1574,7 +1586,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
           title: '3. Selfie',
           icon: Icons.face_retouching_natural_outlined,
           child: _BiometricValidationCard(
-            ready: _selfieHasFace,
+            ready: _isSelfieValidationConfirmed,
             loading: _isSelfieBusy,
             message: _selfieMessage,
             onTap: _captureSelfie,
@@ -1588,7 +1600,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AccountReadyBanner(verified: _selfieHasFace),
+              _AccountReadyBanner(verified: _isSelfieValidationConfirmed),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerRight,
@@ -3780,7 +3792,11 @@ class _BiometricValidationCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                ready ? 'Selfie verificada' : 'Tomar selfie',
+                ready
+                    ? 'Selfie verificada'
+                    : message.isNotEmpty
+                    ? 'Intentar de nuevo'
+                    : 'Tomar selfie',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
