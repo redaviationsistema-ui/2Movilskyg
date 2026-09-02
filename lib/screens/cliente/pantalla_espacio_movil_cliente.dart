@@ -91,19 +91,7 @@ class _ClientMobileWorkspaceScreenState
       ReservationScreen(
         key: ValueKey('reservation-$_searchSession'),
         userInitial: userInitial,
-        onQuoteReady: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder:
-                  (_) => ClientResultsScreen(
-                    userInitial: userInitial,
-                    onBackToSearch: _resetSearchFlow,
-                    onReservationCreated: _openReservationConfirmation,
-                    onCommercialAccessRequired: _openCommercialAccessPayment,
-                  ),
-            ),
-          );
-        },
+        onQuoteReady: () => unawaited(_openResults(userInitial)),
       ),
       _buildTripsScreen(activeRequest),
       ClientLiveProfileScreen(
@@ -153,44 +141,43 @@ class _ClientMobileWorkspaceScreenState
     return trimmed.substring(0, 1).toUpperCase();
   }
 
-  void _resetSearchFlow() {
-    context.read<ReservationProvider>().resetForm();
-    setState(() {
-      _searchSession++;
-      _selectedIndex = 0;
-    });
-    Navigator.of(context).pop();
-    unawaited(_persistCurrentFlow());
-  }
-
-  void _openReservationConfirmation(String? requestId) {
-    setState(() {
-      _selectedIndex = 1;
-      _tripsStage = _TripsStage.confirmation;
-      _selectedRequestId = requestId;
-    });
-    Navigator.of(context).pop();
-    unawaited(_persistCurrentFlow());
-  }
-
   void _openAvailabilityAlternatives() {
     setState(() {
       _selectedIndex = 0;
       _tripsStage = _TripsStage.list;
     });
-    Navigator.of(context).push(
+    unawaited(
+      _openResults(_userInitial(context.read<AuthProvider>().displayName)),
+    );
+  }
+
+  Future<void> _openResults(String userInitial) async {
+    final requestId = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder:
             (_) => ClientResultsScreen(
-              userInitial: _userInitial(
-                context.read<AuthProvider>().displayName,
-              ),
-              onBackToSearch: _resetSearchFlow,
-              onReservationCreated: _openReservationConfirmation,
+              userInitial: userInitial,
+              onBackToSearch: () => Navigator.of(context).pop(),
               onCommercialAccessRequired: _openCommercialAccessPayment,
             ),
       ),
     );
+    if (!mounted) return;
+
+    final createdRequest = requestId?.trim().isNotEmpty ?? false;
+    setState(() {
+      if (createdRequest) {
+        _selectedIndex = 1;
+        _tripsStage = _TripsStage.confirmation;
+        _selectedRequestId = requestId;
+      } else {
+        _searchSession++;
+        _selectedIndex = 0;
+      }
+    });
+    // Navigator.push completes only after Results has left the stack.
+    context.read<ReservationProvider>().resetForm();
+    unawaited(_persistCurrentFlow());
   }
 
   Widget _buildTripsScreen(Map<String, dynamic>? activeRequest) {

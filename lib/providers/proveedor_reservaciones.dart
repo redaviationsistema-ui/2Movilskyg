@@ -399,11 +399,19 @@ class ReservationProvider extends ChangeNotifier {
       }
 
       final originHint = _backendAirportCode(routes.first.fromAirport);
+      final departureHint =
+          routes.isEmpty ? startDate : routes.first.startDate ?? startDate;
       final results = await Future.wait<dynamic>([
         _api.getClientDashboard(),
         _api.getClientFlightRequests(),
         _api.getReservations(),
-        _api.getClientAircraft(origin: originHint, passengers: passengers),
+        departureHint == null
+            ? Future.value(const <Map<String, dynamic>>[])
+            : _api.getClientAircraft(
+              origin: originHint,
+              passengers: passengers,
+              departure: departureHint,
+            ),
       ]);
 
       final dashboardResponse = results[0] as Map<String, dynamic>;

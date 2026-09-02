@@ -19,7 +19,6 @@ class ClientResultsScreen extends StatefulWidget {
     this.onOpenPayment,
     this.userInitial = 'C',
     this.onBackToSearch,
-    this.onReservationCreated,
     this.onCommercialAccessRequired,
   });
 
@@ -28,7 +27,6 @@ class ClientResultsScreen extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onOpenPayment;
   final String userInitial;
   final VoidCallback? onBackToSearch;
-  final ValueChanged<String?>? onReservationCreated;
   final VoidCallback? onCommercialAccessRequired;
 
   @override
@@ -136,13 +134,13 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                     const SizedBox(height: 16),
                   ],
                   if (matches.isEmpty)
-                    _EmptyResultsCard(
+                    _ResultsStateCard(
+                      state: reservation.quotePreviewState,
                       onBackToSearch: widget.onBackToSearch,
                       onRetry:
                           reservation.isLoadingQuotePreview
                               ? null
                               : reservation.previewCurrentSelection,
-                      hasServerError: reservation.hasQuoteServerError,
                     )
                   else
                     ...matches.asMap().entries.map(
@@ -214,25 +212,26 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
 
     try {
       final response = await reservation.createFlightRequestForMatch(quote);
-      await auth.refreshCommercialAccessStatus();
       final createdId = reservation.createdFlightRequestIdFromResponse(
         response,
       );
-      await reservation.loadClientWorkspaceData(force: true);
-      reservation.rememberCreatedFlightRequest(response);
-      if (!mounted) return;
-
-      reservation.resetForm();
-
-      if (widget.onReservationCreated != null) {
-        widget.onReservationCreated!(createdId);
-        return;
+      if (createdId == null || createdId.isEmpty) {
+        throw StateError(
+          'El servidor no devolvio el identificador de la solicitud.',
+        );
       }
 
-      _showResultAlert(
-        'Solicitud creada correctamente. Ya puedes seguirla en Reservas.',
-        icon: Icons.check_circle_rounded,
-      );
+      // The request is already persisted. Refresh failures must not turn this
+      // success into a retryable creation failure.
+      try {
+        await auth.refreshCommercialAccessStatus();
+        await reservation.loadClientWorkspaceData(force: true);
+      } catch (error) {
+        debugPrint('Flight request workspace refresh failed: $error');
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(createdId);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.isAircraftAvailabilityConflict) {
@@ -1413,21 +1412,47 @@ class _AircraftMediaEmpty extends StatelessWidget {
   }
 }
 
-class _EmptyResultsCard extends StatelessWidget {
-  const _EmptyResultsCard({
+class _ResultsStateCard extends StatelessWidget {
+  const _ResultsStateCard({
+    required this.state,
     required this.onBackToSearch,
     this.onRetry,
-    this.hasServerError = false,
   });
 
+  final QuotePreviewState state;
   final VoidCallback? onBackToSearch;
   final VoidCallback? onRetry;
-  final bool hasServerError;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final content = switch (state) {
+      QuotePreviewState.loading => (
+        title: 'Consultando disponibilidad...',
+        message: 'Estamos buscando aeronaves para tu itinerario.',
+      ),
+      QuotePreviewState.validationError || QuotePreviewState.idle => (
+        title: 'Completa tu itinerario.',
+        message:
+            'Agrega origen, destino, fecha y pasajeros para consultar disponibilidad.',
+      ),
+      QuotePreviewState.serverError => (
+        title: 'No fue posible consultar disponibilidad.',
+        message:
+            'La cotización falló mientras consultábamos el servidor. Puedes reintentar ahora o modificar la búsqueda.',
+      ),
+      QuotePreviewState.empty => (
+        title: 'No encontramos aeronaves disponibles.',
+        message:
+            'Revisa el origen, la fecha o vuelve a intentarlo para consultar disponibilidad en el aeropuerto de origen y en bases cercanas.',
+      ),
+      QuotePreviewState.success => (
+        title: 'No fue posible mostrar las aeronaves.',
+        message:
+            'Actualiza la búsqueda para consultar la disponibilidad nuevamente.',
+      ),
+    };
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1441,9 +1466,7 @@ class _EmptyResultsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            hasServerError
-                ? 'No fue posible cargar las aeronaves.'
-                : 'No encontramos aeronaves disponibles.',
+            content.title,
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 18,
@@ -1452,9 +1475,7 @@ class _EmptyResultsCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            hasServerError
-                ? 'La cotización falló mientras consultábamos el servidor. Puedes reintentar ahora o volver a modificar la búsqueda.'
-                : 'Revisa el origen, la fecha o vuelve a intentarlo para consultar disponibilidad en el aeropuerto de origen y en bases cercanas.',
+            content.message,
             style: TextStyle(
               color: palette.textSecondary,
               height: 1.35,

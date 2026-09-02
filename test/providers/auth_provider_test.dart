@@ -79,6 +79,61 @@ void main() {
 
   group('AuthProvider registerClient', () {
     test(
+      'accepts alternative backend identity validation fields when registration is already verified',
+      () async {
+        final storage = MemorySessionStorage(null);
+        final selfie = File(
+          '${Directory.systemTemp.path}/auth_provider_register_client_verified_selfie.jpg',
+        );
+        await selfie.writeAsBytes(List<int>.filled(32, 1), flush: true);
+        addTearDown(() async {
+          if (await selfie.exists()) {
+            await selfie.delete();
+          }
+        });
+
+        final provider = AuthProvider(
+          api: _api((request) async {
+            expect(request.url.path, '/api/v1/auth/register');
+            return _json(201, {
+              'success': true,
+              'token': 'register-token',
+              'login_context': {'effective_role': 'client'},
+              'user': {
+                'id': 10,
+                'name': 'Client',
+                'email': 'client@example.test',
+                'role': 'client',
+                'requires_identity_validation': '1',
+                'identity_verification_status': 'approved',
+                'biometric_image_saved': true,
+                'biometric_selfie_path': 'biometrics/selfies/client.jpg',
+                'profile': {'document_number': 'ABC123456'},
+              },
+            });
+          }),
+          sessionStorage: storage,
+        );
+
+        final ok = await provider.registerClient(
+          name: 'Client',
+          email: 'client@example.test',
+          phone: '+52 5555555555',
+          password: 'Password123!',
+          passwordConfirmation: 'Password123!',
+          documentNumber: 'ABC123456',
+          identityValidationRequired: true,
+          selfieBiometric: selfie,
+        );
+
+        expect(ok, isTrue);
+        expect(provider.errorMessage, isNull);
+        expect(provider.isAuthenticated, isTrue);
+        expect(storage.token, 'register-token');
+      },
+    );
+
+    test(
       'fails closed when backend omits the persisted document number',
       () async {
         final storage = MemorySessionStorage(null);

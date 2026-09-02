@@ -810,9 +810,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       final detected = _asBool(
         result['faceDetected'] ?? result['face_detected'],
       );
-      final saved = _asBool(
-        result['biometricImageSaved'] ?? result['biometric_image_saved'],
-      );
+      final selfieReadyForRegistration = _selfie != null;
       final status =
           (result['identityVerificationStatus'] ??
                   result['identity_verification_status'] ??
@@ -820,7 +818,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
               .toString()
               .trim();
       final approved =
-          verified && detected && saved && status.toLowerCase() == 'approved';
+          verified &&
+          detected &&
+          selfieReadyForRegistration &&
+          status.toLowerCase() == 'approved';
       setState(() {
         _selfieHasFace = approved;
         _facesCount = _asInt(result['facesCount'] ?? result['faces_count']);
@@ -839,7 +840,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         _faceOccluded = _asNullableBool(
           result['faceOccluded'] ?? result['face_occluded'],
         );
-        _biometricImageSaved = saved;
+        _biometricImageSaved = selfieReadyForRegistration;
         _biometricCapturedAt = DateTime.now().toIso8601String();
         _biometricProvider =
             (result['biometricProvider'] ??
@@ -861,8 +862,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         _selfieMessage =
             !detected
                 ? 'No se detecto un rostro valido. Captura una nueva selfie.'
-                : !saved
-                ? 'El backend analizo la selfie, pero no confirmo su guardado. Intenta de nuevo.'
+                : !selfieReadyForRegistration
+                ? 'La selfie ya no esta disponible. Captura una nueva selfie.'
                 : _identityVerificationMessage;
       });
     } on ApiException catch (error) {

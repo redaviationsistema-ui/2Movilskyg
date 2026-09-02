@@ -557,9 +557,25 @@ class AuthProvider extends ChangeNotifier {
     }
 
     if (expectsIdentityValidation) {
+      final identityStatus = _firstNonEmptyString([
+        user['identity_verification_status'],
+        user['identity_status'],
+        profile['identity_verification_status'],
+        profile['identity_status'],
+        data['identity_verification_status'],
+        data['identity_status'],
+      ]).toLowerCase();
       final identityValidationRequired =
-          profile['identity_validation_required'] == true ||
-          profile['identity_validation_required']?.toString() == '1';
+          _isTruthy(profile['identity_validation_required']) ||
+          _isTruthy(profile['requires_identity_validation']) ||
+          _isTruthy(user['identity_validation_required']) ||
+          _isTruthy(user['requires_identity_validation']) ||
+          _isTruthy(data['identity_validation_required']) ||
+          _isTruthy(data['requires_identity_validation']) ||
+          _isTruthy(user['identity_verified']) ||
+          _isTruthy(profile['identity_verified']) ||
+          _isTruthy(data['identity_verified']) ||
+          _isActiveIdentityStatus(identityStatus);
       if (!identityValidationRequired) {
         throw const ApiException(
           'El backend no confirmo que la validacion de identidad quedo activa.',
@@ -597,6 +613,57 @@ class AuthProvider extends ChangeNotifier {
           'El backend no devolvio la referencia de la selfie biometrica guardada.',
         );
       }
+    }
+  }
+
+  bool _isTruthy(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+
+    final normalized = value.toString().trim().toLowerCase();
+    return normalized == '1' ||
+        normalized == 'true' ||
+        normalized == 'yes' ||
+        normalized == 'si' ||
+        normalized == 'activo' ||
+        normalized == 'active' ||
+        normalized == 'enabled';
+  }
+
+  String _firstNonEmptyString(List<dynamic> values) {
+    for (final value in values) {
+      final normalized = value?.toString().trim() ?? '';
+      if (normalized.isNotEmpty) return normalized;
+    }
+    return '';
+  }
+
+  bool _isActiveIdentityStatus(String value) {
+    if (value.isEmpty) return false;
+    switch (value) {
+      case 'pending':
+      case 'pendiente':
+      case 'processing':
+      case 'in_review':
+      case 'review':
+      case 'approved':
+      case 'aprobada':
+      case 'aprobado':
+      case 'verified':
+      case 'verificada':
+      case 'verificado':
+      case 'rejected':
+      case 'rechazada':
+      case 'rechazado':
+      case 'failed':
+      case 'fallida':
+      case 'fallido':
+      case 'active':
+      case 'activo':
+        return true;
+      default:
+        return false;
     }
   }
 }

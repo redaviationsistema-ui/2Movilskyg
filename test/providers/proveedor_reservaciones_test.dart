@@ -51,6 +51,72 @@ void main() {
       expect(request['workflow_status'], 'provider_pending');
       expect(resolveClientWorkflowStage(request), 'provider_pending');
     });
+
+    test('keeps a created request only once for the same id', () {
+      final provider = ReservationProvider();
+      const response = {
+        'flight_request': {
+          'id': 'req_once',
+          'origin': 'MMTO',
+          'destination': 'MMVA',
+          'passengers': 2,
+        },
+      };
+
+      provider.rememberCreatedFlightRequest(response);
+      provider.rememberCreatedFlightRequest(response);
+
+      expect(
+        provider.flightRequests.where((item) => item['id'] == 'req_once'),
+        hasLength(1),
+      );
+    });
+
+    test('resetForm clears a successful draft for the next search', () {
+      final provider =
+          ReservationProvider()
+            ..passengers = 2
+            ..quoteMatches = [
+              {'id': 'match-1'},
+            ]
+            ..selectedQuoteMatch = {'id': 'match-1'};
+
+      provider.resetForm();
+
+      expect(provider.passengers, 1);
+      expect(provider.routes, hasLength(1));
+      expect(provider.quoteMatches, isEmpty);
+      expect(provider.selectedQuoteMatch, isNull);
+      expect(provider.quotePreviewState, QuotePreviewState.idle);
+    });
+
+    test(
+      'failed flight request creation preserves the draft for retry',
+      () async {
+        final provider = ReservationProvider(
+          apiClient: _api((request) async {
+            expect(request.url.path, '/api/v1/client/flight-requests');
+            return _json(422, {'message': 'La fecha ya no es valida.'});
+          }),
+        );
+        addTearDown(provider.dispose);
+        _seedValidFlightRequest(provider);
+
+        await expectLater(
+          provider.createFlightRequestForMatch({
+            'id': 'match-1',
+            'match_id': 'match-1',
+            'aircraft_id': 'aircraft-1',
+          }),
+          throwsA(isA<ApiException>()),
+        );
+
+        expect(provider.passengers, 2);
+        expect(provider.routes.single.fromAirport?.icao, 'MMTO');
+        expect(provider.routes.single.toAirport?.icao, 'MMVA');
+        expect(provider.routes.single.startDate, DateTime.utc(2027, 1, 2, 10));
+      },
+    );
   });
 
   test(
@@ -321,3 +387,25 @@ Map<String, dynamic> _flightHistoryRow({
     'workflow_status': 'provider_pending',
   };
 }
+
+void _seedValidFlightRequest(ReservationProvider provider) {
+  provider.routes.first
+    ..fromAirport = _airport('Toluca', 'MMTO', 'TLC')
+    ..toAirport = _airport('Monterrey', 'MMVA', 'MTY')
+    ..startDate = DateTime.utc(2027, 1, 2, 10);
+  provider.passengers = 2;
+}
+
+ApiClient _api(MockClientHandler handler) => ApiClient.forTesting(
+  baseUrl: 'https://api.example.test/api/v1',
+  httpClient: MockClient(handler),
+);
+
+http.Response _json(int status, Map<String, dynamic> payload) => http.Response(
+  jsonEncode(payload),
+  status,
+  headers: {'content-type': 'application/json'},
+);
+
+Airport _airport(String city, String icao, String iata) =>
+    Airport(name: city, city: city, icao: icao, iata: iata, lat: 0, lng: 0);

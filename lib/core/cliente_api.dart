@@ -460,6 +460,7 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> getClientAircraft({
     String? origin,
     int? passengers,
+    DateTime? departure,
   }) async {
     try {
       final data = await get(
@@ -472,6 +473,8 @@ class ApiClient {
             'base_airport': origin.trim().toUpperCase(),
           if (passengers != null && passengers > 0)
             'passengers': passengers.toString(),
+          if (departure != null)
+            'departure_datetime': departure.toIso8601String(),
         },
       );
 
