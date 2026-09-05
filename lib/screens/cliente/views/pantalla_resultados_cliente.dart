@@ -806,7 +806,6 @@ class _QuoteMatchCard extends StatelessWidget {
       'capacity',
       'capacity_passengers',
     ]);
-    final provider = _providerName(quote);
     final imageUrl = resolveMediaUrl(_aircraftImageUrl(quote));
     final price = formatQuotePriceLabel(quote);
     final resolvedTime = resolveQuoteDisplayTime(quote).time;
@@ -1026,7 +1025,6 @@ class _QuoteMatchCard extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 [
-                                  if (provider.isNotEmpty) provider,
                                   if (cabin.isNotEmpty) cabin,
                                   if (capacity.isNotEmpty)
                                     '$capacity pasajeros',
@@ -1863,19 +1861,6 @@ String _aircraftName(Map<String, dynamic> quote) {
     'registration',
     'name',
   ], fallback: 'Aeronave disponible');
-}
-
-String _providerName(Map<String, dynamic> quote) {
-  final provider = quote['provider'];
-  if (provider is Map) {
-    final company = provider['company_name']?.toString().trim();
-    if (company != null && company.isNotEmpty) return company;
-
-    final name = provider['name']?.toString().trim();
-    if (name != null && name.isNotEmpty) return name;
-  }
-
-  return _firstText(quote, const ['provider_name', 'operator_name']);
 }
 
 String _aircraftImageUrl(Map<String, dynamic> quote) {
