@@ -563,10 +563,9 @@ class _StatusBanner extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill(this.text, {this.textColor});
+  const _StatusPill(this.text);
 
   final String text;
-  final Color? textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +579,7 @@ class _StatusPill extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-          color: textColor ?? colors.$2,
+          color: colors.$2,
           fontSize: 12,
           fontWeight: FontWeight.w900,
         ),

@@ -18,6 +18,156 @@ import '../../../services/servicio_aeropuertos.dart';
 import '../tema_cliente.dart';
 import '../views/pantalla_detalle_aeronave_cliente.dart';
 import '../views/pantalla_concierge_cliente.dart';
+import '../views/pantalla_flight_brief_cliente.dart';
+import '../views/pantalla_seguimiento_cliente.dart';
+
+enum ClientFlightPrimaryActionType {
+  flightBrief,
+  tracking,
+  summary,
+  details,
+  none,
+}
+
+class ClientFlightPrimaryAction {
+  const ClientFlightPrimaryAction._(this.type, this.label, this.icon);
+
+  const ClientFlightPrimaryAction.flightBrief()
+    : this._(
+        ClientFlightPrimaryActionType.flightBrief,
+        'Ver Flight Brief',
+        Icons.assignment_outlined,
+      );
+
+  const ClientFlightPrimaryAction.tracking()
+    : this._(
+        ClientFlightPrimaryActionType.tracking,
+        'Ver seguimiento',
+        Icons.radar_rounded,
+      );
+
+  const ClientFlightPrimaryAction.summary()
+    : this._(
+        ClientFlightPrimaryActionType.summary,
+        'Ver resumen',
+        Icons.summarize_outlined,
+      );
+
+  const ClientFlightPrimaryAction.details()
+    : this._(
+        ClientFlightPrimaryActionType.details,
+        'Ver detalles',
+        Icons.arrow_forward_rounded,
+      );
+
+  const ClientFlightPrimaryAction.none()
+    : this._(ClientFlightPrimaryActionType.none, '', Icons.block_rounded);
+
+  final ClientFlightPrimaryActionType type;
+  final String label;
+  final IconData icon;
+
+  bool get isVisible => type != ClientFlightPrimaryActionType.none;
+  bool get isOperational =>
+      type == ClientFlightPrimaryActionType.flightBrief ||
+      type == ClientFlightPrimaryActionType.tracking ||
+      type == ClientFlightPrimaryActionType.summary;
+}
+
+/// Resolves the one primary CTA shared by every card in "Tus vuelos".
+ClientFlightPrimaryAction resolveClientFlightPrimaryAction(
+  Map<String, dynamic> request,
+) {
+  final stage = _workflowStageId(resolveClientWorkflowStage(request));
+  final hasFlightBrief = hasClientFlightBriefAvailable(request);
+
+  switch (stage) {
+    case 'flight_confirmed':
+      return hasFlightBrief
+          ? const ClientFlightPrimaryAction.flightBrief()
+          : const ClientFlightPrimaryAction.details();
+    case 'tracking_live':
+      return hasClientTrackingAvailable(request)
+          ? const ClientFlightPrimaryAction.tracking()
+          : hasFlightBrief
+          ? const ClientFlightPrimaryAction.flightBrief()
+          : const ClientFlightPrimaryAction.details();
+    case 'completed':
+      return const ClientFlightPrimaryAction.summary();
+    case 'cancelled':
+    case 'rejected':
+      return const ClientFlightPrimaryAction.none();
+    default:
+      return const ClientFlightPrimaryAction.details();
+  }
+}
+
+bool hasClientFlightBriefAvailable(Map<String, dynamic> request) {
+  if (resolveClientFlightRequestId(request).isEmpty) return false;
+  return const {
+    'flight_confirmed',
+    'tracking_live',
+    'completed',
+  }.contains(_workflowStageId(resolveClientWorkflowStage(request)));
+}
+
+String resolveClientFlightRequestId(Map<String, dynamic> request) {
+  final reservation = request['reservation'];
+  final flightRequest = request['flight_request'];
+  final candidates = [
+    request['flight_request_id'],
+    request['request_id'],
+    flightRequest is Map ? flightRequest['id'] : null,
+    reservation is Map ? reservation['flight_request_id'] : null,
+    request['reservation_id'] == null ? request['id'] : null,
+  ];
+  for (final candidate in candidates) {
+    final value = candidate?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String resolveClientTrackingOperationId(Map<String, dynamic> request) {
+  final reservation = request['reservation'];
+  final operation = request['operation'];
+  final candidates = [
+    request['operation_id'],
+    operation is Map ? operation['id'] : null,
+    reservation is Map ? reservation['operation_id'] : null,
+    reservation is Map && reservation['operation'] is Map
+        ? reservation['operation']['id']
+        : null,
+  ];
+  for (final candidate in candidates) {
+    final value = candidate?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+bool hasClientTrackingAvailable(Map<String, dynamic> request) {
+  final reservation = request['reservation'];
+  final operation = request['operation'];
+  final trackingValues = [
+    request['tracking_available'],
+    request['tracking_enabled'],
+    request['has_tracking'],
+    operation is Map ? operation['tracking_available'] : null,
+    operation is Map ? operation['tracking_enabled'] : null,
+    reservation is Map ? reservation['tracking_available'] : null,
+  ];
+  if (trackingValues.any(
+    (value) => value == true || value == 1 || value == '1',
+  )) {
+    return resolveClientTrackingOperationId(request).isNotEmpty;
+  }
+
+  // A live operational stage is resolved from explicit tracking/flight status.
+  return _workflowStageId(resolveClientWorkflowStage(request)) ==
+          'tracking_live' &&
+      resolveClientTrackingOperationId(request).isNotEmpty;
+}
 
 class ClientFlightsList extends StatefulWidget {
   const ClientFlightsList({
@@ -212,8 +362,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                 onTap:
                     nextFlight == null
                         ? widget.onOpenSearch
-                        : () =>
-                            _openRequestForCurrentStage(provider, nextFlight),
+                        : () => _openPrimaryFlightAction(provider, nextFlight),
               ),
               if (_shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
                 const SizedBox(height: 14),
@@ -260,10 +409,8 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                         airportNames: _airportNames,
                         airportDetails: _airportDetails,
                         onTap:
-                            () => _openRequestForCurrentStage(
-                              provider,
-                              entry.value,
-                            ),
+                            () =>
+                                _openPrimaryFlightAction(provider, entry.value),
                         onMenu: () => _showFlightMenu(entry.value),
                       ),
                     ),
@@ -474,28 +621,84 @@ class _ClientFlightsListState extends State<ClientFlightsList>
             onAircraft: () => _openAircraft(provider, request),
             onContract: () => _handleOpenContract(request),
             onPayment: () => _handleOpenPayment(request),
-            onTracking: null,
+            onTracking:
+                hasClientFlightBriefAvailable(request)
+                    ? () =>
+                        _openFlightBrief(request, sheetContext: sheetContext)
+                    : null,
           ),
     );
   }
 
-  void _openRequestForCurrentStage(
+  void _openFlightBrief(
+    Map<String, dynamic> request, {
+    BuildContext? sheetContext,
+  }) {
+    final flightRequestId = resolveClientFlightRequestId(request);
+    if (flightRequestId.isEmpty) {
+      _showActionMessage(
+        'No fue posible identificar el vuelo para consultar su Flight Brief.',
+      );
+      return;
+    }
+    if (sheetContext != null) Navigator.of(sheetContext).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ClientFlightBriefScreen(
+              flightRequestId: flightRequestId,
+              flightRequest: request,
+            ),
+      ),
+    );
+  }
+
+  void _openPrimaryFlightAction(
+    ReservationProvider provider,
+    Map<String, dynamic> request,
+  ) {
+    switch (resolveClientFlightPrimaryAction(request).type) {
+      case ClientFlightPrimaryActionType.flightBrief:
+        _openFlightBrief(request);
+      case ClientFlightPrimaryActionType.tracking:
+        _openTracking(request);
+      case ClientFlightPrimaryActionType.summary:
+      case ClientFlightPrimaryActionType.none:
+        _showFlightSheet(provider, request);
+      case ClientFlightPrimaryActionType.details:
+        _openDetailsForCurrentStage(provider, request);
+    }
+  }
+
+  void _openDetailsForCurrentStage(
     ReservationProvider provider,
     Map<String, dynamic> request,
   ) {
     final workflowId = _workflowStageId(_resolvedWorkflowStage(request));
-
     if (_contractActionEnabled(request, workflowId)) {
       _handleOpenContract(request);
       return;
     }
-
     if (_paymentActionEnabled(request, workflowId)) {
       _handleOpenPayment(request);
       return;
     }
-
     _showFlightSheet(provider, request);
+  }
+
+  void _openTracking(Map<String, dynamic> request) {
+    final operationId = resolveClientTrackingOperationId(request);
+    if (operationId.isEmpty || !hasClientTrackingAvailable(request)) {
+      _showActionMessage(
+        'El seguimiento aun no esta disponible para este vuelo.',
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClientTrackingScreen(operationId: operationId),
+      ),
+    );
   }
 
   void _showFlightMenu(Map<String, dynamic> request) {
@@ -798,7 +1001,7 @@ class _LuxuryFlightDetailSheet extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(18),
                                 ),
                                 child: const Text(
-                                  'Ver seguimiento',
+                                  'Ver Flight Brief',
                                   style: TextStyle(
                                     color: Color(0xFF111820),
                                     fontSize: 16,
@@ -1947,6 +2150,10 @@ class _NextFlightHero extends StatelessWidget {
     final imageUrl =
         flight == null ? '' : _aircraftImageUrl(flight, aircraftFleet);
     final status = flight == null ? null : _statusMeta(flight);
+    final primaryAction =
+        flight == null
+            ? const ClientFlightPrimaryAction.details()
+            : resolveClientFlightPrimaryAction(flight);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -2061,25 +2268,11 @@ class _NextFlightHero extends StatelessWidget {
                           ],
                         ),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            flight == null ? 'Nuevo vuelo' : 'Ver detalles',
-                            style: const TextStyle(
-                              color: Color(0xFFD7B15D),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          const Icon(
-                            Icons.arrow_forward_rounded,
-                            color: Color(0xFFD7B15D),
-                            size: 17,
-                          ),
-                        ],
-                      ),
+                      if (flight == null || primaryAction.isVisible)
+                        _FlightPrimaryCta(
+                          action: primaryAction,
+                          emptyLabel: 'Nuevo vuelo',
+                        ),
                     ],
                   ),
                 ),
@@ -2100,25 +2293,37 @@ class _HeroMeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: const Color(0xFFD7B15D), size: 15),
-        const SizedBox(width: 5),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 100),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: .68),
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
+    final labelText = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: .68),
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final labelWidget =
+            constraints.hasBoundedWidth
+                ? Flexible(child: labelText)
+                : ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 100),
+                  child: labelText,
+                );
+
+        return Row(
+          mainAxisSize:
+              constraints.hasBoundedWidth ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            Icon(icon, color: const Color(0xFFD7B15D), size: 15),
+            const SizedBox(width: 5),
+            labelWidget,
+          ],
+        );
+      },
     );
   }
 }
@@ -2447,6 +2652,7 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
       widget.airportDetails,
     );
     final imageUrl = _aircraftImageUrl(widget.request, widget.aircraftFleet);
+    final primaryAction = resolveClientFlightPrimaryAction(widget.request);
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -2458,7 +2664,7 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
         duration: const Duration(milliseconds: 150),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 244,
+          height: primaryAction.isVisible ? 278 : 244,
           decoration: BoxDecoration(
             color: _pressed ? const Color(0xFF16253B) : const Color(0xFF101C2D),
             borderRadius: BorderRadius.circular(28),
@@ -2579,6 +2785,13 @@ class _PremiumFlightCardState extends State<_PremiumFlightCard> {
                             ),
                           ],
                         ),
+                        if (primaryAction.isVisible) ...[
+                          const Spacer(),
+                          _FlightPrimaryCta(
+                            action: primaryAction,
+                            compact: true,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -2703,6 +2916,81 @@ class _CompactRouteStop extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _FlightPrimaryCta extends StatelessWidget {
+  const _FlightPrimaryCta({
+    required this.action,
+    this.compact = false,
+    this.emptyLabel,
+  });
+
+  final ClientFlightPrimaryAction action;
+  final bool compact;
+  final String? emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = emptyLabel ?? action.label;
+    return Container(
+      width: compact ? double.infinity : null,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 0,
+        vertical: compact ? 8 : 0,
+      ),
+      decoration:
+          compact
+              ? BoxDecoration(
+                color: const Color(0xFFD7B15D).withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFD7B15D).withValues(alpha: .32),
+                ),
+              )
+              : null,
+      child: Row(
+        mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Icon(
+            action.icon,
+            color: const Color(0xFFD7B15D),
+            size: compact ? 15 : 17,
+          ),
+          const SizedBox(width: 6),
+          if (compact)
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFD7B15D),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            )
+          else
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFD7B15D),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.arrow_forward_rounded,
+            color: Color(0xFFD7B15D),
+            size: 17,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -9,6 +9,8 @@ import 'package:path/path.dart' as path;
 
 import 'config/app_environment.dart';
 import 'idempotency_key.dart';
+import '../models/flight_brief.dart';
+import '../models/client_operation_tracking.dart';
 
 class BackendUser {
   final String id;
@@ -455,6 +457,38 @@ class ApiClient {
     }
 
     return const [];
+  }
+
+  Future<FlightBrief> getFlightBrief(String flightRequestId) async {
+    final normalizedFlightRequestId = flightRequestId.trim();
+    if (normalizedFlightRequestId.isEmpty) {
+      throw const ApiException(
+        'No existe flight_request para consultar el Flight Brief.',
+      );
+    }
+
+    final payload = await get(
+      '/client/flight-requests/$normalizedFlightRequestId/flight-brief',
+      authenticated: true,
+    );
+    return FlightBrief.fromJson(payload);
+  }
+
+  Future<ClientOperationTracking> getOperationTracking(
+    String operationId,
+  ) async {
+    final normalizedOperationId = operationId.trim();
+    if (normalizedOperationId.isEmpty) {
+      throw const ApiException(
+        'No existe operación para consultar el seguimiento.',
+      );
+    }
+
+    final payload = await get(
+      '/client/operations/$normalizedOperationId/tracking',
+      authenticated: true,
+    );
+    return ClientOperationTracking.fromJson(payload);
   }
 
   Future<List<Map<String, dynamic>>> getClientAircraft({

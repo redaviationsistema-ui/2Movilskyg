@@ -518,6 +518,21 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
     return 'tracking_live';
   }
 
+  // The operation can report the live phase through flight_status instead of
+  // tracking_status. This is an explicit operational signal, not just an ID.
+  if (_isOneOf(normalizedFlightStatus, const [
+    'in flight',
+    'en vuelo',
+    'in operation',
+    'en operacion',
+    'en operación',
+    'departed',
+    'despegado',
+    'airborne',
+  ])) {
+    return 'tracking_live';
+  }
+
   if (_isOneOf(normalizedFlightStatus, const [
     'confirmed',
     'confirmada',
@@ -527,6 +542,9 @@ String resolveClientWorkflowStage(Map<String, dynamic> request) {
     'ready',
     'lista',
     'scheduled',
+    'preparing',
+    'en preparacion',
+    'en preparación',
   ])) {
     return 'flight_confirmed';
   }
