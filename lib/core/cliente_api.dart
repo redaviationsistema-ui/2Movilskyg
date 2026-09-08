@@ -1367,18 +1367,15 @@ class ApiClient {
     required DateTime from,
     required DateTime to,
   }) {
-    return getFirstAvailable(
-      const ['/sobrecargo/availability', '/crew/availability'],
+    return get(
+      '/sobrecargo/availability',
       authenticated: true,
       query: {'from': _apiDate(from), 'to': _apiDate(to)},
     );
   }
 
   Future<Map<String, dynamic>> getCrewAvailabilityStatuses() {
-    return getFirstAvailable(const [
-      '/sobrecargo/availability/statuses',
-      '/crew/availability/statuses',
-    ], authenticated: true);
+    return get('/sobrecargo/availability/statuses', authenticated: true);
   }
 
   Future<Map<String, dynamic>> saveCrewAvailabilityDay({
@@ -1391,8 +1388,8 @@ class ApiClient {
     final normalizedStatus = statusKey.trim().toUpperCase();
     final normalizedComment = comment.trim();
     final statusLabel = _humanizeAvailabilityStatus(normalizedStatus);
-    return postFirstAvailable(
-      const ['/sobrecargo/availability', '/crew/availability'],
+    return post(
+      '/sobrecargo/availability',
       authenticated: true,
       body: {
         'fecha': _apiDate(date),
@@ -1411,32 +1408,6 @@ class ApiClient {
         'notes': normalizedComment,
         if (base.trim().isNotEmpty) 'base': base.trim(),
         if (coverage.trim().isNotEmpty) 'coverage': coverage.trim(),
-      },
-    );
-  }
-
-  Future<Map<String, dynamic>> auditCrewAvailabilityDay({
-    required DateTime date,
-    required String statusKey,
-    String comment = '',
-  }) {
-    final normalizedStatus = statusKey.trim().toUpperCase();
-    final normalizedComment = comment.trim();
-    final dateLabel = _apiDate(date);
-    return postFirstAvailable(
-      const ['/sobrecargo/availability/audit', '/crew/availability/audit'],
-      authenticated: true,
-      body: {
-        'fecha': dateLabel,
-        'from': dateLabel,
-        'to': dateLabel,
-        'status_key': normalizedStatus,
-        'clave': normalizedStatus,
-        'comment': normalizedComment,
-        'comentario': normalizedComment,
-        'note':
-            'Disponibilidad $dateLabel: ${_humanizeAvailabilityStatus(normalizedStatus)}.'
-            '${normalizedComment.isEmpty ? '' : ' $normalizedComment'}',
       },
     );
   }

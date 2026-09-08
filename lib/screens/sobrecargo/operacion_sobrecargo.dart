@@ -663,9 +663,12 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           response['data'] is Map
               ? Map<String, dynamic>.from(response['data'])
               : response;
+      _debugChecklistOrder('GET', _list(source['checklists']));
       if (!mounted) return;
       setState(() {
         _workflow = source;
+        _selectedStepId = '';
+        _selectedTrackingId = '';
         _syncSelections();
       });
       if (widget.openIncidentOnLoad && !_didAutoOpenIncident) {
@@ -835,10 +838,13 @@ class _CrewOperationViewState extends State<CrewOperationView> {
           assignmentId: operationId,
           step: 'passengers_ready',
         );
-      } else if (type == 'transition') {
+      } else if (type == 'transition' ||
+          type == 'departure' ||
+          type == 'landing' ||
+          type == 'disembark') {
         await _api.updateCrewOperationStep(
           assignmentId: operationId,
-          step: '${action['status'] ?? ''}',
+          step: '${action['status'] ?? type}',
         );
       }
       await _load();
@@ -954,20 +960,30 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       '${checklist['type'] ?? ''}',
     );
     final checklistType = '${checklist['type'] ?? ''}';
+    _debugChecklistOrder('BEFORE', _allChecklists);
     _setSavingState(
       true,
       actionId:
           actionId ?? 'checklist:${checklist['type']}:${item['id']}:$status',
     );
     try {
-      await _api.updateCrewChecklistItem(
+      final updateResponse = await _api.updateCrewChecklistItem(
         operationId: widget.assignment.resolvedOperationId,
         checklistType: '${checklist['type'] ?? ''}',
         itemId: '${item['id'] ?? ''}',
         status: status,
         notes: notes,
       );
+      final updateData =
+          updateResponse['data'] is Map
+              ? Map<String, dynamic>.from(updateResponse['data'])
+              : updateResponse;
+      _debugChecklistOrder('AFTER_PUT', [
+        if (updateData['checklist'] is Map)
+          Map<String, dynamic>.from(updateData['checklist']),
+      ]);
       await _load();
+      _debugChecklistOrder('AFTER', _allChecklists);
       if (mounted) {
         final refreshedChecklist = _mergedChecklistOfType(checklistType);
         final refreshedSummary = _summaryForChecklist(refreshedChecklist);
@@ -1289,6 +1305,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         phase: phase,
         evidence: evidence,
       );
+      await _load();
       _showMessage('Incidencia enviada a operaciones.');
     } catch (error) {
       _showMessage('$error');
@@ -1510,6 +1527,33 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       pending: pending,
       isComplete: items.isNotEmpty && pending == 0,
     );
+  }
+
+  // Auditoría temporal: solo IDs, estado y orden; sin notas ni evidencias.
+  void _debugChecklistOrder(
+    String phase,
+    List<Map<String, dynamic>> checklists,
+  ) {
+    assert(() {
+      for (final checklist in checklists) {
+        final rawItems = _itemsForChecklist(checklist);
+        final groups = _groupedChecklist(checklist);
+        for (
+          var sectionIndex = 0;
+          sectionIndex < groups.length;
+          sectionIndex++
+        ) {
+          final group = groups[sectionIndex];
+          for (var index = 0; index < group.value.length; index++) {
+            final item = group.value[index];
+            debugPrint(
+              'CHECKLIST_ORDER_DEBUG $phase ${jsonEncode({'operation_id': widget.assignment.resolvedOperationId, 'checklist_id': checklist['id'], 'type': checklist['type'], 'section': group.key, 'category': item['category'], 'section_index': sectionIndex, 'item_id': item['id'], 'status': item['status'], 'completed_at': item['completed_at'], 'position': item['position'], 'order': item['order'], 'sort_order': item['sort_order'], 'sequence': item['sequence'], 'display_order': item['display_order'], 'index': index, 'payload_index': rawItems.indexWhere((raw) => raw['id'] == item['id'])})}',
+            );
+          }
+        }
+      }
+      return true;
+    }());
   }
 
   List<MapEntry<String, List<Map<String, dynamic>>>> _groupedChecklist(

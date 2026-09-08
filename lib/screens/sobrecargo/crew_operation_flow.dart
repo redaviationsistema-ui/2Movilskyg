@@ -1,3 +1,29 @@
+class CrewWorkflowAction {
+  const CrewWorkflowAction({
+    required this.type,
+    required this.label,
+    this.status,
+  });
+
+  final String type;
+  final String label;
+  final String? status;
+
+  factory CrewWorkflowAction.fromJson(Map<String, dynamic> json) {
+    return CrewWorkflowAction(
+      type: '${json['type'] ?? ''}'.trim(),
+      label: '${json['label'] ?? ''}'.trim(),
+      status: json['status'] == null ? null : '${json['status']}'.trim(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'label': label,
+    if (status != null && status!.isNotEmpty) 'status': status,
+  };
+}
+
 class CrewOperationFlowSnapshot {
   const CrewOperationFlowSnapshot({
     required this.assignmentConfirmed,
@@ -10,6 +36,12 @@ class CrewOperationFlowSnapshot {
     required this.trackingMilestones,
     required this.primaryAction,
     required this.finalReportAvailable,
+    required this.currentStep,
+    required this.currentPhase,
+    required this.nextAction,
+    required this.allowedActions,
+    required this.workflowInconsistent,
+    required this.blockingReason,
   });
 
   final bool assignmentConfirmed;
@@ -22,6 +54,12 @@ class CrewOperationFlowSnapshot {
   final List<CrewOperationTrackingMilestone> trackingMilestones;
   final CrewOperationPrimaryAction primaryAction;
   final bool finalReportAvailable;
+  final String? currentStep;
+  final String? currentPhase;
+  final CrewWorkflowAction? nextAction;
+  final List<CrewWorkflowAction> allowedActions;
+  final bool workflowInconsistent;
+  final String? blockingReason;
 
   CrewOperationStepState? stepById(String id) {
     for (final step in steps) {
@@ -46,7 +84,20 @@ class CrewOperationFlowSnapshot {
   }) {
     final assignmentStatus = _token(workflow['assignment_status']);
     final workflowStatus = _token(workflow['status']);
-    final allowedActions = _mapList(workflow['allowed_actions']);
+    final allowedActions = _mapList(workflow['allowed_actions'])
+        .map(CrewWorkflowAction.fromJson)
+        .where((action) => action.type.isNotEmpty)
+        .toList();
+    final nextActionValue = workflow['next_action'];
+    final nextAction = nextActionValue is Map
+        ? CrewWorkflowAction.fromJson(
+            Map<String, dynamic>.from(nextActionValue),
+          )
+        : null;
+    final currentStep = _nullableToken(workflow['current_step']);
+    final currentPhase = _nullableToken(workflow['current_phase']);
+    final workflowInconsistent = workflow['workflow_inconsistent'] == true;
+    final blockingReason = _nullableText(workflow['blocking_reason']);
     final checklists = _mapList(workflow['checklists']);
     final trackingEvents = _mapList(workflow['tracking_events']);
     final finalReportAvailable = workflow['final_report'] is Map;
@@ -73,7 +124,7 @@ class CrewOperationFlowSnapshot {
 
     final trackingMilestones = _buildTrackingMilestones(
       trackingEvents,
-      allowedActions,
+      nextAction,
     );
 
     final steps = _buildSteps(
@@ -84,30 +135,28 @@ class CrewOperationFlowSnapshot {
       trackingMilestones: trackingMilestones,
       workflowStatus: workflowStatus,
       finalReportAvailable: finalReportAvailable,
+      currentStep: currentStep,
     );
 
     final currentStepId =
+        _canonicalStepId(currentStep) ??
         steps
             .firstWhere(
               (step) => step.status == 'current',
-              orElse:
-                  () => steps.lastWhere(
-                    (step) => step.complete,
-                    orElse: () => steps.first,
-                  ),
+              orElse: () => steps.lastWhere(
+                (step) => step.complete,
+                orElse: () => steps.first,
+              ),
             )
             .id;
 
     final primaryAction = _buildPrimaryAction(
       currentStepId: currentStepId,
       assignmentConfirmed: assignmentConfirmed,
-      preparationSummary: preparationSummary,
-      preflightSummary: preflightSummary,
-      postflightSummary: postflightSummary,
-      trackingMilestones: trackingMilestones,
-      allowedActions: allowedActions,
-      workflowStatus: workflowStatus,
-      finalReportAvailable: finalReportAvailable,
+      currentStep: currentStep,
+      nextAction: nextAction,
+      workflowInconsistent: workflowInconsistent,
+      blockingReason: blockingReason,
     );
 
     return CrewOperationFlowSnapshot(
@@ -121,6 +170,12 @@ class CrewOperationFlowSnapshot {
       trackingMilestones: trackingMilestones,
       primaryAction: primaryAction,
       finalReportAvailable: finalReportAvailable,
+      currentStep: currentStep,
+      currentPhase: currentPhase,
+      nextAction: nextAction,
+      allowedActions: allowedActions,
+      workflowInconsistent: workflowInconsistent,
+      blockingReason: blockingReason,
     );
   }
 }
@@ -179,13 +234,15 @@ class CrewOperationChecklistSummary {
     for (final checklist in checklists) {
       items.addAll(_mapList(checklist['items']));
     }
-    final requiredItems =
-        items.where((item) => item['is_required'] != false).toList();
+    final requiredItems = items
+        .where((item) => item['is_required'] != false)
+        .toList();
     final resolved = items.where(_isResolvedStatus).length;
     final handled = items.where(_isHandledStatus).length;
     final pending = items.length - handled;
-    final failed =
-        items.where((item) => _token(item['status']) == 'failed').length;
+    final failed = items
+        .where((item) => _token(item['status']) == 'failed')
+        .length;
     final requiredResolved = requiredItems.where(_isResolvedStatus).length;
 
     return CrewOperationChecklistSummary(
@@ -313,6 +370,7 @@ List<CrewOperationStepState> _buildSteps({
   required List<CrewOperationTrackingMilestone> trackingMilestones,
   required String workflowStatus,
   required bool finalReportAvailable,
+  required String? currentStep,
 }) {
   final trackingComplete =
       trackingMilestones.isNotEmpty &&
@@ -332,6 +390,13 @@ List<CrewOperationStepState> _buildSteps({
       complete: preparationSummary.isComplete,
     ),
     (
+      id: 'arrival',
+      label: 'Llegada al aeropuerto',
+      complete: trackingMilestones.any(
+        (item) => item.id == 'airport-arrival' && item.state == 'completed',
+      ),
+    ),
+    (
       id: 'checklist',
       label: 'Checklist pre-vuelo',
       complete: preflightSummary.isComplete,
@@ -343,17 +408,25 @@ List<CrewOperationStepState> _buildSteps({
       complete: postflightSummary.isComplete,
     ),
     (id: 'closure', label: 'Cierre de operación', complete: closureComplete),
+    (
+      id: 'completed',
+      label: 'Operación completada',
+      complete:
+          currentStep == 'completed' || _isCrewClosureComplete(workflowStatus),
+    ),
   ];
 
   var previousStepsComplete = true;
   var currentFound = false;
+  final canonicalStepId = _canonicalStepId(currentStep);
   return baseSteps.map((step) {
     late final String status;
     if (!previousStepsComplete) {
       status = 'locked';
     } else if (step.complete) {
       status = 'completed';
-    } else if (!currentFound) {
+    } else if (!currentFound &&
+        (canonicalStepId == null || canonicalStepId == step.id)) {
       status = 'current';
       currentFound = true;
     } else {
@@ -373,13 +446,10 @@ List<CrewOperationStepState> _buildSteps({
 CrewOperationPrimaryAction _buildPrimaryAction({
   required String currentStepId,
   required bool assignmentConfirmed,
-  required CrewOperationChecklistSummary preparationSummary,
-  required CrewOperationChecklistSummary preflightSummary,
-  required CrewOperationChecklistSummary postflightSummary,
-  required List<CrewOperationTrackingMilestone> trackingMilestones,
-  required List<Map<String, dynamic>> allowedActions,
-  required String workflowStatus,
-  required bool finalReportAvailable,
+  required String? currentStep,
+  required CrewWorkflowAction? nextAction,
+  required bool workflowInconsistent,
+  required String? blockingReason,
 }) {
   if (!assignmentConfirmed) {
     return const CrewOperationPrimaryAction(
@@ -391,73 +461,52 @@ CrewOperationPrimaryAction _buildPrimaryAction({
     );
   }
 
-  switch (currentStepId) {
-    case 'preparation':
-      final action = _firstAction(allowedActions, [
-        _checkinMatcher,
-        _cabinReadyMatcher,
-      ]);
-      return CrewOperationPrimaryAction(
-        title: 'Siguiente paso: Completar preparación',
-        detail:
-            preparationSummary.total > 0
-                ? 'Completa los elementos pendientes antes de continuar.'
-                : 'Valida briefing, llegada, FBO y cabina antes de avanzar al resto de la operación.',
-        cta: action == null ? '' : _friendlyActionLabel(action),
-        kind: action == null ? 'preparation' : 'workflow_action',
-        action: action,
-      );
-    case 'checklist':
-      return CrewOperationPrimaryAction(
-        title: 'Siguiente paso: Checklist pre-vuelo',
-        detail:
-            preflightSummary.total > 0
-                ? 'Completa los elementos pendientes antes de continuar.'
-                : 'Completa el checklist pre-vuelo antes de continuar.',
-        cta: 'Completar checklist pre-vuelo',
-        kind: 'open_checklist',
-      );
-    case 'tracking':
-      final currentTracking = trackingMilestones
-          .cast<CrewOperationTrackingMilestone?>()
-          .firstWhere((item) => item?.state == 'current', orElse: () => null);
-      return CrewOperationPrimaryAction(
-        title:
-            'Siguiente paso: ${currentTracking?.label ?? 'Registrar seguimiento'}',
-        detail:
-            currentTracking?.detail ??
-            'Sigue registrando hitos operativos para mantener trazabilidad clara del vuelo.',
-        cta:
-            currentTracking?.action == null
-                ? 'Abrir seguimiento'
-                : _friendlyActionLabel(currentTracking!.action!),
-        kind:
-            currentTracking?.action == null
-                ? 'open_tracking'
-                : 'workflow_action',
-        action: currentTracking?.action,
-      );
-    case 'postflight':
-      return CrewOperationPrimaryAction(
-        title: 'Siguiente paso: Checklist post-vuelo',
-        detail:
-            postflightSummary.total > 0
-                ? 'Completa los elementos pendientes antes de continuar.'
-                : 'Completa el checklist post-vuelo antes de continuar.',
-        cta: 'Completar checklist post-vuelo',
-        kind: 'open_postflight',
-      );
-    case 'closure':
-      if (!_isCrewClosureComplete(workflowStatus) && !finalReportAvailable) {
-        return const CrewOperationPrimaryAction(
-          title: 'Siguiente paso: Finalizar operación',
-          detail:
-              'Cuando todo esté completo podrás cerrar tu participación operativa.',
-          cta: 'Enviar cierre',
-          kind: 'submit_report',
-        );
-      }
-      break;
+  if (currentStep == 'completed') {
+    return const CrewOperationPrimaryAction(
+      title: 'Operación completada',
+      detail: 'El flujo operativo y el reporte final ya quedaron registrados.',
+      cta: '',
+      kind: 'completed',
+    );
+  }
+
+  if (workflowInconsistent && nextAction == null && blockingReason != null) {
+    return CrewOperationPrimaryAction(
+      title: 'Flujo bloqueado',
+      detail: blockingReason,
+      cta: '',
+      kind: 'blocked',
+    );
+  }
+
+  if (nextAction != null) {
+    return CrewOperationPrimaryAction(
+      title: nextAction.label,
+      detail: 'Registra el siguiente avance de tu operación.',
+      cta: nextAction.label,
+      kind: nextAction.type == 'submit_report'
+          ? 'submit_report'
+          : 'workflow_action',
+      action: nextAction.toJson(),
+    );
+  }
+
+  if (currentStep == 'preflight') {
+    return const CrewOperationPrimaryAction(
+      title: 'Siguiente paso: Checklist pre-vuelo',
+      detail: 'Completa el checklist pre-vuelo antes de continuar.',
+      cta: 'Continuar checklist pre-vuelo',
+      kind: 'open_checklist',
+    );
+  }
+
+  if (currentStep == 'postflight') {
+    return const CrewOperationPrimaryAction(
+      title: 'Checklist post-vuelo',
+      detail: 'Completa el checklist post-vuelo antes de cerrar la operación.',
+      cta: 'Abrir checklist post-vuelo',
+      kind: 'open_postflight',
+    );
   }
 
   return const CrewOperationPrimaryAction(
@@ -470,51 +519,50 @@ CrewOperationPrimaryAction _buildPrimaryAction({
 
 List<CrewOperationTrackingMilestone> _buildTrackingMilestones(
   List<Map<String, dynamic>> trackingEvents,
-  List<Map<String, dynamic>> allowedActions,
+  CrewWorkflowAction? nextAction,
 ) {
-  final milestones =
-      _trackingDefinitions.map((definition) {
-        Map<String, dynamic>? event;
-        for (final entry in trackingEvents.reversed) {
-          final title = _token(entry['title']);
-          final status = _token(entry['status']);
-          final matchesTitle = definition.titleIncludes.any(
-            (value) => title.contains(_token(value)),
-          );
-          final matchesStatus = definition.statuses.any(
-            (value) => status.contains(_token(value)),
-          );
-          if (matchesTitle || matchesStatus) {
-            event = entry;
-            break;
-          }
-        }
+  final milestones = _trackingDefinitions.map((definition) {
+    Map<String, dynamic>? event;
+    for (final entry in trackingEvents.reversed) {
+      final title = _token(entry['title']);
+      final status = _token(entry['status']);
+      final matchesTitle = definition.titleIncludes.any(
+        (value) => title.contains(_token(value)),
+      );
+      final matchesStatus = definition.statuses.any(
+        (value) => status.contains(_token(value)),
+      );
+      if (matchesTitle || matchesStatus) {
+        event = entry;
+        break;
+      }
+    }
 
-        return CrewOperationTrackingMilestone(
-          id: definition.id,
-          label: definition.label,
-          detail: definition.detail,
-          state: event == null ? 'pending' : 'completed',
-          timestamp:
-              event == null
-                  ? ''
-                  : '${event['created_at'] ?? event['updated_at'] ?? ''}'
-                      .trim(),
-          action: _firstAction(allowedActions, [definition.actionMatcher]),
-        );
-      }).toList();
+    return CrewOperationTrackingMilestone(
+      id: definition.id,
+      label: definition.label,
+      detail: definition.detail,
+      state: event == null ? 'pending' : 'completed',
+      timestamp: event == null
+          ? ''
+          : '${event['created_at'] ?? event['updated_at'] ?? ''}'.trim(),
+      action:
+          nextAction != null && definition.actionMatcher(nextAction.toJson())
+          ? nextAction.toJson()
+          : null,
+    );
+  }).toList();
 
   final firstPending = milestones.indexWhere(
     (item) => item.state != 'completed',
   );
   return milestones.asMap().entries.map((entry) {
     final item = entry.value;
-    final state =
-        item.state == 'completed'
-            ? 'completed'
-            : entry.key == firstPending
-            ? 'current'
-            : 'pending';
+    final state = item.state == 'completed'
+        ? 'completed'
+        : entry.key == firstPending
+        ? 'current'
+        : 'pending';
     return CrewOperationTrackingMilestone(
       id: item.id,
       label: item.label,
@@ -524,18 +572,6 @@ List<CrewOperationTrackingMilestone> _buildTrackingMilestones(
       action: item.action,
     );
   }).toList();
-}
-
-Map<String, dynamic>? _firstAction(
-  List<Map<String, dynamic>> actions,
-  List<bool Function(Map<String, dynamic>)> matchers,
-) {
-  for (final action in actions) {
-    for (final matcher in matchers) {
-      if (matcher(action)) return action;
-    }
-  }
-  return null;
 }
 
 bool _checkinMatcher(Map<String, dynamic> action) =>
@@ -551,21 +587,6 @@ bool _landingMatcher(Map<String, dynamic> action) =>
     _token(action['status']).contains('landed');
 bool _postflightMatcher(Map<String, dynamic> action) =>
     _token(action['status']).contains('postflight');
-
-String _friendlyActionLabel(Map<String, dynamic> action) {
-  final type = _token(action['type']);
-  final status = _token(action['status']);
-  if (type == 'checkin') return 'Registrar llegada';
-  if (type == 'cabin ready') return 'Registrar preparación';
-  if (type == 'passengers ready') return 'Confirmar pasajeros recibidos';
-  if (type == 'submit report') return 'Enviar cierre';
-  if (status.contains('boarding')) return 'Registrar abordaje';
-  if (status.contains('in flight')) return 'Registrar despegue';
-  if (status.contains('landed')) return 'Registrar aterrizaje';
-  if (status.contains('postflight')) return 'Registrar desembarque';
-  final label = '${action['label'] ?? ''}'.trim();
-  return label.isEmpty ? 'Continuar' : label;
-}
 
 bool _isResolvedStatus(Map<String, dynamic> item) {
   final status = _token(item['status']);
@@ -621,3 +642,24 @@ String _token(dynamic value) {
       .replaceAll('_', ' ')
       .replaceAll('-', ' ');
 }
+
+String? _nullableToken(dynamic value) {
+  final token = _token(value);
+  return token.isEmpty || token == 'null' ? null : token.replaceAll(' ', '_');
+}
+
+String? _nullableText(dynamic value) {
+  final text = '$value'.trim();
+  return text.isEmpty || text == 'null' ? null : text;
+}
+
+String? _canonicalStepId(String? currentStep) => switch (currentStep) {
+  'preparation' => 'preparation',
+  'airport_arrival' => 'arrival',
+  'preflight' => 'checklist',
+  'tracking' => 'tracking',
+  'postflight' => 'postflight',
+  'closure' => 'closure',
+  'completed' => 'completed',
+  _ => null,
+};

@@ -1690,15 +1690,7 @@ class _CrewPortalScreenState extends State<CrewPortalScreen>
         base: _resolvedBaseLabel,
         coverage: coverage,
       );
-      try {
-        await _api.auditCrewAvailabilityDay(
-          date: date,
-          statusKey: statusKey,
-          comment: comment,
-        );
-      } catch (_) {
-        // La auditoria es best-effort como en web; el guardado principal manda.
-      }
+      // El POST de disponibilidad ya registra la bitácora en backend.
       await _loadAvailability(date);
       _showSyncMessage('Disponibilidad sincronizada con admin.');
     } catch (_) {

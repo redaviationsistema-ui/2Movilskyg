@@ -76,8 +76,13 @@ class ClientFlightPrimaryAction {
 
 /// Resolves the one primary CTA shared by every card in "Tus vuelos".
 ClientFlightPrimaryAction resolveClientFlightPrimaryAction(
-  Map<String, dynamic> request,
-) {
+  Map<String, dynamic> request, {
+  bool allowTracking = true,
+}) {
+  if (isClientFlightInOperation(request)) {
+    return const ClientFlightPrimaryAction.flightBrief();
+  }
+
   final stage = _workflowStageId(resolveClientWorkflowStage(request));
   final hasFlightBrief = hasClientFlightBriefAvailable(request);
 
@@ -87,7 +92,7 @@ ClientFlightPrimaryAction resolveClientFlightPrimaryAction(
           ? const ClientFlightPrimaryAction.flightBrief()
           : const ClientFlightPrimaryAction.details();
     case 'tracking_live':
-      return hasClientTrackingAvailable(request)
+      return allowTracking && hasClientTrackingAvailable(request)
           ? const ClientFlightPrimaryAction.tracking()
           : hasFlightBrief
           ? const ClientFlightPrimaryAction.flightBrief()
@@ -100,6 +105,34 @@ ClientFlightPrimaryAction resolveClientFlightPrimaryAction(
     default:
       return const ClientFlightPrimaryAction.details();
   }
+}
+
+bool isClientFlightInOperation(Map<String, dynamic> request) {
+  final operation = request['operation'];
+  final reservation = request['reservation'];
+  final nestedOperation = reservation is Map ? reservation['operation'] : null;
+  final candidates = [
+    request['status'],
+    request['workflow_status'],
+    request['flight_status'],
+    request['flightStatus'],
+    operation is Map ? operation['status'] : null,
+    operation is Map ? operation['flight_status'] : null,
+    operation is Map ? operation['flightStatus'] : null,
+    reservation is Map ? reservation['status'] : null,
+    reservation is Map ? reservation['flight_status'] : null,
+    reservation is Map ? reservation['flightStatus'] : null,
+    nestedOperation is Map ? nestedOperation['status'] : null,
+    nestedOperation is Map ? nestedOperation['flight_status'] : null,
+    nestedOperation is Map ? nestedOperation['flightStatus'] : null,
+  ];
+  return candidates.any(
+    (value) => const {
+      'en operacion',
+      'in operation',
+      'operating',
+    }.contains(normalizeClientWorkflowValue(value)),
+  );
 }
 
 bool hasClientFlightBriefAvailable(Map<String, dynamic> request) {
@@ -362,7 +395,11 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                 onTap:
                     nextFlight == null
                         ? widget.onOpenSearch
-                        : () => _openPrimaryFlightAction(provider, nextFlight),
+                        : () => _openPrimaryFlightAction(
+                          provider,
+                          nextFlight,
+                          allowTracking: false,
+                        ),
               ),
               if (_shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
                 const SizedBox(height: 14),
@@ -655,9 +692,13 @@ class _ClientFlightsListState extends State<ClientFlightsList>
 
   void _openPrimaryFlightAction(
     ReservationProvider provider,
-    Map<String, dynamic> request,
-  ) {
-    switch (resolveClientFlightPrimaryAction(request).type) {
+    Map<String, dynamic> request, {
+    bool allowTracking = true,
+  }) {
+    switch (resolveClientFlightPrimaryAction(
+      request,
+      allowTracking: allowTracking,
+    ).type) {
       case ClientFlightPrimaryActionType.flightBrief:
         _openFlightBrief(request);
       case ClientFlightPrimaryActionType.tracking:
@@ -2153,7 +2194,7 @@ class _NextFlightHero extends StatelessWidget {
     final primaryAction =
         flight == null
             ? const ClientFlightPrimaryAction.details()
-            : resolveClientFlightPrimaryAction(flight);
+            : resolveClientFlightPrimaryAction(flight, allowTracking: false);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -2271,7 +2312,7 @@ class _NextFlightHero extends StatelessWidget {
                       if (flight == null || primaryAction.isVisible)
                         _FlightPrimaryCta(
                           action: primaryAction,
-                          emptyLabel: 'Nuevo vuelo',
+                          emptyLabel: flight == null ? 'Nuevo vuelo' : null,
                         ),
                     ],
                   ),

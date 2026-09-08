@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:red_sky/screens/cliente/widgets/lista_vuelos_cliente.dart';
 
@@ -29,6 +30,64 @@ void main() {
       });
 
       expect(action.type, ClientFlightPrimaryActionType.flightBrief);
+    });
+
+    test('operational status opens Flight Brief for the current flight', () {
+      for (final status in [
+        'EN_OPERACION',
+        'EN OPERACIÓN',
+        'in_operation',
+        'operating',
+      ]) {
+        final request = {
+          'flight_request_id': 'req-toluca-queretaro',
+          'origin': 'Toluca',
+          'destination': 'Querétaro',
+          'flight_status': status,
+        };
+
+        final action = resolveClientFlightPrimaryAction(request);
+
+        expect(action.type, ClientFlightPrimaryActionType.flightBrief);
+        expect(action.label, 'Ver Flight Brief');
+        expect(action.icon, Icons.assignment_outlined);
+        expect(resolveClientFlightRequestId(request), 'req-toluca-queretaro');
+      }
+    });
+
+    test('operational CTA does not use the new-flight label', () {
+      final action = resolveClientFlightPrimaryAction({
+        'flight_request_id': 'req-live',
+        'status': 'EN_OPERACION',
+      });
+
+      expect(action.label, isNot('Nuevo vuelo'));
+      expect(action.label, 'Ver Flight Brief');
+    });
+
+    test('operational status takes priority over tracking availability', () {
+      final action = resolveClientFlightPrimaryAction({
+        'flight_request_id': 'req-toluca-queretaro',
+        'operation_id': 'operation-live',
+        'flight_status': 'EN_OPERACION',
+        'tracking_available': true,
+      });
+
+      expect(action.type, ClientFlightPrimaryActionType.flightBrief);
+      expect(action.icon, Icons.assignment_outlined);
+    });
+
+    test('next flight never resolves tracking when tracking is available', () {
+      final action = resolveClientFlightPrimaryAction({
+        'flight_request_id': 'req-next',
+        'operation_id': 'operation-live',
+        'flight_status': 'en vuelo',
+        'tracking_live': true,
+      }, allowTracking: false);
+
+      expect(action.type, ClientFlightPrimaryActionType.flightBrief);
+      expect(action.label, 'Ver Flight Brief');
+      expect(action.icon, Icons.assignment_outlined);
     });
 
     test('in-flight operation opens tracking when it is available', () {
@@ -70,6 +129,16 @@ void main() {
         }),
         isFalse,
       );
+    });
+
+    test('other workflow states keep their existing action', () {
+      final action = resolveClientFlightPrimaryAction({
+        'flight_request_id': 'req-completed',
+        'flight_status': 'finalizado',
+      });
+
+      expect(action.type, ClientFlightPrimaryActionType.summary);
+      expect(action.label, 'Ver resumen');
     });
   });
 
