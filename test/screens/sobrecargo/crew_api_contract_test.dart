@@ -7,6 +7,40 @@ import 'package:red_sky/core/cliente_api.dart';
 
 void main() {
   group('Crew canonical API contracts', () {
+    test(
+      'availability uses canonical routes without fallback on backend 404',
+      () async {
+        final requests = <http.Request>[];
+        var fail = false;
+        final api = ApiClient.forTesting(
+          baseUrl: 'https://api.example.test/api/v1',
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            return http.Response(
+              jsonEncode(fail ? {'message': 'Missing status'} : {}),
+              fail ? 404 : 200,
+            );
+          }),
+        );
+        final date = DateTime(2026, 9, 10);
+        await api.getCrewAvailability(from: date, to: date);
+        await api.getCrewAvailabilityStatuses();
+        await api.saveCrewAvailabilityDay(date: date, statusKey: 'DISPONIBLE');
+        expect(requests.map((r) => '${r.method} ${r.url.path}').toList(), [
+          'GET /api/v1/sobrecargo/availability',
+          'GET /api/v1/sobrecargo/availability/statuses',
+          'POST /api/v1/sobrecargo/availability',
+        ]);
+        fail = true;
+        await expectLater(
+          api.getCrewAvailability(from: date, to: date),
+          throwsA(anything),
+        );
+        expect(requests.length, 4);
+        expect(requests.last.url.path, '/api/v1/sobrecargo/availability');
+      },
+    );
+
     test('loads workflow from canonical operation endpoint', () async {
       late http.Request request;
       final api = ApiClient.forTesting(

@@ -56,6 +56,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _primaryActionKey = GlobalKey();
   final GlobalKey _stepContentKey = GlobalKey();
+  final GlobalKey _evidenceKey = GlobalKey();
 
   Map<String, dynamic> _workflow = const {};
   bool _loading = true;
@@ -577,7 +578,13 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         await _focusStepSection('tracking');
         return;
       case CrewWorkspaceSection.missionEvidence:
-        await _focusStepSection(_bestEvidenceStepId());
+        final evidenceContext = _evidenceKey.currentContext;
+        if (evidenceContext != null) {
+          await Scrollable.ensureVisible(
+            evidenceContext,
+            duration: const Duration(milliseconds: 300),
+          );
+        }
         return;
       case CrewWorkspaceSection.missionIncidents:
         await _showIncidentDialog(actionId: 'drawer:incident');
@@ -586,16 +593,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         await _focusStepSection('closure');
         return;
     }
-  }
-
-  String _bestEvidenceStepId() {
-    if (_currentStepId == 'preparation' ||
-        _currentStepId == 'checklist' ||
-        _currentStepId == 'postflight' ||
-        _currentStepId == 'closure') {
-      return _currentStepId;
-    }
-    return 'checklist';
   }
 
   CrewWorkspaceSection get _activeDrawerSection {
@@ -650,7 +647,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool propagateErrors = false}) async {
     setState(() {
       _loading = true;
       _error = '';
@@ -681,6 +678,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
+      if (propagateErrors) rethrow;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -982,7 +980,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         if (updateData['checklist'] is Map)
           Map<String, dynamic>.from(updateData['checklist']),
       ]);
-      await _load();
+      await _load(propagateErrors: true);
       _debugChecklistOrder('AFTER', _allChecklists);
       if (mounted) {
         final refreshedChecklist = _mergedChecklistOfType(checklistType);
@@ -1314,79 +1312,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     }
   }
 
-  Future<void> _pickEvidence(
-    Map<String, dynamic> checklist,
-    Map<String, dynamic> item,
-    ImageSource source, {
-    String? actionId,
-  }) async {
-    if (_saving) return;
-    final picked = await _picker.pickImage(source: source, imageQuality: 88);
-    if (picked == null || !mounted) return;
-    final decision = await showDialog<String>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Vista previa de evidencia'),
-            content: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.file(
-                File(picked.path),
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (_, _, _) => const SizedBox(
-                      height: 180,
-                      child: Center(
-                        child: Text('No se pudo mostrar la fotografía.'),
-                      ),
-                    ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'cancel'),
-                child: const Text('Eliminar'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'replace'),
-                child: const Text('Reemplazar'),
-              ),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(context, 'upload'),
-                icon: const Icon(Icons.cloud_upload_rounded),
-                label: const Text('Guardar fotografía'),
-              ),
-            ],
-          ),
-    );
-    if (decision == 'replace') {
-      await _pickEvidence(checklist, item, source);
-      return;
-    }
-    if (decision != 'upload' || _saving) return;
-    _setSavingState(
-      true,
-      actionId:
-          actionId ??
-          'evidence:${checklist['type']}:${item['id']}:${source.name}',
-    );
-    _showMessage('Subiendo fotografía...');
-    try {
-      await _api.uploadCrewChecklistEvidence(
-        operationId: widget.assignment.resolvedOperationId,
-        checklistType: '${checklist['type'] ?? ''}',
-        itemId: '${item['id'] ?? ''}',
-        file: File(picked.path),
-      );
-      await _load();
-      _showMessage('Fotografía registrada correctamente.');
-    } catch (error) {
-      _showMessage('Error al subir la fotografía. $error');
-    } finally {
-      _setSavingState(false);
-    }
-  }
-
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -1474,18 +1399,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     final cleaned = value.replaceAll('_', ' ').trim();
     if (cleaned.isEmpty) return 'Actualización';
     return '${cleaned[0].toUpperCase()}${cleaned.substring(1)}';
-  }
-
-  String _evidenceUrl(Map<String, dynamic> evidence) {
-    final raw =
-        '${evidence['url'] ?? evidence['path'] ?? evidence['file_url'] ?? evidence['file_path'] ?? ''}'
-            .trim();
-    if (raw.isEmpty) return '';
-    final parsed = Uri.tryParse(raw);
-    if (parsed != null && parsed.hasScheme) return raw;
-    final origin = _api.backendOrigin;
-    if (origin.isEmpty) return '';
-    return raw.startsWith('/') ? '$origin$raw' : '$origin/$raw';
   }
 
   List<Map<String, dynamic>> _checklistsOfType(String type) {
@@ -1723,64 +1636,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
         );
       }
     });
-  }
-
-  Future<void> _showSavedEvidence(
-    String url,
-    Map<String, dynamic> evidence,
-    String task,
-  ) {
-    final date =
-        '${evidence['created_at'] ?? evidence['uploaded_at'] ?? ''}'.trim();
-    return showDialog<void>(
-      context: context,
-      builder:
-          (context) => Dialog(
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      task,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    if (date.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(date),
-                      ),
-                    const SizedBox(height: 12),
-                    Flexible(
-                      child: InteractiveViewer(
-                        child: Image.network(
-                          url,
-                          fit: BoxFit.contain,
-                          errorBuilder:
-                              (_, _, _) => const Padding(
-                                padding: EdgeInsets.all(32),
-                                child: Text(
-                                  'No pudimos mostrar esta fotografía.',
-                                ),
-                              ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cerrar'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-    );
   }
 
   Future<void> _showReport({String actionId = 'submit_report'}) async {
@@ -2559,14 +2414,11 @@ class _CrewOperationViewState extends State<CrewOperationView> {
     final scheme = theme.colorScheme;
     final checklistType = '${checklist['type'] ?? ''}';
     final itemId = '${item['id'] ?? ''}';
-    final evidence = _list(item['evidence_files']);
     final failed = _token(item['status']) == 'failed';
     final completeActionId = 'checklist:$checklistType:$itemId:completed';
     final noApplyActionId = 'checklist:$checklistType:$itemId:not_applicable';
     final failureActionId = 'failure:$checklistType:$itemId';
     final noteActionId = 'note:$checklistType:$itemId';
-    final cameraActionId = 'evidence:$checklistType:$itemId:camera';
-    final galleryActionId = 'evidence:$checklistType:$itemId:gallery';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2603,7 +2455,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             Expanded(
               child: FilledButton.icon(
                 onPressed:
-                    _saving
+                    (_saving ||
+                            !(_workflow['editable_checklists'] is List &&
+                                (_workflow['editable_checklists'] as List)
+                                    .contains(checklistType)))
                         ? null
                         : () => _saveChecklistItem(
                           checklist: checklist,
@@ -2636,7 +2491,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed:
-                    _saving
+                    (_saving ||
+                            !(_workflow['editable_checklists'] is List &&
+                                (_workflow['editable_checklists'] as List)
+                                    .contains(checklistType)))
                         ? null
                         : () => _saveChecklistItem(
                           checklist: checklist,
@@ -2675,7 +2533,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed:
-                    _saving
+                    (_saving ||
+                            !(_workflow['editable_checklists'] is List &&
+                                (_workflow['editable_checklists'] as List)
+                                    .contains(checklistType)))
                         ? null
                         : () => _reportChecklistFailure(
                           checklist,
@@ -2709,7 +2570,10 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed:
-                    _saving
+                    (_saving ||
+                            !(_workflow['editable_checklists'] is List &&
+                                (_workflow['editable_checklists'] as List)
+                                    .contains(checklistType)))
                         ? null
                         : () =>
                             _editItem(checklist, item, actionId: noteActionId),
@@ -2738,166 +2602,6 @@ class _CrewOperationViewState extends State<CrewOperationView> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        Text(
-          'Evidencia',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed:
-                    _saving
-                        ? null
-                        : () => _pickEvidence(
-                          checklist,
-                          item,
-                          ImageSource.camera,
-                          actionId: cameraActionId,
-                        ),
-                icon: _buttonIcon(
-                  Icons.camera_alt_rounded,
-                  busy: _isBusyAction(cameraActionId),
-                  color: scheme.primary,
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: Colors.white,
-                  foregroundColor: _brandBlue,
-                  side: BorderSide(color: _brandBlue.withValues(alpha: 0.45)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                label: Text(
-                  _buttonLabel(
-                    'Tomar foto',
-                    busy: _isBusyAction(cameraActionId),
-                    busyLabel: 'Subiendo...',
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed:
-                    _saving
-                        ? null
-                        : () => _pickEvidence(
-                          checklist,
-                          item,
-                          ImageSource.gallery,
-                          actionId: galleryActionId,
-                        ),
-                icon: _buttonIcon(
-                  Icons.photo_library_rounded,
-                  busy: _isBusyAction(galleryActionId),
-                  color: scheme.primary,
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: Colors.white,
-                  foregroundColor: _brandBlue,
-                  side: BorderSide(color: _brandBlue.withValues(alpha: 0.45)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                label: Text(
-                  _buttonLabel(
-                    'Galería',
-                    busy: _isBusyAction(galleryActionId),
-                    busyLabel: 'Subiendo...',
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (evidence.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text(
-            'Evidencias adjuntas',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Column(
-            children:
-                evidence.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final file = entry.value;
-                  final url = _evidenceUrl(file);
-                  final name =
-                      '${file['original_name'] ?? file['name'] ?? file['file_path'] ?? 'evidencia_${index + 1}'}';
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == evidence.length - 1 ? 0 : 8,
-                    ),
-                    child: InkWell(
-                      onTap:
-                          url.isEmpty
-                              ? null
-                              : () => _showSavedEvidence(url, file, name),
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: _canvas,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: _line),
-                        ),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                width: 52,
-                                height: 52,
-                                color: _skyBlue,
-                                child:
-                                    url.isEmpty
-                                        ? const Icon(Icons.image_rounded)
-                                        : Image.network(
-                                          url,
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (_, _, _) => const Icon(
-                                                Icons.broken_image_outlined,
-                                              ),
-                                        ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                name.split('/').last,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: _textMuted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-          ),
-        ],
       ],
     );
   }
@@ -3103,7 +2807,7 @@ class _CrewOperationViewState extends State<CrewOperationView> {
       checklist: _postflightChecklist,
       summary: _postflightSummary,
       footer:
-          _postflightSummary.isComplete
+          _postflightSummary.isComplete && crewEvidenceCount(_workflow) == 3
               ? 'Checklist completo. Ya puedes continuar al cierre de la operación.'
               : 'Completa el checklist post-vuelo para habilitar el cierre.',
     );
@@ -3442,6 +3146,23 @@ class _CrewOperationViewState extends State<CrewOperationView> {
                   _stepper(),
                   const SizedBox(height: 16),
                   KeyedSubtree(key: _stepContentKey, child: _stepContent()),
+                  const SizedBox(height: 16),
+                  _sectionCard(
+                    children: [
+                      CrewEvidencePanel(
+                        key: _evidenceKey,
+                        workflow: _workflow,
+                        operationId: widget.assignment.resolvedOperationId,
+                        api: _api,
+                        busy: _saving,
+                        onBusyChanged: (value) => _setSavingState(value),
+                        reload: () async {
+                          await _load(propagateErrors: true);
+                          return _workflow;
+                        },
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   _primaryActionBanner(),
                   const SizedBox(height: 16),

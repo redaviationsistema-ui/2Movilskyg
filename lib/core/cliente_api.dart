@@ -1331,13 +1331,101 @@ class ApiClient {
     required String checklistType,
     required String itemId,
     required File file,
-  }) {
-    return postMultipart(
-      '/sobrecargo/operations/$operationId/checklists/$checklistType/items/$itemId/evidence',
-      authenticated: true,
-      fields: const {},
-      files: {'file': file},
-    );
+  }) async {
+    // Inspect bytes: changing the extension does not convert HEIC into JPEG.
+    final bytes = await file.readAsBytes();
+    final jpeg =
+        bytes.length >= 3 &&
+        bytes[0] == 255 &&
+        bytes[1] == 216 &&
+        bytes[2] == 255;
+    final png =
+        bytes.length >= 8 &&
+        bytes.take(8).join(',') == '137,80,78,71,13,10,26,10';
+    final webp =
+        bytes.length >= 12 &&
+        String.fromCharCodes(bytes.take(4)) == 'RIFF' &&
+        String.fromCharCodes(bytes.skip(8).take(4)) == 'WEBP';
+    if (!jpeg && !png && !webp) {
+      throw ApiException(
+        'Formato incompatible. Selecciona una foto JPEG o PNG; convierte HEIC/HEIF a JPEG antes de subir.',
+      );
+    }
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw ApiException('La fotografía debe pesar como máximo 10 MB.');
+    }
+    if (operationId.isEmpty ||
+        itemId.isEmpty ||
+        !['preflight', 'postflight', 'preparation'].contains(checklistType)) {
+      throw ApiException(
+        'No se encontró el identificador real de la evidencia.',
+      );
+    }
+    final extension =
+        jpeg
+            ? 'jpg'
+            : png
+            ? 'png'
+            : 'webp';
+    final request =
+        http.MultipartRequest(
+            'POST',
+            _uri(
+              baseUrl,
+              '/sobrecargo/operations/$operationId/checklists/$checklistType/items/$itemId/evidence',
+              null,
+            ),
+          )
+          ..headers.addAll(_multipartHeaders(authenticated: true))
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'file',
+              bytes,
+              filename:
+                  '${path.basenameWithoutExtension(file.path)}.$extension',
+              contentType: MediaType('image', jpeg ? 'jpeg' : extension),
+            ),
+          );
+    late http.Response response;
+    try {
+      final streamed = await _httpClient
+          .send(request)
+          .timeout(_multipartTimeout);
+      response = await http.Response.fromStream(
+        streamed,
+      ).timeout(_multipartTimeout);
+    } on TimeoutException catch (error) {
+      throw ApiException(
+        'La carga de la evidencia excedió el tiempo de espera. Intenta nuevamente.',
+        cause: error,
+      );
+    } on SocketException catch (error) {
+      throw ApiException(
+        'No fue posible conectar para subir la evidencia. Revisa tu conexión.',
+        cause: error,
+      );
+    } on http.ClientException catch (error) {
+      throw ApiException(
+        'Se interrumpió la carga de la evidencia. Intenta nuevamente.',
+        cause: error,
+      );
+    }
+    late Map<String, dynamic> decoded;
+    try {
+      decoded = _decode(response, baseUrl);
+    } on ApiException catch (error) {
+      throw ApiException(
+        'No fue posible subir la evidencia. Intenta nuevamente.',
+        statusCode: error.statusCode,
+        cause: error,
+      );
+    }
+    if (response.statusCode != 201) {
+      throw ApiException(
+        'El servidor no confirmó el registro de la evidencia (HTTP ${response.statusCode}).',
+      );
+    }
+    return decoded;
   }
 
   Future<Map<String, dynamic>> submitCrewFinalReport({
