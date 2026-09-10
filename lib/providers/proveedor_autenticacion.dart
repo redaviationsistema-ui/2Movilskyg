@@ -557,14 +557,15 @@ class AuthProvider extends ChangeNotifier {
     }
 
     if (expectsIdentityValidation) {
-      final identityStatus = _firstNonEmptyString([
-        user['identity_verification_status'],
-        user['identity_status'],
-        profile['identity_verification_status'],
-        profile['identity_status'],
-        data['identity_verification_status'],
-        data['identity_status'],
-      ]).toLowerCase();
+      final identityStatus =
+          _firstNonEmptyString([
+            user['identity_verification_status'],
+            user['identity_status'],
+            profile['identity_verification_status'],
+            profile['identity_status'],
+            data['identity_verification_status'],
+            data['identity_status'],
+          ]).toLowerCase();
       final identityValidationRequired =
           _isTruthy(profile['identity_validation_required']) ||
           _isTruthy(profile['requires_identity_validation']) ||

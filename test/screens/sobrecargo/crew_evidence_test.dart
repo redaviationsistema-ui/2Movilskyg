@@ -21,25 +21,28 @@ Map<String, dynamic> payload(
   'editable_evidence': editable ? crewEvidenceLabels.keys.toList() : [],
   'editable_checklists': [],
   'checklists': [
-    for (var i = 0; i < 3; i++)
+    for (final type in ['preflight', 'postflight'])
       {
-        'type': i < 2 ? 'preflight' : 'postflight',
+        'id': type == 'preflight' ? 1 : 2,
+        'type': type,
         'items': [
-          {
-            'id': 41 + i * 7,
-            'code': crewEvidenceLabels.keys.elementAt(i),
-            'evidence_files':
-                i < count
-                    ? [
-                      {
-                        'storage_disk': 's3',
-                        'file_path': path,
-                        'file_url': 'https://example.test/$path',
-                        'size': 100,
-                      },
-                    ]
-                    : null,
-          },
+          for (var i = 0; i < 3; i++)
+            if ((i < 2) == (type == 'preflight'))
+              {
+                'id': 41 + i * 7,
+                'code': crewEvidenceLabels.keys.elementAt(i),
+                'evidence_files':
+                    i < count
+                        ? [
+                          <String, dynamic>{
+                            'storage_disk': 's3',
+                            'file_path': path,
+                            'file_url': 'https://example.test/$path',
+                            'size': 100,
+                          },
+                        ]
+                        : null,
+              },
         ],
       },
   ],
@@ -113,6 +116,104 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets(
+    'persisted evidence shows completed, filename, viewer and failure fallback',
+    (tester) async {
+      final api = ApiClient.forTesting(
+        baseUrl: 'https://example.test/api/v1',
+        httpClient: MockClient((_) async => http.Response('{}', 200)),
+      );
+      await mount(
+        tester,
+        workflow: payload(1),
+        api: api,
+        reload: () async => payload(1),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Completado'), findsOneWidget);
+      expect(find.text('old.jpg'), findsOneWidget);
+      expect(find.byKey(const ValueKey('saved-41-old.jpg')), findsOneWidget);
+      await tester.ensureVisible(find.text('Ver evidencia'));
+      await tester.tap(find.text('Ver evidencia'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(
+        find.textContaining('No se pudo cargar la evidencia'),
+        findsWidgets,
+      );
+      await tester.tap(find.text('Cerrar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('1/3'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'null URL and multiple files remain persisted without broken preview',
+    (tester) async {
+      final workflow = payload(1);
+      final files =
+          (workflow['checklists'] as List)[0]['items'][0]['evidence_files']
+              as List;
+      files[0]['file_url'] = null;
+      files.add({
+        'storage_disk': 's3',
+        'file_path': 'document.pdf',
+        'file_type': 'application/pdf',
+      });
+      final api = ApiClient.forTesting(
+        baseUrl: 'https://example.test/api/v1',
+        httpClient: MockClient((_) async => http.Response('{}', 200)),
+      );
+      await mount(
+        tester,
+        workflow: workflow,
+        api: api,
+        reload: () async => workflow,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1/3'), findsOneWidget);
+      expect(find.text('Vista previa no disponible'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'newest checklist wins regardless of response order and ignores wrong phase',
+    () {
+      final workflow = payload(0);
+      final old = payload(3)['checklists'] as List;
+      for (final group in old) {
+        group['id'] = 0;
+      }
+      (workflow['checklists'] as List).addAll(old);
+      expect(crewEvidenceCount(workflow), 0);
+    },
+  );
+
+  testWidgets('refresh renews workflow URLs without uploading', (tester) async {
+    var reloads = 0;
+    final api = ApiClient.forTesting(
+      baseUrl: 'https://example.test/api/v1',
+      httpClient: MockClient(
+        (_) async => throw StateError('Unexpected upload'),
+      ),
+    );
+    await mount(
+      tester,
+      workflow: payload(1),
+      api: api,
+      reload: () async {
+        reloads++;
+        return payload(1);
+      },
+    );
+    await tester.tap(find.text('Actualizar evidencias'));
+    await tester.pumpAndSettle();
+    expect(reloads, 1);
+    expect(find.text('1/3'), findsOneWidget);
+  });
 
   testWidgets('evidence grid switches columns at responsive breakpoints', (
     tester,

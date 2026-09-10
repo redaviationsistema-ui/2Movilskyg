@@ -21,7 +21,8 @@ class IdempotencyKey {
     // contiene datos personales ni depende de hashCode de Dart.
     var hash = 0xcbf29ce484222325;
     for (final byte
-        in '$normalizedOperation:$normalizedEntity:$normalizedScope'.codeUnits) {
+        in '$normalizedOperation:$normalizedEntity:$normalizedScope'
+            .codeUnits) {
       hash ^= byte;
       hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
     }

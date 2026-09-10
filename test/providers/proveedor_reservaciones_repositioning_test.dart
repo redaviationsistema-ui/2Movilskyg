@@ -263,7 +263,10 @@ void main() {
         await provider.previewCurrentSelection();
 
         expect(capturedPreviewPayload, isNotNull);
-        expect(capturedPreviewPayload!['flight_base_source'], 'pricing_trip_hours');
+        expect(
+          capturedPreviewPayload!['flight_base_source'],
+          'pricing_trip_hours',
+        );
         expect(capturedPreviewPayload!['trip_type'], 'round_trip');
         expect(capturedPreviewPayload!['close_route'], isTrue);
         expect(capturedPreviewPayload!['open_route'], isFalse);

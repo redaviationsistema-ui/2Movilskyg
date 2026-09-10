@@ -84,16 +84,18 @@ class CrewOperationFlowSnapshot {
   }) {
     final assignmentStatus = _token(workflow['assignment_status']);
     final workflowStatus = _token(workflow['status']);
-    final allowedActions = _mapList(workflow['allowed_actions'])
-        .map(CrewWorkflowAction.fromJson)
-        .where((action) => action.type.isNotEmpty)
-        .toList();
+    final allowedActions =
+        _mapList(workflow['allowed_actions'])
+            .map(CrewWorkflowAction.fromJson)
+            .where((action) => action.type.isNotEmpty)
+            .toList();
     final nextActionValue = workflow['next_action'];
-    final nextAction = nextActionValue is Map
-        ? CrewWorkflowAction.fromJson(
-            Map<String, dynamic>.from(nextActionValue),
-          )
-        : null;
+    final nextAction =
+        nextActionValue is Map
+            ? CrewWorkflowAction.fromJson(
+              Map<String, dynamic>.from(nextActionValue),
+            )
+            : null;
     final currentStep = _nullableToken(workflow['current_step']);
     final currentPhase = _nullableToken(workflow['current_phase']);
     final workflowInconsistent = workflow['workflow_inconsistent'] == true;
@@ -143,10 +145,11 @@ class CrewOperationFlowSnapshot {
         steps
             .firstWhere(
               (step) => step.status == 'current',
-              orElse: () => steps.lastWhere(
-                (step) => step.complete,
-                orElse: () => steps.first,
-              ),
+              orElse:
+                  () => steps.lastWhere(
+                    (step) => step.complete,
+                    orElse: () => steps.first,
+                  ),
             )
             .id;
 
@@ -234,15 +237,13 @@ class CrewOperationChecklistSummary {
     for (final checklist in checklists) {
       items.addAll(_mapList(checklist['items']));
     }
-    final requiredItems = items
-        .where((item) => item['is_required'] != false)
-        .toList();
+    final requiredItems =
+        items.where((item) => item['is_required'] != false).toList();
     final resolved = items.where(_isResolvedStatus).length;
     final handled = items.where(_isHandledStatus).length;
     final pending = items.length - handled;
-    final failed = items
-        .where((item) => _token(item['status']) == 'failed')
-        .length;
+    final failed =
+        items.where((item) => _token(item['status']) == 'failed').length;
     final requiredResolved = requiredItems.where(_isResolvedStatus).length;
 
     return CrewOperationChecklistSummary(
@@ -484,9 +485,10 @@ CrewOperationPrimaryAction _buildPrimaryAction({
       title: nextAction.label,
       detail: 'Registra el siguiente avance de tu operación.',
       cta: nextAction.label,
-      kind: nextAction.type == 'submit_report'
-          ? 'submit_report'
-          : 'workflow_action',
+      kind:
+          nextAction.type == 'submit_report'
+              ? 'submit_report'
+              : 'workflow_action',
       action: nextAction.toJson(),
     );
   }
@@ -521,48 +523,53 @@ List<CrewOperationTrackingMilestone> _buildTrackingMilestones(
   List<Map<String, dynamic>> trackingEvents,
   CrewWorkflowAction? nextAction,
 ) {
-  final milestones = _trackingDefinitions.map((definition) {
-    Map<String, dynamic>? event;
-    for (final entry in trackingEvents.reversed) {
-      final title = _token(entry['title']);
-      final status = _token(entry['status']);
-      final matchesTitle = definition.titleIncludes.any(
-        (value) => title.contains(_token(value)),
-      );
-      final matchesStatus = definition.statuses.any(
-        (value) => status.contains(_token(value)),
-      );
-      if (matchesTitle || matchesStatus) {
-        event = entry;
-        break;
-      }
-    }
+  final milestones =
+      _trackingDefinitions.map((definition) {
+        Map<String, dynamic>? event;
+        for (final entry in trackingEvents.reversed) {
+          final title = _token(entry['title']);
+          final status = _token(entry['status']);
+          final matchesTitle = definition.titleIncludes.any(
+            (value) => title.contains(_token(value)),
+          );
+          final matchesStatus = definition.statuses.any(
+            (value) => status.contains(_token(value)),
+          );
+          if (matchesTitle || matchesStatus) {
+            event = entry;
+            break;
+          }
+        }
 
-    return CrewOperationTrackingMilestone(
-      id: definition.id,
-      label: definition.label,
-      detail: definition.detail,
-      state: event == null ? 'pending' : 'completed',
-      timestamp: event == null
-          ? ''
-          : '${event['created_at'] ?? event['updated_at'] ?? ''}'.trim(),
-      action:
-          nextAction != null && definition.actionMatcher(nextAction.toJson())
-          ? nextAction.toJson()
-          : null,
-    );
-  }).toList();
+        return CrewOperationTrackingMilestone(
+          id: definition.id,
+          label: definition.label,
+          detail: definition.detail,
+          state: event == null ? 'pending' : 'completed',
+          timestamp:
+              event == null
+                  ? ''
+                  : '${event['created_at'] ?? event['updated_at'] ?? ''}'
+                      .trim(),
+          action:
+              nextAction != null &&
+                      definition.actionMatcher(nextAction.toJson())
+                  ? nextAction.toJson()
+                  : null,
+        );
+      }).toList();
 
   final firstPending = milestones.indexWhere(
     (item) => item.state != 'completed',
   );
   return milestones.asMap().entries.map((entry) {
     final item = entry.value;
-    final state = item.state == 'completed'
-        ? 'completed'
-        : entry.key == firstPending
-        ? 'current'
-        : 'pending';
+    final state =
+        item.state == 'completed'
+            ? 'completed'
+            : entry.key == firstPending
+            ? 'current'
+            : 'pending';
     return CrewOperationTrackingMilestone(
       id: item.id,
       label: item.label,

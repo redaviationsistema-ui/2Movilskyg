@@ -148,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                   (_) => PasswordRecoveryScreen(
                                                     email:
                                                         _emailController.text
-                                                    .trim(),
+                                                            .trim(),
                                                   ),
                                             ),
                                           ),

@@ -161,28 +161,33 @@ class _BackgroundLayer extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF04101D),
-                Color(0xFF07111C),
-                Color(0xFF03070D),
-              ],
+              colors: [Color(0xFF04101D), Color(0xFF07111C), Color(0xFF03070D)],
             ),
           ),
         ),
         Positioned(
           top: 120,
           right: -40,
-          child: _GlowOrb(color: _Palette.gold.withValues(alpha: .10), size: 220),
+          child: _GlowOrb(
+            color: _Palette.gold.withValues(alpha: .10),
+            size: 220,
+          ),
         ),
         Positioned(
           top: 280,
           left: -60,
-          child: _GlowOrb(color: _Palette.blue.withValues(alpha: .09), size: 240),
+          child: _GlowOrb(
+            color: _Palette.blue.withValues(alpha: .09),
+            size: 240,
+          ),
         ),
         Positioned(
           bottom: 120,
           right: -20,
-          child: _GlowOrb(color: Colors.white.withValues(alpha: .04), size: 200),
+          child: _GlowOrb(
+            color: Colors.white.withValues(alpha: .04),
+            size: 200,
+          ),
         ),
       ],
     );
@@ -409,10 +414,7 @@ class _RoleCardState extends State<_RoleCard> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                _Palette.surface,
-                _Palette.surfaceAlt,
-              ],
+              colors: [_Palette.surface, _Palette.surfaceAlt],
             ),
             border: Border.all(
               color:
@@ -480,17 +482,11 @@ class _RoleCardState extends State<_RoleCard> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  _ArrowCircle(
-                    color: widget.accent,
-                    filled: widget.selected,
-                  ),
+                  _ArrowCircle(color: widget.accent, filled: widget.selected),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                height: 1,
-                color: Colors.white.withValues(alpha: .06),
-              ),
+              Container(height: 1, color: Colors.white.withValues(alpha: .06)),
               const SizedBox(height: 12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,7 +633,9 @@ class _SelectRoleButton extends StatelessWidget {
                       color: Colors.white.withValues(alpha: .06),
                     ),
                     child: Icon(
-                      selected ? Icons.check_rounded : Icons.chevron_right_rounded,
+                      selected
+                          ? Icons.check_rounded
+                          : Icons.chevron_right_rounded,
                       color: color,
                     ),
                   ),
@@ -709,16 +707,25 @@ class _SecurityCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
                   color: _Palette.green.withValues(alpha: .10),
-                  border: Border.all(color: _Palette.green.withValues(alpha: .35)),
+                  border: Border.all(
+                    color: _Palette.green.withValues(alpha: .35),
+                  ),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.lock_rounded, color: _Palette.greenSoft, size: 16),
+                    Icon(
+                      Icons.lock_rounded,
+                      color: _Palette.greenSoft,
+                      size: 16,
+                    ),
                     SizedBox(width: 6),
                     Text(
                       '100% seguro',
@@ -752,12 +759,11 @@ class _BottomContinueBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = selectedRole != null;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    final title =
-        switch (selectedRole) {
-          _RegisterRole.client => 'Cliente',
-          _RegisterRole.crew => 'Sobrecargo',
-          null => 'Selecciona un perfil',
-        };
+    final title = switch (selectedRole) {
+      _RegisterRole.client => 'Cliente',
+      _RegisterRole.crew => 'Sobrecargo',
+      null => 'Selecciona un perfil',
+    };
     final subtitle =
         enabled
             ? 'Listo para continuar con tu registro.'
@@ -841,7 +847,9 @@ class _BottomContinueBar extends StatelessWidget {
                       backgroundColor: Colors.transparent,
                       disabledBackgroundColor: Colors.transparent,
                       foregroundColor:
-                          enabled ? const Color(0xFF11161D) : _Palette.textMuted,
+                          enabled
+                              ? const Color(0xFF11161D)
+                              : _Palette.textMuted,
                       shadowColor: Colors.transparent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(22),

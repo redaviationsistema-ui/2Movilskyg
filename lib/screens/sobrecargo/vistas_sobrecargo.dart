@@ -2923,8 +2923,6 @@ class _MissionSelectorStrip extends StatelessWidget {
 class _MissionHero extends StatelessWidget {
   const _MissionHero({required this.assignment});
 
-  static const Color _night = Color(0xFF063B6B);
-  static const Color _blue = Color(0xFF0B63C7);
   static const Color _text = CrewColors.textPrimary;
   static const Color _muted = CrewColors.textSecondary;
   static const Color _line = CrewColors.line;
@@ -3002,7 +3000,7 @@ class _MissionHero extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [_night, _blue],
+            colors: [CrewColors.navy, CrewColors.navySecondary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

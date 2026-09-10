@@ -35,18 +35,22 @@ class CrewEvidenceSlot {
 }
 
 List<CrewEvidenceSlot> crewEvidenceSlots(Map<String, dynamic> workflow) {
-  final slots = <String, CrewEvidenceSlot>{};
-  for (final checklist in evidenceMaps(workflow['checklists'])) {
-    for (final item in evidenceMaps(checklist['items'])) {
-      final code = '${item['code']}';
-      if (crewEvidenceLabels.containsKey(code)) {
-        slots[code] = CrewEvidenceSlot('${checklist['type']}', item);
-      }
-    }
-  }
+  final checklists = evidenceMaps(workflow['checklists'])..sort(
+    (a, b) => (int.tryParse('${b['id']}') ?? 0).compareTo(
+      int.tryParse('${a['id']}') ?? 0,
+    ),
+  );
   return [
     for (final code in crewEvidenceLabels.keys)
-      if (slots[code] != null) slots[code]!,
+      ...() {
+        final type = code == 'cabin_condition' ? 'postflight' : 'preflight';
+        final groups = checklists.where((group) => group['type'] == type);
+        if (groups.isEmpty) return <CrewEvidenceSlot>[];
+        final items = evidenceMaps(
+          groups.first['items'],
+        ).where((item) => item['code'] == code);
+        return [if (items.isNotEmpty) CrewEvidenceSlot(type, items.first)];
+      }(),
   ];
 }
 
@@ -90,6 +94,29 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
   final Map<String, int> _pendingSizes = {};
   bool _busy = false;
   String _message = '';
+
+  Future<void> _refresh() async {
+    if (_busy || widget.busy) return;
+    setState(() {
+      _busy = true;
+      _message = '';
+    });
+    widget.onBusyChanged?.call(true);
+    try {
+      await widget.reload();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () =>
+              _message =
+                  'No se pudieron actualizar las evidencias. Intenta nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      widget.onBusyChanged?.call(false);
+    }
+  }
 
   Future<void> _select(CrewEvidenceSlot slot, ImageSource source) async {
     if (_busy || widget.busy) return;
@@ -212,6 +239,11 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
             ),
           ],
         ),
+        TextButton.icon(
+          onPressed: _busy || widget.busy ? null : _refresh,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Actualizar evidencias'),
+        ),
         const SizedBox(height: 16),
         if (_message.isNotEmpty)
           Padding(
@@ -306,7 +338,14 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
             );
     return primary
         ? FilledButton(onPressed: onPressed, child: child)
-        : OutlinedButton(onPressed: onPressed, child: child);
+        : OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: CrewColors.textPrimary,
+            side: const BorderSide(color: CrewColors.textPrimary),
+          ),
+          child: child,
+        );
   }
 
   Widget _card(CrewEvidenceSlot slot) {
@@ -318,11 +357,12 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
         hasLocal
             ? 'Pendiente de subir'
             : slot.persisted
-            ? 'Evidencia subida'
+            ? 'Completado'
             : 'Pendiente';
 
     return Card(
       key: ValueKey('evidence-card-${slot.code}'),
+      color: Colors.white,
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -357,54 +397,17 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
               ),
             ),
             const SizedBox(height: 16),
-            if (slot.persisted) ...[
-              for (final file in slot.files)
-                if ('${file['file_url'] ?? file['url'] ?? ''}'.isNotEmpty)
-                  _preview(
-                    key: 'saved-${slot.id}-${file['file_path']}',
-                    child: InkWell(
-                      onTap:
-                          () => showDialog<void>(
-                            context: context,
-                            builder:
-                                (context) => Dialog(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: InteractiveViewer(
-                                          child: Image.network(
-                                            '${file['file_url'] ?? file['url']}',
-                                            errorBuilder:
-                                                (_, _, _) => const Text(
-                                                  'No se pudo cargar la foto.',
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Cerrar'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                          ),
-                      child: Image.network(
-                        '${file['file_url'] ?? file['url']}',
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, _, _) => const Text(
-                              'No se pudo cargar la foto. Actualiza el vuelo para renovar su enlace.',
-                            ),
-                      ),
-                    ),
-                  )
-                else
-                  const Text(
-                    'Fotografía guardada; vista previa no disponible.',
+            if (slot.persisted)
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final file in slot.files) _savedFile(slot, file),
+                    ],
                   ),
-            ],
+                ),
+              ),
             if (local != null) ...[
               _preview(
                 key: 'pending-${slot.id}',
@@ -420,9 +423,15 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
                 _fileName(local),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: CrewColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              Text(_fileSize(_pendingSizes[slot.id])),
+              Text(
+                _fileSize(_pendingSizes[slot.id]),
+                style: const TextStyle(color: CrewColors.textSecondary),
+              ),
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder:
@@ -495,10 +504,11 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
                             ),
               ),
             ],
-            if (!hasLocal) ...[
+            if (!hasLocal && !slot.persisted) ...[
               const SizedBox(height: 8),
               const Text(
                 'Agrega una fotografía para completar este requisito.',
+                style: TextStyle(color: CrewColors.textSecondary),
               ),
             ],
             if (!hasLocal) ...[
@@ -529,6 +539,88 @@ class _CrewEvidencePanelState extends State<CrewEvidencePanel> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _savedFile(CrewEvidenceSlot slot, Map<String, dynamic> file) {
+    final rawUrl = '${file['file_url'] ?? file['url'] ?? ''}'.trim();
+    final uri = Uri.tryParse(rawUrl);
+    final url =
+        uri != null &&
+                (uri.scheme == 'https' || uri.scheme == 'http') &&
+                uri.host.isNotEmpty
+            ? rawUrl
+            : '';
+    final name =
+        '${file['original_name'] ?? file['filename'] ?? '${file['file_path'] ?? ''}'.split('/').last}';
+    final mime =
+        '${file['file_type'] ?? file['mime_type'] ?? ''}'.toLowerCase();
+    final isImage =
+        mime.startsWith('image/') ||
+        (mime.isEmpty &&
+            RegExp(
+              r'\.(jpe?g|png|webp|gif)$',
+              caseSensitive: false,
+            ).hasMatch(name));
+    Widget photo() =>
+        url.isEmpty || !isImage
+            ? const Center(child: Text('Vista previa no disponible'))
+            : Image.network(
+              url,
+              fit: BoxFit.contain,
+              loadingBuilder:
+                  (context, child, progress) =>
+                      progress == null
+                          ? child
+                          : const Center(child: CircularProgressIndicator()),
+              errorBuilder:
+                  (_, _, _) => const Center(
+                    child: Text(
+                      'No se pudo cargar la evidencia. Actualiza el vuelo para renovar su enlace.',
+                    ),
+                  ),
+            );
+    void open() {
+      showDialog<void>(
+        context: context,
+        builder:
+            (context) => Dialog(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * .8,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text('${crewEvidenceLabels[slot.code]} — $name'),
+                    ),
+                    Expanded(child: InteractiveViewer(child: photo())),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _preview(key: 'saved-${slot.id}-${file['file_path']}', child: photo()),
+        Text(
+          name.isEmpty ? 'Evidencia' : name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: CrewColors.textPrimary),
+        ),
+        TextButton(
+          onPressed: url.isEmpty ? null : open,
+          style: TextButton.styleFrom(foregroundColor: CrewColors.gold),
+          child: const Text('Ver evidencia'),
+        ),
+      ],
     );
   }
 

@@ -182,9 +182,7 @@ class _CrewNotificationsViewState extends State<CrewNotificationsView> {
             Expanded(
               child: Text(
                 '$_unread sin leer',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: Colors.black,
                 ),

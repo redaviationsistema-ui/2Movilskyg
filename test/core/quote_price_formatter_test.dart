@@ -25,12 +25,15 @@ void main() {
     expect(resolveDisplayedQuotePriceValue(quote), 14493);
   });
 
-  test('formatQuotePriceLabel formats backend amount like web/mobile cards', () {
-    final quote = <String, dynamic>{
-      'match_id': 'match-g450',
-      'pricing_breakdown': {'total_amount': 42960},
-    };
+  test(
+    'formatQuotePriceLabel formats backend amount like web/mobile cards',
+    () {
+      final quote = <String, dynamic>{
+        'match_id': 'match-g450',
+        'pricing_breakdown': {'total_amount': 42960},
+      };
 
-    expect(formatQuotePriceLabel(quote), 'USD42,960');
-  });
+      expect(formatQuotePriceLabel(quote), 'USD42,960');
+    },
+  );
 }
