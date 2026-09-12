@@ -203,20 +203,6 @@ class ApiClient {
         'ine_scan_status': ineScanStatus,
         'identity_verification_status': identityVerificationStatus,
         'identity_verification_message': identityVerificationMessage,
-        'identity_verified': identityVerified ? '1' : '0',
-        'face_detected': faceDetected ? '1' : '0',
-        'face_match_score': '',
-        'liveness_score': '',
-        'image_storage_score': biometricImageSaved ? '100' : '0',
-        'biometric_image_saved': biometricImageSaved ? '1' : '0',
-        'biometric_captured_at':
-            biometricCapturedAt.isEmpty
-                ? (selfieBiometric == null
-                    ? ''
-                    : DateTime.now().toIso8601String())
-                : biometricCapturedAt,
-        'biometric_provider': biometricProvider,
-        'biometric_template_type': biometricTemplateType,
         'biometric_version': 'v1',
         'faces_count': facesCount.toString(),
         'face_confidence': faceConfidence?.toString() ?? '',
@@ -294,16 +280,14 @@ class ApiClient {
     File? documentFront,
   }) {
     return postMultipartFirstAvailable(
-      const ['/auth/register', '/crew/register', '/sobrecargo/register'],
+      const ['/crew/register'],
       fields: {
         'name': name,
         'email': email,
         'phone': phone,
         'password': password,
         'password_confirmation': passwordConfirmation,
-        'role': 'provider',
-        'operational_role': 'sobrecargo',
-        'company_name': 'Red Aviation',
+        'role': 'sobrecargo',
         'base': base,
         'base_airport': baseAirportCode.isEmpty ? base : baseAirportCode,
         'birth_date': birthDate,
@@ -433,10 +417,7 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> getClientFlightRequests() async {
     ApiException? lastError;
 
-    for (final path in const [
-      '/client/flight-requests',
-      '/cliente/solicitudes',
-    ]) {
+    for (final path in const ['/client/flight-requests']) {
       try {
         final data = await get(path, authenticated: true);
         return _listFromPayload(data, const [
@@ -586,7 +567,7 @@ class ApiClient {
     Map<String, dynamic> extraBody = const {},
   }) {
     return postFirstAvailable(
-      const ['/client/flight-requests', '/cliente/solicitudes'],
+      const ['/client/flight-requests'],
       authenticated: true,
       body: {
         'origin': origin,
@@ -616,7 +597,7 @@ class ApiClient {
     Map<String, dynamic> payload,
   ) {
     return postFirstAvailable(
-      const ['/client/flight-requests', '/cliente/solicitudes'],
+      const ['/client/flight-requests'],
       authenticated: true,
       body: payload,
     );
@@ -700,8 +681,6 @@ class ApiClient {
       [
         '/cliente/reservas/$reservationId/contrato/firmar',
         '/client/reservations/$reservationId/contract/sign',
-        '/cliente/solicitudes/$reservationId/contrato/firmar',
-        '/client/flight-requests/$reservationId/contract/sign',
       ],
       authenticated: true,
       body: contractPayload,
@@ -712,8 +691,11 @@ class ApiClient {
     required String reservationId,
     String? flightRequestId,
     required Map<String, dynamic> contractPayload,
-  }) {
-    final normalizedReservationId = reservationId.trim();
+  }) async {
+    final normalizedReservationId = await ensureClientReservation(
+      flightRequestId: flightRequestId?.trim() ?? '',
+      existingReservationId: reservationId,
+    );
     final normalizedFlightRequestId = flightRequestId?.trim() ?? '';
     final paths = <String>[];
 
@@ -727,40 +709,20 @@ class ApiClient {
       addPath(
         '/client/reservations/$normalizedReservationId/contract/docusign',
       );
-      addPath('/cliente/reservas/$normalizedReservationId/contrato/enviar');
-      addPath('/client/reservations/$normalizedReservationId/contract/send');
-    }
-
-    if (normalizedFlightRequestId.isNotEmpty) {
-      // Some backends resolve reservation routes from flight_request_id.
-      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato/docusign');
-      addPath(
-        '/client/reservations/$normalizedFlightRequestId/contract/docusign',
-      );
-      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato/enviar');
-      addPath('/client/reservations/$normalizedFlightRequestId/contract/send');
-      addPath(
-        '/cliente/solicitudes/$normalizedFlightRequestId/contrato/docusign',
-      );
-      addPath(
-        '/client/flight-requests/$normalizedFlightRequestId/contract/docusign',
-      );
-      addPath(
-        '/cliente/solicitudes/$normalizedFlightRequestId/contrato/enviar',
-      );
-      addPath(
-        '/client/flight-requests/$normalizedFlightRequestId/contract/send',
-      );
     }
 
     final body = {
-      if (normalizedReservationId.isNotEmpty)
-        'reservation_id': normalizedReservationId,
       if (normalizedFlightRequestId.isNotEmpty)
         'flight_request_id': normalizedFlightRequestId,
-      if (normalizedReservationId.isNotEmpty)
-        'booking_id': normalizedReservationId,
-      ...contractPayload,
+      for (final field in [
+        'return_url',
+        'callback_url',
+        'return_path',
+        'regenerate',
+      ])
+        if (contractPayload.containsKey(field)) field: contractPayload[field],
+      'reservation_id': normalizedReservationId,
+      'booking_id': normalizedReservationId,
     };
 
     return () async {
@@ -817,35 +779,30 @@ class ApiClient {
   Future<Map<String, dynamic>> getClientContract({
     String reservationId = '',
     String flightRequestId = '',
-  }) {
-    final normalizedReservationId = reservationId.trim();
-    final normalizedFlightRequestId = flightRequestId.trim();
-    final paths = <String>[];
-
-    void addPath(String value) {
-      if (value.isEmpty || paths.contains(value)) return;
-      paths.add(value);
+  }) async {
+    var normalizedReservationId = reservationId.trim();
+    if (normalizedReservationId.isEmpty && flightRequestId.trim().isNotEmpty) {
+      final payload = await getFirstAvailable([
+        '/client/flight-requests/${flightRequestId.trim()}',
+      ], authenticated: true);
+      final flightRequest = payload['flight_request'];
+      if (flightRequest is Map) {
+        final reservation = flightRequest['reservation'];
+        normalizedReservationId =
+            reservation is Map
+                ? (reservation['id']?.toString().trim() ?? '')
+                : (flightRequest['reservation_id']?.toString().trim() ?? '');
+      }
     }
-
-    if (normalizedReservationId.isNotEmpty) {
-      addPath('/cliente/reservas/$normalizedReservationId/contrato');
-      addPath('/client/reservations/$normalizedReservationId/contract');
-    }
-
-    if (normalizedFlightRequestId.isNotEmpty) {
-      addPath('/cliente/solicitudes/$normalizedFlightRequestId/contrato');
-      addPath('/client/flight-requests/$normalizedFlightRequestId/contract');
-      addPath('/cliente/reservas/$normalizedFlightRequestId/contrato');
-      addPath('/client/reservations/$normalizedFlightRequestId/contract');
-    }
-
-    if (paths.isEmpty) {
+    if (normalizedReservationId.isEmpty) {
       throw const ApiException(
-        'No se encontro un identificador valido para consultar el contrato.',
+        'La solicitud aun no tiene una reserva asociada.',
       );
     }
-
-    return getFirstAvailable(paths, authenticated: true);
+    return getFirstAvailable([
+      '/cliente/reservas/$normalizedReservationId/contrato',
+      '/client/reservations/$normalizedReservationId/contract',
+    ], authenticated: true);
   }
 
   Future<Uint8List> downloadClientContractPdf(String reservationId) {
@@ -855,7 +812,6 @@ class ApiClient {
       '/cliente/reservas/$reservationId/contrato/descargar',
       '/client/reservations/$reservationId/contract/pdf',
       '/client/reservations/$reservationId/contract/download',
-      '/client/flight-requests/$reservationId/contract/pdf',
     ], authenticated: true);
   }
 

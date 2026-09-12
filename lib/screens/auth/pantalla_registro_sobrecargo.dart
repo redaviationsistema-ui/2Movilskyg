@@ -520,6 +520,9 @@ class _CrewRegisterScreenState extends State<CrewRegisterScreen> {
     }
 
     final auth = context.read<AuthProvider>();
+    _showMessage(
+      'Cuenta creada. Solicitud de sobrecargo pendiente de autorización.',
+    );
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => MarketplaceHomeScreen(role: auth.role)),
       (route) => false,

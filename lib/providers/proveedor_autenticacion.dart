@@ -50,6 +50,20 @@ class AuthProvider extends ChangeNotifier {
       (_userPayload?['email_verified_at']?.toString().isNotEmpty ?? false);
   bool get isBootstrapping => bootstrapState == SessionBootstrapState.checking;
 
+  String get identityStatus =>
+      _userPayload?['identity_verification_status']?.toString() ?? 'pending';
+
+  String get registrationIdentityMessage {
+    switch (identityStatus) {
+      case 'approved':
+        return 'Cuenta creada. Identidad aprobada.';
+      case 'rejected':
+        return 'Cuenta creada. Identidad rechazada; requiere revisión.';
+      default:
+        return 'Cuenta creada. Identidad pendiente de revisión.';
+    }
+  }
+
   String get displayName {
     if (_user?.companyName.isNotEmpty == true) {
       return _user!.companyName;
@@ -599,9 +613,14 @@ class AuthProvider extends ChangeNotifier {
           user['biometric_selfie_url']?.toString().trim() ??
           '';
 
-      if (status != 'approved') {
+      if (!const {
+        'pending',
+        'review_required',
+        'approved',
+        'rejected',
+      }.contains(status)) {
         throw const ApiException(
-          'El backend no confirmo una selfie biometrica aprobada al cerrar el registro.',
+          'El backend no devolvio un estado de identidad reconocido.',
         );
       }
       if (!imageSaved) {

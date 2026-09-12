@@ -214,9 +214,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
   bool get _isSelfieBusy => _processingSelfie || _validatingSelfie;
 
   bool get _isSelfieValidationConfirmed =>
-      _selfieHasFace &&
-      _biometricImageSaved &&
-      _identityVerificationStatus.trim().toLowerCase() == 'approved';
+      _selfieHasFace && _biometricImageSaved;
 
   Future<void> _pickIneFront() async {
     if (_isDocumentBusy) return;
@@ -804,9 +802,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       if (!mounted) return;
       final quality = _map(result['quality']);
       final pose = _map(result['pose']);
-      final verified = _asBool(
-        result['identityVerified'] ?? result['identity_verified'],
-      );
+      final captureAccepted = _asBool(result['captureAccepted']);
       final detected = _asBool(
         result['faceDetected'] ?? result['face_detected'],
       );
@@ -817,13 +813,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
                   '')
               .toString()
               .trim();
-      final approved =
-          verified &&
-          detected &&
-          selfieReadyForRegistration &&
-          status.toLowerCase() == 'approved';
+      final captureReady =
+          captureAccepted && detected && selfieReadyForRegistration;
       setState(() {
-        _selfieHasFace = approved;
+        _selfieHasFace = captureReady;
         _facesCount = _asInt(result['facesCount'] ?? result['faces_count']);
         _faceConfidence = _asDouble(
           result['faceConfidence'] ?? result['face_confidence'],
@@ -855,7 +848,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
         _identityVerificationStatus = status.isEmpty ? 'rejected' : status;
         _identityVerificationMessage =
             (result['message'] ??
-                    (approved
+                    (captureReady
                         ? 'Rostro validado correctamente.'
                         : 'La selfie fue analizada, pero no quedo aprobada.'))
                 .toString();
@@ -1122,7 +1115,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       ineScanStatus: _ineScanStatus,
       identityVerificationStatus: _identityVerificationStatus,
       identityVerificationMessage: _identityVerificationMessage,
-      identityVerified: _selfieHasFace,
+      identityVerified: false,
       faceDetected: _selfieHasFace,
       facesCount: _facesCount,
       faceConfidence: _faceConfidence,
@@ -1160,6 +1153,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen>
       _submissionStatusMessage = '';
     });
     final auth = context.read<AuthProvider>();
+    _showMessage(auth.registrationIdentityMessage);
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => MarketplaceHomeScreen(role: auth.role)),
       (route) => false,
