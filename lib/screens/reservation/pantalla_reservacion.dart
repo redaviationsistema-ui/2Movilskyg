@@ -72,67 +72,67 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final suggestedAirports = _suggestedAirports(reservation);
     final commercialState = resolveCommercialAccessState(auth.accessData);
 
-    return ClientMobileScreenShell(
-      welcomeTitle: 'Hola ${_firstName(auth.displayName)} 👋',
-      welcomeSubtitle: 'Listo para tu proximo vuelo',
-      onSignOut: auth.signOut,
-      child: ReservationScreenContent(
-        reservation: reservation,
-        primaryRoute: primaryRoute,
-        suggestedAirports: suggestedAirports,
-        dateFormat: _dateFormat,
-        tripType: _tripType,
-        departureTime: _departureTime,
-        returnDate: _returnDate,
-        returnTime: _returnTime,
-        commercialState: commercialState,
-        onTodayTrip: () => _applyTodayPreset(reservation),
-        onRoundTrip: () => _applyRoundTripPreset(reservation),
-        onMultiCity: () => _applyMultiCityPreset(reservation),
-        onOpenMembership: _openMembershipCenter,
-        onTripTypeChanged: (value) {
-          setState(() {
-            _tripType = value;
-            if (value != 'Ida y vuelta') {
-              _returnDate = null;
-              _returnTime = null;
-            }
-          });
-          reservation.setBookingTripLabel(value);
-          _normalizeRoutesForMode(reservation);
-        },
-        onPickOrigin:
-            () => _pickAirport(
-              title: 'Selecciona origen',
-              onSelected: (airport) => reservation.setFromAirport(0, airport),
-            ),
-        onPickDestination:
-            () => _pickAirport(
-              title: 'Selecciona destino',
-              onSelected: (airport) => reservation.setToAirport(0, airport),
-            ),
-        onPickPrimaryDate: () => _pickDateForRoute(reservation, 0),
-        onPickDepartureTime: _pickDepartureTime,
-        onPickReturnDate: _pickReturnDate,
-        onPickReturnTime: _pickReturnTime,
-        onPassengerChanged: reservation.setGlobalPassengers,
-        onPickRouteOrigin:
-            (index) => _pickAirport(
-              title: 'Origen tramo ${index + 1}',
-              onSelected:
-                  (airport) => reservation.setFromAirport(index, airport),
-            ),
-        onPickRouteDestination:
-            (index) => _pickAirport(
-              title: 'Destino tramo ${index + 1}',
-              onSelected: (airport) => reservation.setToAirport(index, airport),
-            ),
-        onPickRouteDate: (index) => _pickDateForRoute(reservation, index),
-        onRemoveRoute: reservation.removeRoute,
-        onAddRoute: reservation.addRoute,
-        onApplySuggestedDestination:
-            (airport) => _applySuggestedDestination(reservation, airport),
-        onPreview: () => _handlePreview(reservation),
+    return _ReservationReveal(
+      child: ClientMobileScreenShell(
+        welcomeTitle: 'Hola ${_firstName(auth.displayName)} 👋',
+        welcomeSubtitle: 'Listo para tu proximo vuelo',
+        onSignOut: auth.signOut,
+        child: ReservationScreenContent(
+          reservation: reservation,
+          primaryRoute: primaryRoute,
+          suggestedAirports: suggestedAirports,
+          dateFormat: _dateFormat,
+          tripType: _tripType,
+          departureTime: _departureTime,
+          returnDate: _returnDate,
+          returnTime: _returnTime,
+          commercialState: commercialState,
+          onOpenMembership: _openMembershipCenter,
+          onTripTypeChanged: (value) {
+            setState(() {
+              _tripType = value;
+              if (value != 'Ida y vuelta') {
+                _returnDate = null;
+                _returnTime = null;
+              }
+            });
+            reservation.setBookingTripLabel(value);
+            _normalizeRoutesForMode(reservation);
+          },
+          onPickOrigin:
+              () => _pickAirport(
+                title: 'Selecciona origen',
+                onSelected: (airport) => reservation.setFromAirport(0, airport),
+              ),
+          onPickDestination:
+              () => _pickAirport(
+                title: 'Selecciona destino',
+                onSelected: (airport) => reservation.setToAirport(0, airport),
+              ),
+          onPickPrimaryDate: () => _pickDateForRoute(reservation, 0),
+          onPickDepartureTime: _pickDepartureTime,
+          onPickReturnDate: _pickReturnDate,
+          onPickReturnTime: _pickReturnTime,
+          onPassengerChanged: reservation.setGlobalPassengers,
+          onPickRouteOrigin:
+              (index) => _pickAirport(
+                title: 'Origen tramo ${index + 1}',
+                onSelected:
+                    (airport) => reservation.setFromAirport(index, airport),
+              ),
+          onPickRouteDestination:
+              (index) => _pickAirport(
+                title: 'Destino tramo ${index + 1}',
+                onSelected:
+                    (airport) => reservation.setToAirport(index, airport),
+              ),
+          onPickRouteDate: (index) => _pickDateForRoute(reservation, index),
+          onRemoveRoute: reservation.removeRoute,
+          onAddRoute: reservation.addRoute,
+          onApplySuggestedDestination:
+              (airport) => _applySuggestedDestination(reservation, airport),
+          onPreview: () => _handlePreview(reservation),
+        ),
       ),
     );
   }
@@ -322,56 +322,6 @@ class _ReservationScreenState extends State<ReservationScreen> {
     return [...prioritized, ...fallback];
   }
 
-  void _applyTodayPreset(ReservationProvider reservation) {
-    final now = DateTime.now();
-    final departure = DateTime(now.year, now.month, now.day, now.hour + 2);
-    setState(() {
-      _tripType = 'Solo ida';
-      _departureTime = TimeOfDay.fromDateTime(departure);
-      _returnDate = null;
-      _returnTime = null;
-    });
-    reservation.setBookingTripLabel('Solo ida');
-    reservation.setGlobalStartDate(departure);
-    reservation.setStartDate(0, departure);
-    _normalizeRoutesForMode(reservation);
-    _showMessage('Listo para una salida hoy con respuesta rapida.');
-  }
-
-  void _applyRoundTripPreset(ReservationProvider reservation) {
-    final departureDate =
-        reservation.routes.first.startDate ??
-        reservation.startDate ??
-        DateTime.now().add(const Duration(days: 1));
-    setState(() {
-      _tripType = 'Ida y vuelta';
-      _departureTime ??= const TimeOfDay(hour: 9, minute: 0);
-      _returnDate = DateTime(
-        departureDate.year,
-        departureDate.month,
-        departureDate.day,
-      ).add(const Duration(days: 1));
-      _returnTime ??= const TimeOfDay(hour: 17, minute: 0);
-    });
-    reservation.setBookingTripLabel('Ida y vuelta');
-    _normalizeRoutesForMode(reservation);
-    _showMessage('Configuramos un viaje redondo para cerrar el itinerario.');
-  }
-
-  void _applyMultiCityPreset(ReservationProvider reservation) {
-    setState(() {
-      _tripType = 'Multidestino';
-      _returnDate = null;
-      _returnTime = null;
-    });
-    reservation.setBookingTripLabel('Multidestino');
-    _normalizeRoutesForMode(reservation);
-    if (reservation.routes.length < 2) {
-      reservation.addRoute();
-    }
-    _showMessage('Activa los tramos que necesites para una ruta especial.');
-  }
-
   void _applySuggestedDestination(
     ReservationProvider reservation,
     Airport airport,
@@ -525,5 +475,62 @@ class _ReservationScreenState extends State<ReservationScreen> {
           ),
         ),
       );
+  }
+}
+
+class _ReservationReveal extends StatefulWidget {
+  const _ReservationReveal({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ReservationReveal> createState() => _ReservationRevealState();
+}
+
+class _ReservationRevealState extends State<_ReservationReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
+    final curve = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _opacity = Tween<double>(begin: 0, end: 1).animate(curve);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, .035),
+      end: Offset.zero,
+    ).animate(curve);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.maybeDisableAnimationsOf(context) == true) {
+        _controller.value = 1;
+        return;
+      }
+      _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
+    );
   }
 }

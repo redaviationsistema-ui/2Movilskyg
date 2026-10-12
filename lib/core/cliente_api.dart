@@ -378,17 +378,19 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getClientDashboard() {
-    return getFirstAvailable(const [
-      '/cliente/dashboard',
-      '/client/dashboard',
-    ], authenticated: true);
+    return getFirstAvailable(
+      const ['/cliente/dashboard', '/client/dashboard'],
+      authenticated: true,
+      expireSessionOnUnauthorized: false,
+    );
   }
 
   Future<List<Map<String, dynamic>>> getReservations() async {
-    final data = await getFirstAvailable(const [
-      '/cliente/reservas',
-      '/client/reservations',
-    ], authenticated: true);
+    final data = await getFirstAvailable(
+      const ['/cliente/reservas', '/client/reservations'],
+      authenticated: true,
+      expireSessionOnUnauthorized: false,
+    );
     return _listFromPayload(data, const [
       'reservations',
       'reservas',
@@ -419,7 +421,11 @@ class ApiClient {
 
     for (final path in const ['/client/flight-requests']) {
       try {
-        final data = await get(path, authenticated: true);
+        final data = await get(
+          path,
+          authenticated: true,
+          expireSessionOnUnauthorized: false,
+        );
         return _listFromPayload(data, const [
           'flight_requests',
           'requests',
@@ -481,6 +487,7 @@ class ApiClient {
       final data = await get(
         '/client/aircraft',
         authenticated: true,
+        expireSessionOnUnauthorized: false,
         query: {
           if (origin != null && origin.trim().isNotEmpty)
             'origin': origin.trim().toUpperCase(),
@@ -1575,12 +1582,18 @@ class ApiClient {
     bool authenticated = false,
     Map<String, String>? query,
     Set<int>? fallbackStatusCodes,
+    bool expireSessionOnUnauthorized = true,
   }) async {
     ApiException? lastError;
 
     for (final path in paths) {
       try {
-        return await get(path, authenticated: authenticated, query: query);
+        return await get(
+          path,
+          authenticated: authenticated,
+          query: query,
+          expireSessionOnUnauthorized: expireSessionOnUnauthorized,
+        );
       } on ApiException catch (error) {
         if (!_shouldTryAlternative(error, fallbackStatusCodes)) rethrow;
         lastError = error;
@@ -1735,12 +1748,14 @@ class ApiClient {
     String path, {
     bool authenticated = false,
     Map<String, String>? query,
+    bool expireSessionOnUnauthorized = true,
   }) async {
     return _request(
       path,
       method: 'GET',
       authenticated: authenticated,
       query: query,
+      expireSessionOnUnauthorized: expireSessionOnUnauthorized,
     );
   }
 
@@ -1898,7 +1913,9 @@ class ApiClient {
     Map<String, dynamic>? body,
     Map<String, String>? query,
     Map<String, String>? headers,
+    bool expireSessionOnUnauthorized = true,
   }) async {
+    final stopwatch = Stopwatch()..start();
     final response = await _send(
       baseUrl,
       path,
@@ -1908,7 +1925,19 @@ class ApiClient {
       query: query,
       headers: headers,
     );
-    return _decode(response, baseUrl);
+    if (AppEnvironment.current.allowsDiagnosticLogs) {
+      debugPrint(
+        '[API response] method=$method path=$path status=${response.statusCode} elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
+    }
+    return _decode(
+      response,
+      baseUrl,
+      method: method,
+      path: path,
+      elapsed: stopwatch.elapsed,
+      expireSessionOnUnauthorized: expireSessionOnUnauthorized,
+    );
   }
 
   Future<http.Response> _send(
@@ -1984,6 +2013,11 @@ class ApiClient {
         cause: error,
       );
     } on SocketException catch (error) {
+      throw ApiException(
+        'No fue posible conectar con el servidor.',
+        cause: error,
+      );
+    } on http.ClientException catch (error) {
       throw ApiException(
         'No fue posible conectar con el servidor.',
         cause: error,
@@ -2065,8 +2099,12 @@ class ApiClient {
 
   Map<String, dynamic> _decode(
     http.Response response,
-    String candidateBaseUrl,
-  ) {
+    String candidateBaseUrl, {
+    String method = 'GET',
+    String path = '',
+    Duration? elapsed,
+    bool expireSessionOnUnauthorized = true,
+  }) {
     dynamic decodedRaw;
     try {
       decodedRaw =
@@ -2107,10 +2145,12 @@ class ApiClient {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (AppEnvironment.current.allowsDiagnosticLogs) {
         debugPrint(
-          '[API error] status=${response.statusCode} bodyPreview="${_debugPreviewBody(response.body)}"',
+          '[API error] method=$method path=$path status=${response.statusCode} elapsedMs=${elapsed?.inMilliseconds ?? -1} bodyPreview="${_debugPreviewBody(response.body)}"',
         );
       }
-      if (response.statusCode == 401 && _unauthorizedHandler != null) {
+      if (response.statusCode == 401 &&
+          expireSessionOnUnauthorized &&
+          _unauthorizedHandler != null) {
         unawaited(_unauthorizedHandler!.call());
       }
       throw ApiException(

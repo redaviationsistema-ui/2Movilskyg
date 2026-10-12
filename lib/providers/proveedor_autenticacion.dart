@@ -6,6 +6,7 @@ import '../core/acceso_comercial_cliente.dart';
 import '../core/auth/secure_session_storage.dart';
 import '../core/auth/session_cleanup_registry.dart';
 import '../core/cliente_api.dart';
+import '../core/config/app_environment.dart';
 import '../services/servicio_notificaciones.dart';
 
 enum AppUserRole { client, operator, admin, crew, unknown }
@@ -323,10 +324,12 @@ class AuthProvider extends ChangeNotifier {
     _bootstrapStarted = true;
     bootstrapState = SessionBootstrapState.checking;
     errorMessage = null;
+    _authDiagnostic('bootstrap start force=$force hasToken=${_api.hasToken}');
     notifyListeners();
 
     final token = await _sessionStorage.readToken();
     if (token == null || token.trim().isEmpty) {
+      _authDiagnostic('bootstrap no_persisted_token');
       await _clearLocalSession();
       bootstrapState = SessionBootstrapState.signedOut;
       notifyListeners();
@@ -338,8 +341,12 @@ class AuthProvider extends ChangeNotifier {
       final response = await _api.me();
       _storeSessionPayload(response, requireEffectiveRole: true);
       bootstrapState = SessionBootstrapState.authenticated;
+      _authDiagnostic('bootstrap authenticated role=$role');
       await PushNotificationsService.syncAuthenticatedDevice();
     } on ApiException catch (error) {
+      _authDiagnostic(
+        'bootstrap api_error status=${error.statusCode ?? 0} message=${error.message}',
+      );
       if (error.statusCode == 401) {
         await _clearLocalSession();
         bootstrapState = SessionBootstrapState.signedOut;
@@ -358,11 +365,13 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {
       bootstrapState = SessionBootstrapState.offline;
       errorMessage = 'No fue posible validar la sesión. Revisa tu conexión.';
+      _authDiagnostic('bootstrap unexpected_offline');
     }
     notifyListeners();
   }
 
   Future<void> _expireSession() async {
+    _authDiagnostic('expire_session unauthorized_handler');
     await _clearLocalSession();
     bootstrapState = SessionBootstrapState.signedOut;
     errorMessage = 'Tu sesión venció. Inicia sesión nuevamente.';
@@ -370,6 +379,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _clearLocalSession() async {
+    _authDiagnostic('clear_local_session');
     _api.setToken(null);
     await _sessionStorage.deleteToken();
     _user = null;
@@ -395,6 +405,9 @@ class AuthProvider extends ChangeNotifier {
       final response = await _api.me();
       _storeSessionPayload(response, requireEffectiveRole: true);
     } on ApiException catch (error) {
+      _authDiagnostic(
+        'loadUserRole api_error status=${error.statusCode ?? 0} message=${error.message}',
+      );
       if (error.statusCode == 401) await _expireSession();
       errorMessage = error.message;
     } finally {
@@ -417,10 +430,21 @@ class AuthProvider extends ChangeNotifier {
     if (!_api.hasToken) return;
 
     try {
+      _authDiagnostic('refreshCommercialAccessStatus start');
       final response = await _api.getClientAccessStatus();
       syncAccessState(response);
-    } catch (_) {
+      _authDiagnostic('refreshCommercialAccessStatus success');
+    } catch (error) {
+      _authDiagnostic(
+        'refreshCommercialAccessStatus ignored_error type=${error.runtimeType}',
+      );
       // El flujo cliente debe seguir mostrando el ultimo snapshot si el backend no responde.
+    }
+  }
+
+  void _authDiagnostic(String message) {
+    if (AppEnvironment.current.allowsDiagnosticLogs) {
+      debugPrint('[AUTH session] $message');
     }
   }
 

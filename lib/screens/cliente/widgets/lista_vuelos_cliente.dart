@@ -379,50 +379,65 @@ class _ClientFlightsListState extends State<ClientFlightsList>
             ),
             padding: EdgeInsets.fromLTRB(24, 18, 24, 34 + bottomInset),
             children: [
-              _PremiumFlightsHeader(
-                flightCount: allRequests.length,
-                showBackButton: widget.showBackButton,
-                onBack: () => Navigator.pop(context),
-                onNotifications:
-                    () => _showActionMessage('Sin notificaciones nuevas.'),
+              _FlightsReveal(
+                order: 0,
+                child: _PremiumFlightsHeader(
+                  flightCount: allRequests.length,
+                  showBackButton: widget.showBackButton,
+                  onBack: () => Navigator.pop(context),
+                  onNotifications:
+                      () => _showActionMessage('Sin notificaciones nuevas.'),
+                ),
               ),
               const SizedBox(height: 24),
-              _NextFlightHero(
-                request: nextFlight,
-                aircraftFleet: provider.aircraftFleet,
-                airportNames: _airportNames,
-                airportDetails: _airportDetails,
-                onTap:
-                    nextFlight == null
-                        ? widget.onOpenSearch
-                        : () => _openPrimaryFlightAction(
-                          provider,
-                          nextFlight,
-                          allowTracking: false,
-                        ),
+              _FlightsReveal(
+                order: 1,
+                child: _NextFlightHero(
+                  request: nextFlight,
+                  aircraftFleet: provider.aircraftFleet,
+                  airportNames: _airportNames,
+                  airportDetails: _airportDetails,
+                  onTap:
+                      nextFlight == null
+                          ? widget.onOpenSearch
+                          : () => _openPrimaryFlightAction(
+                            provider,
+                            nextFlight,
+                            allowTracking: false,
+                          ),
+                ),
               ),
               if (_shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
                 const SizedBox(height: 14),
-                _WorkspaceAlert(
-                  message: provider.workspaceMessage,
-                  loading: provider.isLoadingWorkspace,
-                  onRefresh:
-                      () => provider.loadClientWorkspaceData(force: true),
+                _FlightsReveal(
+                  order: 2,
+                  child: _WorkspaceAlert(
+                    message: provider.workspaceMessage,
+                    loading: provider.isLoadingWorkspace,
+                    onRefresh:
+                        () => provider.loadClientWorkspaceData(force: true),
+                  ),
                 ),
               ],
               const SizedBox(height: 22),
-              _PremiumTripTabs(
-                tabs: _availableTabs,
-                activeTab: _activeTab,
-                onChanged: (tab) => setState(() => _activeTab = tab),
+              _FlightsReveal(
+                order: 3,
+                child: _PremiumTripTabs(
+                  tabs: _availableTabs,
+                  activeTab: _activeTab,
+                  onChanged: (tab) => setState(() => _activeTab = tab),
+                ),
               ),
               const SizedBox(height: 22),
               if (provider.isLoadingWorkspace && allRequests.isEmpty)
-                const _MinimalLoadingCard()
+                const _FlightsReveal(order: 4, child: _MinimalLoadingCard())
               else if (filteredRequests.isEmpty)
-                _EmptyFlightsPanel(
-                  label: _activeTabLabel,
-                  onOpenSearch: widget.onOpenSearch,
+                _FlightsReveal(
+                  order: 4,
+                  child: _EmptyFlightsPanel(
+                    label: _activeTabLabel,
+                    onOpenSearch: widget.onOpenSearch,
+                  ),
                 )
               else
                 ...filteredRequests.asMap().entries.map(
@@ -454,7 +469,10 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                   ),
                 ),
               const SizedBox(height: 2),
-              _NewFlightButton(onTap: widget.onOpenSearch),
+              _FlightsReveal(
+                order: 5,
+                child: _NewFlightButton(onTap: widget.onOpenSearch),
+              ),
             ],
           ),
         ),
@@ -3663,6 +3681,65 @@ class _ExperienceTile extends StatelessWidget {
 }
 
 enum _TripTab { upcoming, history, cancelled }
+
+class _FlightsReveal extends StatefulWidget {
+  const _FlightsReveal({required this.order, required this.child});
+
+  final int order;
+  final Widget child;
+
+  @override
+  State<_FlightsReveal> createState() => _FlightsRevealState();
+}
+
+class _FlightsRevealState extends State<_FlightsReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    final curve = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _opacity = Tween<double>(begin: 0, end: 1).animate(curve);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, .06),
+      end: Offset.zero,
+    ).animate(curve);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (MediaQuery.maybeDisableAnimationsOf(context) == true) {
+        _controller.value = 1;
+        return;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 45 * widget.order));
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
+    );
+  }
+}
 
 String _tabLabel(_TripTab tab) {
   switch (tab) {

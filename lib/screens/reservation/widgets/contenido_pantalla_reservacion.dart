@@ -22,9 +22,6 @@ class ReservationScreenContent extends StatelessWidget {
     required this.returnDate,
     required this.returnTime,
     required this.commercialState,
-    required this.onTodayTrip,
-    required this.onRoundTrip,
-    required this.onMultiCity,
     required this.onOpenMembership,
     required this.onTripTypeChanged,
     required this.onPickOrigin,
@@ -52,9 +49,6 @@ class ReservationScreenContent extends StatelessWidget {
   final DateTime? returnDate;
   final TimeOfDay? returnTime;
   final CommercialAccessState commercialState;
-  final VoidCallback onTodayTrip;
-  final VoidCallback onRoundTrip;
-  final VoidCallback onMultiCity;
   final VoidCallback onOpenMembership;
   final ValueChanged<String> onTripTypeChanged;
   final VoidCallback onPickOrigin;
@@ -131,12 +125,6 @@ class ReservationScreenContent extends StatelessWidget {
               isMultiCity: tripType == 'Multidestino',
               onTap: onApplySuggestedDestination,
             ),
-          const SizedBox(height: 26),
-          QuickActionRail(
-            onTodayTrip: onTodayTrip,
-            onRoundTrip: onRoundTrip,
-            onMultiCity: onMultiCity,
-          ),
           const SizedBox(height: 20),
           if (reservation.isLoadingWorkspace) ...[
             const LoadingBand(text: 'Sincronizando rutas del cliente...'),
@@ -1082,155 +1070,6 @@ class _SuggestedDestinationRail extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class QuickActionRail extends StatelessWidget {
-  const QuickActionRail({
-    super.key,
-    required this.onTodayTrip,
-    required this.onRoundTrip,
-    required this.onMultiCity,
-  });
-
-  final VoidCallback onTodayTrip;
-  final VoidCallback onRoundTrip;
-  final VoidCallback onMultiCity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Servicios',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 12),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.72,
-          children: [
-            QuickActionCard(
-              icon: Icons.flash_on_rounded,
-              title: 'Vuelo inmediato',
-              subtitle: '',
-              tint: const Color(0xFF111111),
-              onTap: onTodayTrip,
-            ),
-            QuickActionCard(
-              icon: Icons.sync_alt_rounded,
-              title: 'Ida y vuelta',
-              subtitle: '',
-              tint: const Color(0xFF111111),
-              onTap: onRoundTrip,
-            ),
-            QuickActionCard(
-              icon: Icons.business_center_outlined,
-              title: 'Corporativo',
-              subtitle: '',
-              tint: const Color(0xFF111111),
-              onTap: onMultiCity,
-            ),
-            const QuickActionCard(
-              icon: Icons.airplanemode_active_rounded,
-              title: 'Helicópteros',
-              subtitle: '',
-              tint: Color(0xFF111111),
-              onTap: null,
-            ),
-            const QuickActionCard(
-              icon: Icons.directions_boat_outlined,
-              title: 'Yates',
-              subtitle: '',
-              tint: Color(0xFF111111),
-              onTap: null,
-            ),
-            const QuickActionCard(
-              icon: Icons.support_agent_rounded,
-              title: 'Concierge',
-              subtitle: '',
-              tint: Color(0xFF111111),
-              onTap: null,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class QuickActionCard extends StatelessWidget {
-  const QuickActionCard({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.tint,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color tint;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF101C2D),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: .08)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color:
-                  onTap == null
-                      ? const Color(0xFFD9B25F).withValues(alpha: .48)
-                      : const Color(0xFFD9B25F),
-              size: 24,
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color:
-                      onTap == null
-                          ? Colors.white.withValues(alpha: .45)
-                          : Colors.white,
-                  height: 1.1,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.white.withValues(alpha: onTap == null ? .18 : .5),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -310,6 +310,53 @@ void main() {
         expect(provider.flightRequests, hasLength(2));
       },
     );
+
+    test(
+      'workspace 401 does not invoke global session expiration handler',
+      () async {
+        var unauthorizedCalled = false;
+        final api = _api((request) async {
+          if (request.url.path.endsWith('/cliente/dashboard')) {
+            return _json(401, {'message': 'Unauthenticated.'});
+          }
+          return _json(200, {'data': []});
+        });
+        api
+          ..setToken('still-valid-locally')
+          ..setUnauthorizedHandler(() async {
+            unauthorizedCalled = true;
+          });
+
+        final provider = _WorkspaceTestReservationProvider(apiClient: api);
+        addTearDown(provider.dispose);
+
+        await provider.loadClientWorkspaceData(force: true);
+
+        expect(api.hasToken, isTrue);
+        expect(unauthorizedCalled, isFalse);
+        expect(provider.workspaceMessage, contains('Reintenta'));
+      },
+    );
+
+    test(
+      'workspace timeout preserves session and reports retryable error',
+      () async {
+        final api = _api((request) async {
+          if (request.url.path.endsWith('/dashboard')) {
+            throw http.ClientException('simulated timeout');
+          }
+          return _json(200, {'data': []});
+        })..setToken('still-valid-locally');
+
+        final provider = _WorkspaceTestReservationProvider(apiClient: api);
+        addTearDown(provider.dispose);
+
+        await provider.loadClientWorkspaceData(force: true);
+
+        expect(api.hasToken, isTrue);
+        expect(provider.workspaceMessage, contains('Conservamos'));
+      },
+    );
   });
 }
 

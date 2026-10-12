@@ -22,7 +22,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class PushNotificationsService {
   PushNotificationsService._();
 
-  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   static const AndroidNotificationChannel _androidChannel =
@@ -36,6 +36,7 @@ class PushNotificationsService {
   static bool _initialized = false;
   static bool _firebaseReady = false;
   static Object? _initializationError;
+  static StackTrace? _initializationStackTrace;
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   static const String _deviceUuidKey = 'red_sky_device_uuid';
   static final StreamController<Map<String, dynamic>> _openedMessages =
@@ -46,6 +47,7 @@ class PushNotificationsService {
       _openedMessages.stream;
   static bool get isAvailable => _firebaseReady;
   static Object? get initializationError => _initializationError;
+  static StackTrace? get initializationStackTrace => _initializationStackTrace;
 
   static List<Map<String, dynamic>> takePendingOpenedMessages() {
     final pending = List<Map<String, dynamic>>.from(_pendingOpenedMessages);
@@ -62,14 +64,16 @@ class PushNotificationsService {
     try {
       await Firebase.initializeApp();
       _firebaseReady = true;
-    } catch (error) {
+    } catch (error, stackTrace) {
       _firebaseReady = false;
       _initializationError = error;
+      _initializationStackTrace = stackTrace;
       _diagnostic(
         'Firebase/FCM no disponible en ${AppEnvironment.current.label}. '
         'La app continuara sin notificaciones. Verifica google-services.json, '
         'GoogleService-Info.plist, APNs y las credenciales FCM.',
         error,
+        stackTrace,
       );
       return;
     }
@@ -81,12 +85,14 @@ class PushNotificationsService {
       _bindMessageStreams();
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) _emitOpenedMessage(initialMessage);
-    } catch (error) {
+    } catch (error, stackTrace) {
       _initializationError = error;
+      _initializationStackTrace = stackTrace;
       _diagnostic(
         'FCM se inicializo, pero la configuracion de notificaciones fallo. '
         'La app continuara sin notificaciones.',
         error,
+        stackTrace,
       );
     }
   }
@@ -123,8 +129,8 @@ class PushNotificationsService {
         sound: true,
       );
       _diagnostic('Permiso push: ${settings.authorizationStatus}');
-    } catch (error) {
-      _diagnostic('No se pudo solicitar permiso push.', error);
+    } catch (error, stackTrace) {
+      _diagnostic('No se pudo solicitar permiso push.', error, stackTrace);
     }
   }
 
@@ -136,8 +142,12 @@ class PushNotificationsService {
         badge: true,
         sound: true,
       );
-    } catch (error) {
-      _diagnostic('No se pudo configurar presentación foreground.', error);
+    } catch (error, stackTrace) {
+      _diagnostic(
+        'No se pudo configurar presentación foreground.',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -147,7 +157,15 @@ class PushNotificationsService {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen(_emitOpenedMessage);
-    _messaging.onTokenRefresh.listen((_) => syncAuthenticatedDevice());
+    _messaging.onTokenRefresh.listen(
+      (_) => syncAuthenticatedDevice(),
+      onError:
+          (Object error, StackTrace stackTrace) => _diagnostic(
+            'El stream de token FCM reporto un error.',
+            error,
+            stackTrace,
+          ),
+    );
   }
 
   static void _emitOpenedMessage(RemoteMessage message) {
@@ -161,14 +179,18 @@ class PushNotificationsService {
     try {
       final uuid = await _deviceUuid();
       final token = await _messaging.getToken();
+      if (token == null || token.trim().isEmpty) {
+        _diagnostic('FCM no devolvio token para registrar el dispositivo.');
+        return;
+      }
       await ApiClient.instance.registerDevice(
         deviceUuid: uuid,
         platform: Platform.isIOS ? 'ios' : 'android',
         pushToken: token,
         appVersion: const String.fromEnvironment('APP_VERSION'),
       );
-    } catch (error) {
-      _diagnostic('No se pudo sincronizar el dispositivo.', error);
+    } catch (error, stackTrace) {
+      _diagnostic('No se pudo sincronizar el dispositivo.', error, stackTrace);
     }
   }
 
@@ -176,8 +198,12 @@ class PushNotificationsService {
     if (!ApiClient.instance.hasToken) return;
     try {
       await ApiClient.instance.revokeDevice(await _deviceUuid());
-    } catch (error) {
-      _diagnostic('No se pudo revocar remotamente el dispositivo.', error);
+    } catch (error, stackTrace) {
+      _diagnostic(
+        'No se pudo revocar remotamente el dispositivo.',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -195,13 +221,29 @@ class PushNotificationsService {
     return generated;
   }
 
-  static void _diagnostic(String message, [Object? error]) {
+  static void _diagnostic(
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) {
     if (!AppEnvironment.current.allowsDiagnosticLogs) return;
-    debugPrint(
-      error == null
-          ? '[PUSH] $message'
-          : '[PUSH] $message ${error.runtimeType}',
-    );
+    if (error == null) {
+      debugPrint('[PUSH] $message');
+      return;
+    }
+
+    if (error is FirebaseException) {
+      debugPrint(
+        '[PUSH] $message ${error.runtimeType}'
+        ' code=${error.code}'
+        ' message=${error.message ?? ''}',
+      );
+    } else {
+      debugPrint('[PUSH] $message ${error.runtimeType}: $error');
+    }
+    if (stackTrace != null) {
+      debugPrint('[PUSH] stackTrace=$stackTrace');
+    }
   }
 
   static Future<void> _showForegroundNotification(RemoteMessage message) async {

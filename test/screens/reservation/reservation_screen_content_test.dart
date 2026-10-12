@@ -46,9 +46,6 @@ void main() {
             returnDate: null,
             returnTime: null,
             commercialState: expiredState,
-            onTodayTrip: () {},
-            onRoundTrip: () {},
-            onMultiCity: () {},
             onOpenMembership: () {
               paymentOpened = true;
             },

@@ -31,13 +31,14 @@ Future<void> main() async {
   await initializeDateFormatting('es');
   try {
     await PushNotificationsService.initialize();
-  } catch (error) {
+  } catch (error, stackTrace) {
     // Las notificaciones son una capacidad opcional. Un problema de Firebase,
     // FCM o APNs nunca debe bloquear autenticacion, cotizacion ni reservas.
     debugPrint(
       '[PUSH] Inicializacion no disponible; la app continuara sin push: '
-      '${error.runtimeType}',
+      '${error.runtimeType}: $error',
     );
+    debugPrint('[PUSH] stackTrace=$stackTrace');
   }
 
   runApp(const MyApp());

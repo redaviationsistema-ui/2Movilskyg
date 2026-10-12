@@ -382,12 +382,21 @@ class ReservationProvider extends ChangeNotifier {
   }
 
   Future<void> loadClientWorkspaceData({bool force = false}) async {
-    if (isLoadingWorkspace) return;
-    if (!force && hasWorkspaceData && lastWorkspaceSyncAt != null) return;
+    if (isLoadingWorkspace) {
+      _workspaceDiagnostic('skip already_running force=$force');
+      return;
+    }
+    if (!force && hasWorkspaceData && lastWorkspaceSyncAt != null) {
+      _workspaceDiagnostic('skip cached lastSync=$lastWorkspaceSyncAt');
+      return;
+    }
 
     final workspaceStopwatch = Stopwatch()..start();
     isLoadingWorkspace = true;
     workspaceMessage = 'Actualizando cabina...';
+    _workspaceDiagnostic(
+      'start force=$force hasToken=${_api.hasToken} hasData=$hasWorkspaceData',
+    );
     notifyListeners();
 
     try {
@@ -395,6 +404,7 @@ class ReservationProvider extends ChangeNotifier {
 
       if (!_api.hasToken) {
         workspaceMessage = 'Inicia sesion para ver informacion privada.';
+        _workspaceDiagnostic('stop no_token');
         return;
       }
 
@@ -439,12 +449,54 @@ class ReservationProvider extends ChangeNotifier {
           .toStringAsFixed(1);
       workspaceMessage =
           'Cabina sincronizada en ${elapsedSeconds}s con ${flightRequests.length} solicitudes y ${aircraftFleet.length} aeronaves.';
-    } catch (error) {
-      workspaceMessage = 'No fue posible sincronizar la cabina: $error';
+      _workspaceDiagnostic(
+        'success elapsedMs=${workspaceStopwatch.elapsedMilliseconds} requests=${flightRequests.length} aircraft=${aircraftFleet.length}',
+      );
+    } on ApiException catch (error) {
+      workspaceMessage = _workspaceErrorMessage(error);
+      _workspaceDiagnostic(
+        'api_error status=${error.statusCode ?? 0} elapsedMs=${workspaceStopwatch.elapsedMilliseconds} message=${error.message}',
+      );
+    } catch (error, stackTrace) {
+      workspaceMessage =
+          'No fue posible sincronizar la cabina. Conservamos la informacion disponible para reintentar.';
+      _workspaceDiagnostic(
+        'unexpected_error elapsedMs=${workspaceStopwatch.elapsedMilliseconds} type=${error.runtimeType} error=$error',
+      );
+      if (AppEnvironment.current.allowsDiagnosticLogs) {
+        debugPrint('[WORKSPACE sync] stackTrace=$stackTrace');
+      }
     } finally {
       isLoadingWorkspace = false;
       notifyListeners();
     }
+  }
+
+  String _workspaceErrorMessage(ApiException error) {
+    final status = error.statusCode;
+    if (status == 401) {
+      return 'No fue posible sincronizar la cabina porque el servidor rechazo esta consulta. Reintenta; si persiste, vuelve a iniciar sesion.';
+    }
+    if (status == null) {
+      final message = error.message.toLowerCase();
+      if (message.contains('tardo demasiado') ||
+          message.contains('tiempo de espera')) {
+        return 'El servidor tardó demasiado en responder. Conservamos tus datos y puedes reintentar.';
+      }
+      if (message.contains('conectar') || message.contains('conexion')) {
+        return 'No fue posible conectar con el servidor. Conservamos tus datos y puedes reintentar.';
+      }
+      return 'No fue posible sincronizar la cabina. Conservamos la informacion disponible para reintentar.';
+    }
+    if (status >= 500) {
+      return 'El servidor no pudo completar la sincronizacion. Conservamos tus datos y puedes reintentar.';
+    }
+    return 'No fue posible sincronizar la cabina: ${error.message}';
+  }
+
+  void _workspaceDiagnostic(String message) {
+    if (!AppEnvironment.current.allowsDiagnosticLogs) return;
+    debugPrint('[WORKSPACE sync] $message');
   }
 
   Future<bool> previewCurrentSelection() async {
