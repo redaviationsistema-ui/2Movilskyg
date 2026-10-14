@@ -17,6 +17,7 @@ FlightBrief _brief({
   String? presentationLocation,
   String? presentationAddress,
   List<Map<String, dynamic>>? legs,
+  Map<String, dynamic> overrides = const {},
 }) => FlightBrief.fromJson({
   'flight_request_id': id,
   'visible': visible,
@@ -75,6 +76,7 @@ FlightBrief _brief({
   'support': {},
   'services': {},
   if (legs != null) 'legs': legs,
+  ...overrides,
 });
 
 Widget _app({
@@ -99,6 +101,287 @@ Widget _app({
 
 void main() {
   setUpAll(() => initializeDateFormatting('es_MX'));
+
+  testWidgets(
+    'renders actual operational phases without contradictory hero copy',
+    (tester) async {
+      final cases = [
+        ('pending', false, 'Tu vuelo está pendiente'),
+        ('confirmed', false, 'Tu vuelo está confirmado'),
+        ('preparing', false, 'Estamos preparando tu viaje'),
+        ('in_flight', false, 'Tu vuelo está en curso'),
+        ('tracking_live', false, 'Tu operación está en curso'),
+        ('completed', false, 'Tu vuelo ha finalizado'),
+        ('cancelled', true, 'Tu vuelo fue cancelado'),
+        (
+          'unrecognized_state',
+          false,
+          'El estado operativo está por confirmar.',
+        ),
+        ('confirmed', true, 'Todo listo para tu vuelo'),
+      ];
+      for (var index = 0; index < cases.length; index++) {
+        final entry = cases[index];
+        await tester.pumpWidget(
+          _app(
+            id: 'phase-$index',
+            loader:
+                (_) async => _brief(
+                  id: 'phase-$index',
+                  operationStatus: entry.$1,
+                  ready: entry.$2,
+                  overrides: {'checklist': {}},
+                ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(entry.$3), findsWidgets, reason: entry.$1);
+        if (entry.$1 == 'cancelled' ||
+            entry.$1 == 'completed' ||
+            entry.$1 == 'in_flight') {
+          expect(find.text('Estamos preparando tu viaje'), findsNothing);
+          expect(find.text('LISTO PARA SALIDA'), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
+  testWidgets('completed checks do not imply operational clearance', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        id: 'checks',
+        loader:
+            (_) async => _brief(
+              id: 'checks',
+              overrides: {
+                'checklist': {
+                  'exists': true,
+                  'completed': 10,
+                  'total': 10,
+                  'percentage': 100,
+                  'is_complete': true,
+                },
+              },
+            ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Verificaciones completadas'), findsOneWidget);
+    expect(find.text('Todo listo para tu vuelo'), findsNothing);
+    expect(find.text('Estamos preparando tu viaje'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('ESTADO DE PREPARACIÓN'),
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Preparación completada'), findsOneWidget);
+  });
+
+  testWidgets(
+    'keeps milestone confirmations independent and combines next step content',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        _app(
+          id: 'A',
+          loader:
+              (_) async => _brief(
+                id: 'A',
+                overrides: {
+                  'payment': {'confirmed': false},
+                  'aircraft': {},
+                  'provider': {'assigned': false},
+                  'crew': {'assigned': false, 'confirmed': false},
+                  'checklist': {
+                    'exists': true,
+                    'completed': 1,
+                    'total': 5,
+                    'percentage': 20,
+                    'is_complete': false,
+                  },
+                },
+              ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Ver hitos de preparación'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.bySemanticsLabel('Pago confirmado: pendiente'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Operador asignado: pendiente'),
+        findsOneWidget,
+      );
+      await tester.drag(find.byType(ListView).first, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver hitos de preparación'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aeronave identificada · Pendiente'), findsOneWidget);
+      expect(find.text('Preparación en curso · En proceso'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('PRÓXIMO PASO'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('¿NECESITAS HACER ALGO?'), findsNothing);
+      expect(
+        find.text('No necesitas realizar ninguna acción por el momento.'),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'shows four real legs and their presentation details without an invented return',
+    (tester) async {
+      final legs = [
+        for (var index = 0; index < 4; index++)
+          {
+            'origin_icao': 'OR$index',
+            'destination_icao': 'DE$index',
+            'departure_datetime': '2026-10-${20 + index}T15:00:00',
+            'presentation_location': 'Punto real $index',
+            'presentation_time': '${10 + index}:00',
+          },
+      ];
+      await tester.pumpWidget(
+        _app(id: 'A', loader: (_) async => _brief(id: 'A', legs: legs)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('PRIMER TRAMO · 4 TRAMOS'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('04'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('OR3 → DE3'), findsOneWidget);
+      expect(find.textContaining('Punto real 3'), findsOneWidget);
+      expect(find.textContaining('13:00'), findsOneWidget);
+      expect(find.text('05'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'keeps partial flight data visible without inventing a route or presentation time',
+    (tester) async {
+      await tester.pumpWidget(
+        _app(
+          id: 'partial',
+          loader: (_) async => FlightBrief.fromJson({'visible': true}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('OPERACIÓN #44'), findsNothing);
+      expect(find.text('ESTADO POR CONFIRMAR'), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Itinerario por confirmar'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('01'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('DÓNDE PRESENTARTE'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.text(
+          'El punto de presentación será confirmado por nuestro equipo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('ICCS'), findsNothing);
+      expect(find.text('Por confirmar'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'fits mobile widths, safe insets and enlarged text on iOS and Android',
+    (tester) async {
+      addTearDown(() => tester.view.resetPhysicalSize());
+      addTearDown(() => tester.view.resetDevicePixelRatio());
+      tester.view.devicePixelRatio = 1;
+      for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+        for (final width in [320.0, 360.0, 375.0, 390.0, 430.0]) {
+          for (final scale in [1.0, 2.0]) {
+            tester.view.physicalSize = Size(width, 900);
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: ThemeData(platform: platform),
+                builder:
+                    (context, child) => MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        padding: const EdgeInsets.only(top: 59, bottom: 34),
+                        textScaler: TextScaler.linear(scale),
+                      ),
+                      child: child!,
+                    ),
+                home: ClientFlightBriefScreen(
+                  flightRequestId: '$platform-$width-$scale',
+                  loader:
+                      (_) async => _brief(
+                        id: 'responsive',
+                        presentationLocation:
+                            'Punto de presentación de la operación',
+                        legs: [
+                          {
+                            'origin_icao': 'MMTO',
+                            'destination_icao': 'MMSD',
+                            'departure_datetime': '2026-10-20T15:00:00',
+                          },
+                          {
+                            'origin_icao': 'MMSD',
+                            'destination_icao': 'MMUN',
+                            'departure_datetime': '2026-10-21T15:00:00',
+                          },
+                        ],
+                      ),
+                  trackingLoader:
+                      (_) async => const ClientOperationTracking(
+                        operationId: '88',
+                        status: 'confirmed',
+                        timeline: [],
+                      ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$platform $width $scale hero',
+            );
+            for (var scroll = 0; scroll < 6; scroll++) {
+              await tester.drag(
+                find.byType(ListView).first,
+                const Offset(0, -280),
+              );
+              await tester.pumpAndSettle();
+              expect(
+                tester.takeException(),
+                isNull,
+                reason: '$platform $width $scale scroll=$scroll',
+              );
+            }
+            await tester.pumpWidget(const SizedBox());
+          }
+        }
+      }
+    },
+  );
 
   testWidgets(
     'shows the backend visibility gate instead of local flight data',
@@ -126,11 +409,19 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.fling(find.byType(ListView), const Offset(0, -700), 1000);
-      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('DÓNDE PRESENTARTE'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
 
       expect(find.text('DÓNDE PRESENTARTE'), findsOneWidget);
       expect(find.text('Por confirmar'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.text('Sofía Herrera'),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Sofía Herrera'), findsOneWidget);
       expect(find.text('Confirmada'), findsOneWidget);
       expect(find.text('3 de 10 completadas'), findsOneWidget);
@@ -213,8 +504,11 @@ void main() {
     hasLocation = true;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
-    await tester.fling(find.byType(ListView), const Offset(0, -700), 1000);
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('DÓNDE PRESENTARTE'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('FBO Norte'), findsOneWidget);
     expect(find.text('Acceso norte 100'), findsOneWidget);
 
@@ -241,7 +535,7 @@ void main() {
     },
   );
 
-  testWidgets('renders every real leg inside one itinerary card', (
+  testWidgets('renders every real leg in the compact itinerary', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -274,9 +568,9 @@ void main() {
     );
 
     expect(find.text('ITINERARIO'), findsOneWidget);
-    expect(find.text('TRAMO 1'), findsOneWidget);
-    expect(find.text('TRAMO 2'), findsOneWidget);
-    expect(find.text('MMUN'), findsOneWidget);
+    expect(find.text('01'), findsOneWidget);
+    expect(find.text('02'), findsOneWidget);
+    expect(find.text('MMVR → MMUN'), findsOneWidget);
   });
 
   testWidgets('uses the existing flight row legs when the brief omits them', (
@@ -301,8 +595,8 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(find.text('TRAMO 1'), findsOneWidget);
-    expect(find.text('TRAMO 2'), findsOneWidget);
+    expect(find.text('01'), findsOneWidget);
+    expect(find.text('02'), findsOneWidget);
   });
 
   testWidgets('opens and closes the right-side flight actions drawer', (

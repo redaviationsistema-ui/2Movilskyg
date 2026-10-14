@@ -36,128 +36,111 @@ class ItinerarySummaryScreen extends StatelessWidget {
     final dateRange =
         dates.isEmpty
             ? 'Por definir'
-            : dates.length == 1
+            : dates.length == 1 ||
+                (dates.first.year == dates.last.year &&
+                    dates.first.month == dates.last.month &&
+                    dates.first.day == dates.last.day)
             ? _formatCalendarDate(dates.first)
             : '${_formatCalendarDate(dates.first)} – ${_formatCalendarDate(dates.last)}';
 
     return Scaffold(
       backgroundColor: const Color(0xFF07111D),
       body: SafeArea(
+        top: false,
+        bottom: false,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-              child: Row(
-                children: [
-                  _SummaryIconButton(
-                    icon: Icons.arrow_back_rounded,
-                    tooltip: 'Regresar al formulario',
-                    onPressed: () {
-                      final navigator = Navigator.of(context);
-                      if (navigator.canPop()) navigator.pop(-1);
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Resumen de itinerario',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Revisa tu recorrido antes de cotizar.',
-                          style: TextStyle(
-                            color: Color(0xFFB8C2D0),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      final navigator = Navigator.of(context);
-                      if (navigator.canPop()) navigator.pop(-1);
-                    },
-                    child: const Text(
-                      'Editar',
-                      style: TextStyle(
-                        color: Color(0xFFD9B25F),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            _SummaryExecutiveHeader(
+              topInset: MediaQuery.paddingOf(context).top,
+              onBack: () {
+                final navigator = Navigator.of(context);
+                if (navigator.canPop()) navigator.pop(-1);
+              },
             ),
             Expanded(
               child: ListView(
                 key: const ValueKey('itinerary-summary-content'),
-                padding: const EdgeInsets.fromLTRB(18, 4, 18, 20),
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
                 children: [
                   _SummaryGeneralInfo(
-                    tripType: tripType,
+                    tripType:
+                        reservation.bookingTripLabel.trim().isEmpty
+                            ? tripType
+                            : reservation.bookingTripLabel,
                     routeCount: reservation.routes.length,
                     dateRange: dateRange,
                     passengers: reservation.passengers,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
                   _ItineraryMapPreviewCard(
                     reservation: reservation,
                     enableVectorProvider: enableMapVectorProvider,
                     isSummary: true,
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   _ItineraryLegList(
                     routes: reservation.routes,
                     onEditLeg: onEditLeg,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF07111D),
-                border: Border(top: BorderSide(color: Color(0xFF263448))),
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton.icon(
-                  key: const ValueKey('request-itinerary-quote'),
-                  onPressed:
-                      reservation.isLoadingQuotePreview ? null : onRequestQuote,
-                  icon:
-                      reservation.isLoadingQuotePreview
-                          ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.flight_takeoff_rounded),
-                  label: Text(
-                    reservation.isLoadingQuotePreview
-                        ? 'Solicitando cotización...'
-                        : 'Solicitar cotización',
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFD9B25F),
-                    foregroundColor: const Color(0xFF101C2D),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
+            SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF07111D),
+                  border: Border(top: BorderSide(color: Color(0xFF263448))),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    key: const ValueKey('request-itinerary-quote'),
+                    onPressed:
+                        reservation.isLoadingQuotePreview
+                            ? null
+                            : onRequestQuote,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFD9B25F),
+                      foregroundColor: const Color(0xFF101C2D),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    child: Row(
+                      children: [
+                        if (reservation.isLoadingQuotePreview)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF101C2D),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.flight_takeoff_rounded),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              reservation.isLoadingQuotePreview
+                                  ? 'Solicitando cotización…'
+                                  : 'Solicitar cotización',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Icon(Icons.arrow_forward_rounded, size: 19),
+                      ],
                     ),
                   ),
                 ),
@@ -196,6 +179,115 @@ class ItinerarySummaryScreen extends StatelessWidget {
     'nov',
     'dic',
   ];
+}
+
+class _SummaryExecutiveHeader extends StatelessWidget {
+  const _SummaryExecutiveHeader({
+    required this.topInset,
+    required this.onBack,
+  });
+
+  final double topInset;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final extraTextScaleHeight = (textScale - 1).clamp(0.0, 2.0) * 24;
+    return SizedBox(
+      key: const ValueKey('itinerary-summary-header'),
+      height: 152 + topInset + extraTextScaleHeight,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/login/image.png',
+            key: const ValueKey('itinerary-summary-jet-image'),
+            fit: BoxFit.cover,
+            alignment: Alignment.centerRight,
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xCC071321),
+                  Color(0xC9071321),
+                  Color(0xF2071321),
+                  Color(0xFF07111D),
+                ],
+                stops: [0, .38, .78, 1],
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(18, topInset + 4, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _SummaryIconButton(
+                      icon: Icons.arrow_back_rounded,
+                      tooltip: 'Regresar al formulario',
+                      onPressed: onBack,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Resumen de itinerario',
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: textScale > 1.25 ? 21 : 23,
+                        height: 1.08,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.3,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Revisa tu recorrido antes de cotizar.',
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: Color(0xFFD0D8E2),
+                        fontSize: textScale > 1.25 ? 12 : 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Positioned(
+            left: 18,
+            right: 18,
+            bottom: 0,
+            child: ColoredBox(
+              color: Color(0x66D9B25F),
+              child: SizedBox(height: 1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SummaryIconButton extends StatelessWidget {
@@ -240,73 +332,184 @@ class _SummaryGeneralInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width =
-            constraints.maxWidth >= 700
-                ? (constraints.maxWidth - 42) / 4
-                : (constraints.maxWidth - 14) / 2;
-        return Wrap(
-          spacing: 14,
-          runSpacing: 14,
-          children: [
-            _SummaryMetric(label: 'MODALIDAD', value: tripType, width: width),
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final compact = constraints.maxWidth < 560 || textScale > 1.2;
+        final metricSpecs = [
+          (
+            key: 'mode',
+            icon: Icons.route_rounded,
+            label: compact ? 'TIPO' : 'MODALIDAD',
+            value: tripType,
+            compactValue: _compactTripType(tripType),
+          ),
+          (
+            key: 'legs',
+            icon: Icons.alt_route_rounded,
+            label: 'TRAMOS',
+            value: '$routeCount ${routeCount == 1 ? 'tramo' : 'tramos'}',
+            compactValue: '$routeCount ${routeCount == 1 ? 'tramo' : 'tramos'}',
+          ),
+          (
+            key: 'date',
+            icon: Icons.calendar_month_rounded,
+            label: 'FECHA',
+            value: dateRange,
+            compactValue: _compactDateRange(dateRange),
+          ),
+          (
+            key: 'passengers',
+            icon: Icons.people_alt_rounded,
+            label: compact ? 'PAX' : 'PASAJEROS',
+            value: '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}',
+            compactValue: '$passengers pax',
+          ),
+        ];
+        final metrics = [
+          for (final spec in metricSpecs)
             _SummaryMetric(
-              label: 'TRAMOS',
-              value: '$routeCount ${routeCount == 1 ? 'tramo' : 'tramos'}',
-              width: width,
+              key: ValueKey('summary-metric-${spec.key}'),
+              icon: spec.icon,
+              label: spec.label,
+              value: compact ? spec.compactValue : spec.value,
+              fullValue: spec.value,
+              compact: compact,
             ),
-            _SummaryMetric(label: 'FECHA', value: dateRange, width: width),
-            _SummaryMetric(
-              label: 'PASAJEROS',
-              value:
-                  '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}',
-              width: width,
-            ),
-          ],
+        ];
+        final minimumColumnWidth = 62 * textScale;
+        final requiredScrollableWidth =
+            minimumColumnWidth * metrics.length + (metrics.length - 1) * 5 + 8;
+        final shouldScroll = constraints.maxWidth < requiredScrollableWidth;
+        const flexes = [26, 19, 31, 24];
+
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF071321),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child:
+              shouldScroll
+                  ? SingleChildScrollView(
+                    key: const ValueKey('summary-metrics-scroll'),
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < metrics.length;
+                          index++
+                        ) ...[
+                          SizedBox(
+                            width: minimumColumnWidth,
+                            child: metrics[index],
+                          ),
+                          if (index < metrics.length - 1)
+                            const _SummaryMetricSeparator(),
+                        ],
+                      ],
+                    ),
+                  )
+                  : Row(
+                    children: [
+                      for (var index = 0; index < metrics.length; index++) ...[
+                        Expanded(flex: flexes[index], child: metrics[index]),
+                        if (index < metrics.length - 1)
+                          const _SummaryMetricSeparator(),
+                      ],
+                    ],
+                  ),
         );
       },
+    );
+  }
+
+  static String _compactTripType(String value) {
+    return switch (value.trim().toLowerCase()) {
+      'ida y vuelta' => 'Ida/vuelta',
+      'multidestino' || 'multi-destino' => 'Multi',
+      _ => value,
+    };
+  }
+
+  static String _compactDateRange(String value) {
+    return value.replaceAllMapped(
+      RegExp(r'\b(\d{2})\s+([a-z]{3})\s+(20\d{2})\b', caseSensitive: false),
+      (match) => '${match[1]} ${match[2]} ${match[3]!.substring(2)}',
     );
   }
 }
 
 class _SummaryMetric extends StatelessWidget {
   const _SummaryMetric({
+    super.key,
+    required this.icon,
     required this.label,
     required this.value,
-    required this.width,
+    required this.fullValue,
+    required this.compact,
   });
 
+  final IconData icon;
   final String label;
   final String value;
-  final double width;
+  final String fullValue;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF9CAABD),
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.1,
+    return Tooltip(
+      message: fullValue,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 10,
+          vertical: 6,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: const Color(0xFFD6B477), size: compact ? 15 : 18),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF9DAABD),
+                fontSize: compact ? 8.5 : 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: compact ? .35 : .8,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Color(0xFFF4F6FA),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              height: 1.25,
+            const SizedBox(height: 3),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFFF5F7FA),
+                fontSize: compact ? 11.5 : 13,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _SummaryMetricSeparator extends StatelessWidget {
+  const _SummaryMetricSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 42,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      color: Colors.white.withValues(alpha: .12),
     );
   }
 }
@@ -900,30 +1103,44 @@ class _ItineraryMapPreviewCard extends StatelessWidget {
     return Selector<ReservationProvider, _SummaryMapSelection>(
       selector: (_, provider) => _SummaryMapSelection.fromProvider(provider),
       shouldRebuild: (previous, next) => previous.signature != next.signature,
-      builder: (context, selection, _) => _buildSummaryMap(selection),
+      builder: (context, selection, _) => _buildSummaryMap(context, selection),
     );
   }
 
-  Widget _buildSummaryMap(_SummaryMapSelection selection) {
+  Widget _buildSummaryMap(
+    BuildContext context,
+    _SummaryMapSelection selection,
+  ) {
+    final mapHeight =
+        (MediaQuery.sizeOf(context).height * .32)
+            .clamp(230.0, 300.0)
+            .toDouble();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'RECORRIDO',
-          style: TextStyle(
-            color: Color(0xFF9CAABD),
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.4,
-          ),
+        const Row(
+          children: [
+            Icon(Icons.map_outlined, color: Color(0xFFD9B25F), size: 16),
+            SizedBox(width: 7),
+            Text(
+              'RECORRIDO',
+              style: TextStyle(
+                color: Color(0xFFD4DCE6),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 11),
         ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           child: ItineraryAirportMap(
             routes: selection.routes,
             airportCatalog: selection.airportCatalog,
-            height: 230,
+            height: mapHeight,
             enableVectorProvider: enableVectorProvider,
             showControls: true,
           ),
@@ -953,9 +1170,7 @@ class _SummaryMapSelection {
   final List<Airport> airportCatalog;
   final String signature;
 
-  factory _SummaryMapSelection.fromProvider(
-    ReservationProvider provider,
-  ) {
+  factory _SummaryMapSelection.fromProvider(ReservationProvider provider) {
     String airportSignature(Airport? airport) {
       if (airport == null) return '-';
       return '${airport.id}:${airport.iata}:${airport.icao}:'

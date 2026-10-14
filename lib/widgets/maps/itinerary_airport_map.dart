@@ -192,7 +192,7 @@ class _ItineraryAirportMapState extends State<ItineraryAirportMap> {
             child: _MapControlDock(
               mapReady: _mapReady,
               zoom: _currentZoom,
-              horizontal: widget.height < 320,
+              horizontal: widget.height < 260,
               onZoomIn: () => _zoomBy(1),
               onZoomOut: () => _zoomBy(-1),
               onCenter: () => _fitIfNeeded(force: true),

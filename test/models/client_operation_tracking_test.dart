@@ -24,6 +24,8 @@ void main() {
     expect(tracking.status, 'in_flight');
     expect(tracking.timeline, hasLength(1));
     expect(tracking.timeline.single.title, 'Salida confirmada');
+    expect(tracking.timeline.single.id, '7');
+    expect(tracking.timeline.single.sourceSignature, isNotEmpty);
     expect(tracking.timeline.single.createdAt, isNotNull);
   });
 

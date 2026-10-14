@@ -16,6 +16,113 @@ import 'package:red_sky/widgets/maps/itinerary_airport_map.dart';
 
 void main() {
   testWidgets(
+    'catalog fits mobile widths and enlarged text on iOS and Android',
+    (tester) async {
+      final reservation = ReservationProvider();
+      final auth = _activeAuth();
+      addTearDown(reservation.dispose);
+      addTearDown(auth.dispose);
+      addTearDown(() => tester.view.resetPhysicalSize());
+      addTearDown(() => tester.view.resetDevicePixelRatio());
+      reservation.quoteMatches = [
+        for (var index = 0; index < 4; index++)
+          {
+            'id': 'match-$index',
+            'aircraft': 'GULFSTREAM G200 EXECUTIVE',
+            'category': 'Super midsize jet',
+            'capacity': 14,
+            'range': 7778,
+            'pricing': {'total_amount': 20787 + index},
+          },
+      ];
+      final originalMatches = jsonEncode(reservation.quoteMatches);
+      tester.view.devicePixelRatio = 1;
+      for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+        for (final width in [320.0, 360.0, 375.0, 390.0, 430.0]) {
+          for (final scale in [1.0, 2.0]) {
+            tester.view.physicalSize = Size(width, 900);
+            await tester.pumpWidget(
+              MultiProvider(
+                providers: [
+                  ChangeNotifierProvider<ReservationProvider>.value(
+                    value: reservation,
+                  ),
+                  ChangeNotifierProvider<AuthProvider>.value(value: auth),
+                ],
+                child: MaterialApp(
+                  theme: ThemeData(platform: platform),
+                  builder:
+                      (context, child) => MediaQuery(
+                        data: MediaQuery.of(
+                          context,
+                        ).copyWith(textScaler: TextScaler.linear(scale)),
+                        child: child!,
+                      ),
+                  home: const ClientResultsScreen(),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$platform width=$width text=$scale',
+            );
+            await tester.drag(
+              find.byType(ListView).last,
+              const Offset(0, -500),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: 'scroll $platform width=$width text=$scale',
+            );
+          }
+        }
+      }
+      expect(jsonEncode(reservation.quoteMatches), originalMatches);
+    },
+  );
+
+  testWidgets('price sorting preserves backend quotes and request actions', (
+    tester,
+  ) async {
+    final reservation = ReservationProvider();
+    final auth = _activeAuth();
+    addTearDown(reservation.dispose);
+    addTearDown(auth.dispose);
+    reservation.quoteMatches = [
+      {
+        'id': 'expensive',
+        'aircraft': 'Aircraft A',
+        'pricing': {'total_amount': 30000},
+      },
+      {
+        'id': 'affordable',
+        'aircraft': 'Aircraft B',
+        'pricing': {'total_amount': 10000},
+      },
+    ];
+    final originalMatches = jsonEncode(reservation.quoteMatches);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(430, 1600);
+    addTearDown(() => tester.view.resetPhysicalSize());
+    addTearDown(() => tester.view.resetDevicePixelRatio());
+    await tester.pumpWidget(_resultsHarness(reservation, auth));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mejor precio'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Aircraft B')).dy,
+      lessThan(tester.getTopLeft(find.text('Aircraft A')).dy),
+    );
+    expect(jsonEncode(reservation.quoteMatches), originalMatches);
+    expect(find.text('★ Recomendado'), findsNothing);
+    expect(find.byType(Card), findsNothing);
+  });
+
+  testWidgets(
     'renders repositioning details and uses pricing.total_amount as visible total',
     (tester) async {
       final reservation = ReservationProvider();
@@ -232,17 +339,10 @@ void main() {
 
       await tester.tap(find.text('Abrir resultados'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('2 pasajeros'), findsOneWidget);
-      expect(find.text('Ver recorrido en el mapa'), findsOneWidget);
+      expect(find.text('Resumen del vuelo'), findsNothing);
+      expect(find.text('Modificar'), findsNothing);
+      expect(find.text('Ver recorrido en el mapa'), findsNothing);
       expect(find.byType(ItineraryAirportMap), findsNothing);
-      await tester.tap(
-        find.byKey(const ValueKey('results-itinerary-map-toggle')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(ItineraryAirportMap), findsOneWidget);
-      expect(find.byKey(const ValueKey('direction-marker-0')), findsOneWidget);
-      expect(find.textContaining('MMTO  →  MMVA'), findsWidgets);
-      expect(find.textContaining('02/01/2027 · 10:00'), findsOneWidget);
       expect(reservation.buildLegsPayload(), originalLegs);
       expect(reservation.quoteMatches.single['pricing'], originalPricing);
       expect(find.text('Ruta por confirmar'), findsNothing);

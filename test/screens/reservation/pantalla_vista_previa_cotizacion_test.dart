@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +15,7 @@ void main() {
       final reservation =
           ReservationProvider()
             ..passengers = 3
+            ..bookingTripLabel = 'Multidestino'
             ..routes = [
               _route(
                 _airport('Toluca', 'MMTO', 'TLC'),
@@ -47,16 +50,31 @@ void main() {
       await tester.pump();
 
       expect(find.text('Resumen de itinerario'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('itinerary-summary-jet-image')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Revisa tu recorrido antes de cotizar.'),
+        findsOneWidget,
+      );
       expect(find.text('Multidestino'), findsOneWidget);
       expect(find.text('RECORRIDO'), findsOneWidget);
+      expect(find.text('MODALIDAD'), findsOneWidget);
+      expect(find.text('FECHA'), findsOneWidget);
       expect(find.text('TRAMOS'), findsOneWidget);
       expect(find.text('3 tramos'), findsOneWidget);
       expect(find.text('3 pasajeros'), findsOneWidget);
+      expect(find.text('13 oct 2026'), findsOneWidget);
       expect(find.text('RECORRIDO'), findsOneWidget);
-      expect(find.text('DETALLE DE TRAMOS'), findsOneWidget);
+      expect(
+        find.text('DETALLE DE TRAMOS', skipOffstage: false),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('map-zoom-in')), findsOneWidget);
       expect(find.byKey(const ValueKey('map-zoom-out')), findsOneWidget);
       expect(find.byKey(const ValueKey('map-center-route')), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
       expect(
         find.text('Ruta ilustrativa · No válida para navegación aérea.'),
         findsOneWidget,
@@ -113,15 +131,14 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('Editar'));
-    await tester.pump();
-    expect(tester.takeException(), isNull);
+    expect(find.text('Editar'), findsNothing);
   });
 
   testWidgets('round-trip summary shows both explicit legs', (tester) async {
     final reservation =
         ReservationProvider()
           ..passengers = 2
+          ..bookingTripLabel = 'Ida y vuelta'
           ..routes = [
             _route(
               _airport('Toluca', 'MMTO', 'TLC'),
@@ -453,6 +470,7 @@ void main() {
     final reservation =
         ReservationProvider()
           ..passengers = 3
+          ..bookingTripLabel = 'Ida y vuelta'
           ..routes = [
             _route(
               _airport('Toluca', 'MMTO', 'TLC'),
@@ -480,12 +498,177 @@ void main() {
       await tester.pump();
 
       expect(find.text('TLC  →  PVR', skipOffstage: false), findsOneWidget);
-      expect(find.byKey(const ValueKey('request-itinerary-quote')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('request-itinerary-quote')),
+        findsOneWidget,
+      );
+      final header = tester.getSize(
+        find.byKey(const ValueKey('itinerary-summary-header')),
+      );
+      expect(header.height, lessThanOrEqualTo(165));
+      expect(header.width, width);
+      expect(
+        tester
+            .widget<ListView>(
+              find.byKey(const ValueKey('itinerary-summary-content')),
+            )
+            .padding,
+        const EdgeInsets.fromLTRB(18, 8, 18, 20),
+      );
+      final metricTops =
+          ['mode', 'legs', 'date', 'passengers'].map((name) {
+            return tester
+                .getTopLeft(
+                  find.byKey(
+                    ValueKey('summary-metric-$name'),
+                    skipOffstage: false,
+                  ),
+                )
+                .dy;
+          }).toList();
+      expect(
+        metricTops.reduce(math.min),
+        closeTo(metricTops.reduce(math.max), 1),
+      );
+      expect(
+        find.byKey(const ValueKey('summary-metrics-scroll')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull, reason: 'width $width');
     }
 
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+  });
+
+  testWidgets('summary follows provider route, date and passenger changes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final reservation =
+        ReservationProvider()
+          ..passengers = 2
+          ..routes = [
+            _route(
+              _airport('Toluca', 'MMTO', 'TLC'),
+              _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+            ),
+          ];
+    addTearDown(reservation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: ItinerarySummaryScreen(
+            tripType: 'Solo ida',
+            enableMapVectorProvider: false,
+            onRequestQuote: _noop,
+            onEditLeg: _noopIndex,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('2 pax'), findsOneWidget);
+    expect(find.text('13 oct 26'), findsOneWidget);
+    expect(find.text('TLC  →  PVR', skipOffstage: false), findsOneWidget);
+
+    reservation.setToAirport(
+      0,
+      _airport('Cancun', 'MMUN', 'CUN', lat: 21.0365, lng: -86.8771),
+    );
+    reservation.setStartDate(0, DateTime(2026, 10, 18, 15));
+    reservation.setGlobalPassengers(5);
+    await tester.pump();
+
+    expect(find.text('5 pax'), findsOneWidget);
+    expect(find.text('18 oct 26'), findsOneWidget);
+    expect(find.text('TLC  →  CUN', skipOffstage: false), findsOneWidget);
+    expect(find.text('TLC  →  PVR', skipOffstage: false), findsNothing);
+    reservation.setBookingTripLabel('Multidestino');
+    await tester.pump();
+    expect(find.text('Multi'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    reservation.routes = [
+      _route(
+        _airport('Cancun', 'MMUN', 'CUN', lat: 21.0365, lng: -86.8771),
+        _airport('Toluca', 'MMTO', 'TLC'),
+      ),
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+      ),
+    ];
+    reservation.notifyListeners();
+    await tester.pump();
+
+    final firstLegY =
+        tester.getTopLeft(find.text('CUN  →  TLC', skipOffstage: false)).dy;
+    final secondLegY =
+        tester.getTopLeft(find.text('TLC  →  PVR', skipOffstage: false)).dy;
+    expect(firstLegY, lessThan(secondLegY));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('metric band stays one row and scrolls for large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final reservation =
+        ReservationProvider()
+          ..bookingTripLabel = 'Multidestino'
+          ..routes = [
+            _route(
+              _airport('Toluca', 'MMTO', 'TLC'),
+              _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+            ),
+          ];
+    addTearDown(reservation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: MaterialApp(
+          home: Builder(
+            builder:
+                (context) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(1.5)),
+                  child: const ItinerarySummaryScreen(
+                    tripType: 'Multidestino',
+                    enableMapVectorProvider: false,
+                    onRequestQuote: _noop,
+                    onEditLeg: _noopIndex,
+                  ),
+                ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('summary-metrics-scroll')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('summary-metric-mode')), findsOneWidget);
+    expect(find.byKey(const ValueKey('summary-metric-legs')), findsOneWidget);
+    expect(find.byKey(const ValueKey('summary-metric-date')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('summary-metric-passengers')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows compact map state for missing coordinates', (

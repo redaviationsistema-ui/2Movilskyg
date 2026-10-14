@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/cliente_api.dart';
+import '../../../core/client_workflow_status.dart';
 import '../../../models/client_operation_tracking.dart';
 import '../../../models/flight_brief.dart';
 import '../tema_cliente.dart';
@@ -162,7 +163,7 @@ class _ClientFlightBriefScreenState extends State<ClientFlightBriefScreen>
     final brief = _brief;
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: ClientThemeColors.bg,
+      backgroundColor: const Color(0xFF071321),
       drawerScrimColor: Colors.black.withValues(alpha: .58),
       endDrawerEnableOpenDragGesture: false,
       endDrawer: _FlightActionsDrawer(
@@ -181,10 +182,31 @@ class _ClientFlightBriefScreenState extends State<ClientFlightBriefScreen>
                 : null,
       ),
       appBar: AppBar(
-        backgroundColor: ClientThemeColors.bg,
+        backgroundColor: const Color(0xFF071321),
         foregroundColor: ClientThemeColors.text,
         elevation: 0,
-        title: const Text('Información de tu vuelo'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Información de tu vuelo',
+              maxLines: 2,
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+            if (brief != null && brief.visible && brief.operation.id.isNotEmpty)
+              Text(
+                'OPERACIÓN #${brief.operation.id}',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: _briefGold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+          ],
+        ),
+        toolbarHeight:
+            MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 124 : 76,
+        iconTheme: const IconThemeData(color: _briefGold),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -198,7 +220,7 @@ class _ClientFlightBriefScreenState extends State<ClientFlightBriefScreen>
               style: IconButton.styleFrom(
                 minimumSize: const Size(44, 44),
                 backgroundColor: const Color(0xFF10314A),
-                foregroundColor: const Color(0xFF8FC9F4),
+                foregroundColor: _briefGold,
                 shape: const CircleBorder(
                   side: BorderSide(color: Color(0x3324516D)),
                 ),
@@ -212,68 +234,64 @@ class _ClientFlightBriefScreenState extends State<ClientFlightBriefScreen>
               ? const _FlightBriefLoading()
               : _error != null && brief == null
               ? _FlightBriefError(onRetry: _load)
-              : RefreshIndicator(
-                onRefresh: () => _load(refresh: true),
-                color: ClientThemeColors.accent,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  children: [
-                    if (_refreshMessage != null)
-                      _RefreshWarning(message: _refreshMessage!),
-                    if (brief != null && !brief.visible)
-                      _FlightBriefUnavailable(
-                        onRefresh: () => _load(refresh: true),
-                      )
-                    else if (brief != null) ...[
-                      _FlightTimeline(brief: brief),
-                      const SizedBox(height: 16),
-                      _FlightHero(brief: brief),
-                      const SizedBox(height: 16),
-                      if (brief.legs.length > 1)
-                        _ItineraryCard(legs: brief.legs)
-                      else
-                        _RouteCard(brief: brief),
-                      if (!brief.hasLegPresentation &&
-                          brief.presentation.hasContent) ...[
-                        const SizedBox(height: 12),
-                        _PresentationCard(brief: brief, onOpenMaps: _openUrl),
-                      ],
-                      const SizedBox(height: 12),
-                      _PreparationCard(brief: brief),
-                      const SizedBox(height: 12),
-                      _OperationalCard(brief: brief),
-                      if (brief.crew.assigned) ...[
-                        const SizedBox(height: 12),
-                        _CrewCard(brief: brief),
-                      ],
-                      const SizedBox(height: 12),
-                      _NextStepCard(brief: brief),
-                      const SizedBox(height: 12),
-                      _CustomerActionCard(brief: brief),
-                      if (brief.services.values.any(
-                        (service) => service.requested,
-                      )) ...[
-                        const SizedBox(height: 12),
-                        _ServicesCard(brief: brief),
-                      ],
-                      if (brief.presentation.instructions.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _InstructionsCard(
-                          instructions: brief.presentation.instructions,
+              : SafeArea(
+                top: false,
+                child: RefreshIndicator(
+                  onRefresh: () => _load(refresh: true),
+                  color: _briefGold,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    children: [
+                      if (_refreshMessage != null)
+                        _RefreshWarning(message: _refreshMessage!),
+                      if (brief != null && !brief.visible)
+                        _FlightBriefUnavailable(
+                          onRefresh: () => _load(refresh: true),
+                        )
+                      else if (brief != null) ...[
+                        _FlightHero(brief: brief),
+                        const SizedBox(height: 16),
+                        _RouteSummary(
+                          brief: brief,
+                          flightRequest: widget.flightRequest,
                         ),
-                      ],
-                      if (brief.support.hasContact) ...[
-                        const SizedBox(height: 12),
-                        _SupportCard(
-                          support: brief.support,
-                          onOpenUrl: _openUrl,
+                        _ItinerarySection(legs: _displayLegs(brief)),
+                        _PresentationSection(
+                          brief: brief,
+                          onOpenMaps: _openUrl,
                         ),
+                        _PreparationSection(brief: brief),
+                        if (brief.crew.assigned) ...[
+                          const SizedBox(height: 12),
+                          _CrewSection(brief: brief),
+                        ],
+                        const SizedBox(height: 12),
+                        _NextStepPanel(brief: brief),
+                        if (brief.services.values.any(
+                          (service) => service.requested,
+                        )) ...[
+                          const SizedBox(height: 12),
+                          _ServicesSection(brief: brief),
+                        ],
+                        if (brief.presentation.instructions.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _InstructionsSection(
+                            instructions: brief.presentation.instructions,
+                          ),
+                        ],
+                        if (brief.support.hasContact) ...[
+                          const SizedBox(height: 12),
+                          _SupportSection(
+                            support: brief.support,
+                            onOpenUrl: _openUrl,
+                          ),
+                        ],
                       ],
                     ],
-                  ],
+                  ),
                 ),
               ),
     );
@@ -767,7 +785,7 @@ class _FlightBriefLoading extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        CircularProgressIndicator(color: ClientThemeColors.accent),
+        CircularProgressIndicator(color: _briefGold),
         SizedBox(height: 16),
         Text('Actualizando la información de tu vuelo...'),
       ],
@@ -811,15 +829,11 @@ class _FlightBriefUnavailable extends StatelessWidget {
   final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
+  Widget build(BuildContext context) => _BriefSection(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(
-          Icons.lock_clock_outlined,
-          color: ClientThemeColors.accent,
-          size: 30,
-        ),
+        const Icon(Icons.lock_clock_outlined, color: _briefGold, size: 30),
         const SizedBox(height: 14),
         const Text(
           'Flight Brief disponible después de confirmar el pago.',
@@ -867,119 +881,6 @@ class _RefreshWarning extends StatelessWidget {
   );
 }
 
-class _FlightTimeline extends StatelessWidget {
-  const _FlightTimeline({required this.brief});
-  final FlightBrief brief;
-
-  @override
-  Widget build(BuildContext context) {
-    final phase = _FlightPhase.fromBrief(brief);
-    final labels = const [
-      'Pago',
-      'Reserva',
-      'Detalles',
-      'Flight Brief',
-      'Preparación',
-      'Seguimiento',
-    ];
-    final current = phase.timelineIndex;
-    return _BriefCard(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: List.generate(labels.length, (index) {
-            final completed = index < current;
-            final active = index == current;
-            return Row(
-              children: [
-                _TimelineNode(
-                  label: labels[index],
-                  completed: completed,
-                  active: active,
-                ),
-                if (index != labels.length - 1)
-                  Container(
-                    width: 24,
-                    height: 2,
-                    color:
-                        completed
-                            ? const Color(0xFF19805A)
-                            : const Color(0xFFD6E0E6),
-                  ),
-              ],
-            );
-          }),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimelineNode extends StatelessWidget {
-  const _TimelineNode({
-    required this.label,
-    required this.completed,
-    required this.active,
-  });
-  final String label;
-  final bool completed;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color =
-        completed ? const Color(0xFF19805A) : ClientThemeColors.accent;
-    return SizedBox(
-      width: 74,
-      child: Column(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color:
-                  completed
-                      ? color
-                      : active
-                      ? const Color(0xFFE7F4F5)
-                      : Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: active ? color : const Color(0xFFCBD8DF),
-                width: active ? 3 : 1,
-              ),
-            ),
-            child:
-                completed
-                    ? const Icon(
-                      Icons.check_rounded,
-                      color: Colors.white,
-                      size: 17,
-                    )
-                    : active
-                    ? Icon(Icons.flight_rounded, color: color, size: 19)
-                    : null,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: active ? ClientThemeColors.text : _briefMuted,
-              fontSize: 11,
-              fontWeight:
-                  active || completed ? FontWeight.w800 : FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _FlightHero extends StatelessWidget {
   const _FlightHero({required this.brief});
   final FlightBrief brief;
@@ -987,40 +888,86 @@ class _FlightHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final phase = _FlightPhase.fromBrief(brief);
-    return _BriefCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final preparation = _PreparationState.fromBrief(brief);
+    final status =
+        phase.isCancelled
+            ? 'CANCELADO'
+            : phase.isInFlight
+            ? 'EN OPERACIÓN'
+            : phase.isFinalized
+            ? 'FINALIZADO'
+            : brief.readiness.ready
+            ? 'LISTO PARA SALIDA'
+            : preparation.isActive
+            ? 'EN PREPARACIÓN'
+            : _operationStatusLabel(brief);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('FLIGHT BRIEF', style: _eyebrowStyle),
-                const SizedBox(height: 7),
-                Text(
-                  _travelCopy(phase.title, brief.legs.length > 1),
-                  style: const TextStyle(
-                    color: ClientThemeColors.text,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                    height: 1.05,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  phase.subtitle,
-                  style: const TextStyle(color: _briefMuted, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-          AspectRatio(
-            aspectRatio: 16 / 8,
+          Positioned.fill(
             child: _AircraftImage(
               imageUrl: brief.aircraft.imageUrl,
               model: brief.aircraft.model,
+            ),
+          ),
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [Color(0x65071321), Color(0xF2071321)],
+                ),
+              ),
+            ),
+          ),
+          Container(
+            constraints: const BoxConstraints(minHeight: 210),
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Text('FLIGHT BRIEF', style: _eyebrowStyle),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        status,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: _briefGold,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  _travelCopy(phase.title, brief.legs.length > 1),
+                  style: const TextStyle(
+                    color: Color(0xFFF5F7FA),
+                    fontSize: 25,
+                    height: 1.12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  phase.subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFFD7E0E8),
+                    height: 1.4,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1052,115 +999,229 @@ class _AircraftImage extends StatelessWidget {
 
 class _AircraftFallback extends StatelessWidget {
   const _AircraftFallback({required this.model});
-
   final String model;
-
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: ClientThemeColors.softSurface,
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.flight_rounded,
-            size: 48,
-            color: ClientThemeColors.accent,
-          ),
-          if (model.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              model,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: ClientThemeColors.text,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ],
+  Widget build(BuildContext context) => const DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Color(0xFF172D42), Color(0xFF071321)],
+        begin: Alignment.topRight,
+        end: Alignment.bottomLeft,
       ),
     ),
   );
 }
 
-class _RouteCard extends StatelessWidget {
-  const _RouteCard({required this.brief});
+class _RouteSummary extends StatelessWidget {
+  const _RouteSummary({required this.brief, required this.flightRequest});
   final FlightBrief brief;
+  final Map<String, dynamic>? flightRequest;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
+  Widget build(BuildContext context) {
+    final first = brief.legs.firstOrNull;
+    final origin = first?.origin ?? brief.departure;
+    final destination = first?.destination ?? brief.arrival;
+    String airportCode(FlightBriefLocation location, String fallback) =>
+        _value(location.code, fallback: _value(fallback));
+    String passengers = 'Por confirmar';
+    for (final key in ['passengers', 'passenger_count', 'pax', 'seats']) {
+      final count = int.tryParse(flightRequest?[key]?.toString() ?? '');
+      if (count != null && count > 0) {
+        passengers = '$count pax';
+        break;
+      }
+    }
+    return _BriefSection(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (brief.legs.length > 1) ...[
+            Text(
+              'PRIMER TRAMO · ${brief.legs.length} TRAMOS',
+              style: _eyebrowStyle,
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _SummaryAirport(
+                  code: airportCode(
+                    origin,
+                    first == null ? brief.flight.origin : '',
+                  ),
+                  city: origin.city,
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                child: Icon(
+                  Icons.flight_takeoff_rounded,
+                  color: _briefGold,
+                  size: 22,
+                ),
+              ),
+              Expanded(
+                child: _SummaryAirport(
+                  code: airportCode(
+                    destination,
+                    first == null ? brief.flight.destination : '',
+                  ),
+                  city: destination.city,
+                  alignRight: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SummaryFact(
+                  icon: Icons.schedule_outlined,
+                  label: 'SALIDA',
+                  value: _dateTimeLabel(
+                    first?.departureAt ??
+                        (first == null ? brief.flight.departureAt : null),
+                  ),
+                ),
+                _SummaryFact(
+                  icon: Icons.people_outline,
+                  label: 'PASAJEROS',
+                  value: passengers,
+                ),
+                _SummaryFact(
+                  icon: Icons.flight_outlined,
+                  label: 'AERONAVE',
+                  value: _value(
+                    brief.aircraft.model,
+                    fallback: _value(brief.flight.aircraft),
+                  ),
+                ),
+                if (brief.flight.arrivalAt != null)
+                  _SummaryFact(
+                    icon: Icons.flight_land_outlined,
+                    label: 'LLEGADA',
+                    value: _dateTimeLabel(brief.flight.arrivalAt),
+                  ),
+                if (brief.flight.durationHours != null)
+                  _SummaryFact(
+                    icon: Icons.timelapse,
+                    label: 'DURACIÓN',
+                    value: _durationLabel(brief.flight.durationHours),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryAirport extends StatelessWidget {
+  const _SummaryAirport({
+    required this.code,
+    required this.city,
+    this.alignRight = false,
+  });
+  final String code;
+  final String city;
+  final bool alignRight;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment:
+        alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+    children: [
+      Text(
+        code,
+        style: const TextStyle(
+          color: Color(0xFFF5F7FA),
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      if (city.isNotEmpty)
+        Text(city, style: const TextStyle(color: _briefMuted, fontSize: 12)),
+    ],
+  );
+}
+
+class _SummaryFact extends StatelessWidget {
+  const _SummaryFact({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: const BoxConstraints(maxWidth: 260),
+    padding: const EdgeInsets.only(right: 16),
+    margin: const EdgeInsets.only(right: 16),
+    decoration: const BoxDecoration(
+      border: Border(right: BorderSide(color: Color(0x1FFFFFFF))),
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('RUTA', style: _eyebrowStyle),
-        const SizedBox(height: 16),
-        _AirportRow(
-          location: brief.departure,
-          icon: Icons.flight_takeoff_rounded,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: _briefGold, size: 14),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(label, style: _eyebrowStyle.copyWith(fontSize: 9)),
+            ),
+          ],
         ),
-        const Padding(
-          padding: EdgeInsets.only(left: 16),
-          child: SizedBox(
-            height: 18,
-            child: VerticalDivider(color: Color(0xFF5E7E96), thickness: 2),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Color(0xFFF5F7FA),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
           ),
-        ),
-        _AirportRow(location: brief.arrival, icon: Icons.flight_land_rounded),
-        const SizedBox(height: 18),
-        const Divider(height: 1),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _FlightFact(
-                label: 'Fecha',
-                value: _dateLabel(brief.flight.departureAt),
-              ),
-            ),
-            Expanded(
-              child: _FlightFact(
-                label: 'Salida',
-                value: _timeLabel(brief.flight.departureAt),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _FlightFact(
-                label: 'Llegada',
-                value: _timeLabel(brief.flight.arrivalAt),
-              ),
-            ),
-            Expanded(
-              child: _FlightFact(
-                label: 'Duración',
-                value: _durationLabel(brief.flight.durationHours),
-              ),
-            ),
-          ],
         ),
       ],
     ),
   );
 }
 
-class _ItineraryCard extends StatelessWidget {
-  const _ItineraryCard({required this.legs});
+class _ItinerarySection extends StatelessWidget {
+  const _ItinerarySection({required this.legs});
 
   final List<FlightBriefLeg> legs;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
+  Widget build(BuildContext context) => _BriefSection(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ITINERARIO', style: _eyebrowStyle),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            const Text('ITINERARIO', style: _eyebrowStyle),
+            Text(
+              '${legs.length} ${legs.length == 1 ? 'tramo' : 'tramos'}',
+              style: const TextStyle(color: _briefMuted, fontSize: 11),
+            ),
+          ],
+        ),
         const SizedBox(height: 14),
+        if (legs.isEmpty)
+          const Text(
+            'Itinerario por confirmar',
+            style: TextStyle(color: _briefMuted),
+          ),
         for (var index = 0; index < legs.length; index++) ...[
           _ItineraryLegItem(
             leg: legs[index],
@@ -1169,7 +1230,7 @@ class _ItineraryCard extends StatelessWidget {
           ),
           if (index != legs.length - 1) ...[
             const SizedBox(height: 16),
-            const Divider(height: 1),
+            const Divider(height: 1, color: Color(0x1FFFFFFF)),
             const SizedBox(height: 16),
           ],
         ],
@@ -1184,92 +1245,78 @@ class _ItineraryLegItem extends StatelessWidget {
     required this.index,
     required this.totalLegs,
   });
-
   final FlightBriefLeg leg;
   final int index;
   final int totalLegs;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('TRAMO ${index + 1}', style: _eyebrowStyle),
-      const SizedBox(height: 10),
-      _LegAirport(location: leg.origin, icon: Icons.flight_takeoff_rounded),
-      const Padding(
-        padding: EdgeInsets.only(left: 10),
-        child: SizedBox(
-          height: 16,
-          child: VerticalDivider(color: Color(0xFF5E7E96), thickness: 2),
-        ),
-      ),
-      _LegAirport(location: leg.destination, icon: Icons.flight_land_rounded),
-      if (leg.departureAt != null) ...[
-        const SizedBox(height: 12),
-        _LegDetail(
-          icon: Icons.schedule_outlined,
-          label: 'Salida',
-          value: _dateTimeLabel(leg.departureAt),
-        ),
-      ],
-      if (leg.presentationLocation.isNotEmpty) ...[
-        const SizedBox(height: 8),
-        _LegDetail(
-          icon: Icons.place_outlined,
-          label: 'Presentación',
-          value: leg.presentationLocation,
-        ),
-      ],
-      if (leg.presentationAt != null || leg.presentationTime.isNotEmpty) ...[
-        const SizedBox(height: 8),
-        _LegDetail(
-          icon: Icons.access_time_rounded,
-          label: 'Hora de presentación',
-          value:
-              leg.presentationAt != null
-                  ? _dateTimeLabel(leg.presentationAt)
-                  : leg.presentationTime,
-        ),
-      ],
-    ],
-  );
-}
-
-class _LegAirport extends StatelessWidget {
-  const _LegAirport({required this.location, required this.icon});
-
-  final FlightBriefLocation location;
-  final IconData icon;
-
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Icon(icon, color: ClientThemeColors.accent),
-      const SizedBox(width: 12),
+      Column(
+        children: [
+          Semantics(
+            label: 'Tramo ${index + 1}',
+            child: Text(
+              '${index + 1}'.padLeft(2, '0'),
+              style: const TextStyle(
+                color: _briefGold,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (index < totalLegs - 1)
+            Container(
+              width: 1,
+              height: 32,
+              margin: const EdgeInsets.only(top: 8),
+              color: const Color(0x33D6B477),
+            ),
+        ],
+      ),
+      const SizedBox(width: 14),
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (location.code.isNotEmpty)
-              Text(
-                location.code,
-                style: const TextStyle(
-                  color: ClientThemeColors.text,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
+            Text(
+              '${_value(leg.origin.code)} → ${_value(leg.destination.code)}',
+              style: const TextStyle(
+                color: Color(0xFFF5F7FA),
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
               ),
-            if (location.airportName.isNotEmpty)
+            ),
+            const SizedBox(height: 5),
+            Text(
+              _dateTimeLabel(leg.departureAt),
+              style: const TextStyle(color: _briefMuted, fontSize: 12),
+            ),
+            if (leg.origin.airportName.isNotEmpty ||
+                leg.destination.airportName.isNotEmpty)
               Text(
-                location.airportName,
-                style: const TextStyle(color: _briefMuted, height: 1.3),
+                _join([leg.origin.airportName, leg.destination.airportName]),
+                style: const TextStyle(color: _briefMuted, fontSize: 11),
               ),
-            if (location.city.isNotEmpty)
-              Text(
-                location.city,
-                style: const TextStyle(color: _briefMuted, height: 1.3),
+            if (leg.presentationLocation.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _LegDetail(
+                icon: Icons.place_outlined,
+                label: 'Presentación',
+                value: leg.presentationLocation,
               ),
+            ],
+            if (leg.presentationAt != null ||
+                leg.presentationTime.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _LegDetail(
+                icon: Icons.schedule,
+                label: 'Hora de presentación',
+                value:
+                    leg.presentationAt != null
+                        ? _dateTimeLabel(leg.presentationAt)
+                        : leg.presentationTime,
+              ),
+            ],
           ],
         ),
       ),
@@ -1291,12 +1338,11 @@ class _LegDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Icon(icon, size: 18, color: ClientThemeColors.accent),
+      Icon(icon, size: 18, color: _briefGold),
       const SizedBox(width: 8),
-      Text('$label: ', style: _eyebrowStyle),
       Expanded(
         child: Text(
-          value,
+          '$label: $value',
           style: const TextStyle(
             color: ClientThemeColors.text,
             fontWeight: FontWeight.w800,
@@ -1307,77 +1353,15 @@ class _LegDetail extends StatelessWidget {
   );
 }
 
-class _AirportRow extends StatelessWidget {
-  const _AirportRow({required this.location, required this.icon});
-  final FlightBriefLocation location;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(icon, color: ClientThemeColors.accent),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _value(location.code),
-              style: const TextStyle(
-                color: ClientThemeColors.text,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            if (location.airportName.isNotEmpty)
-              Text(
-                location.airportName,
-                style: const TextStyle(color: _briefMuted, height: 1.35),
-              ),
-            if (location.city.isNotEmpty)
-              Text(
-                location.city,
-                style: const TextStyle(color: _briefMuted, height: 1.35),
-              ),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
-class _FlightFact extends StatelessWidget {
-  const _FlightFact({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label.toUpperCase(), style: _eyebrowStyle),
-      const SizedBox(height: 4),
-      Text(
-        value,
-        style: const TextStyle(
-          color: ClientThemeColors.text,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    ],
-  );
-}
-
-class _PresentationCard extends StatelessWidget {
-  const _PresentationCard({required this.brief, required this.onOpenMaps});
+class _PresentationSection extends StatelessWidget {
+  const _PresentationSection({required this.brief, required this.onOpenMaps});
   final FlightBrief brief;
   final Future<void> Function(String) onOpenMaps;
 
   @override
   Widget build(BuildContext context) {
     final presentation = brief.presentation;
-    return _BriefCard(
+    return _BriefSection(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1386,7 +1370,10 @@ class _PresentationCard extends StatelessWidget {
           Text(
             _value(
               presentation.airportName,
-              fallback: brief.departure.airportName,
+              fallback: _value(
+                brief.legs.firstOrNull?.origin.airportName ?? '',
+                fallback: _value(brief.departure.airportName),
+              ),
             ),
             style: const TextStyle(
               color: ClientThemeColors.text,
@@ -1395,14 +1382,31 @@ class _PresentationCard extends StatelessWidget {
             ),
           ),
           Text(
-            _join([presentation.airportCode, presentation.city]),
+            _join([
+              _value(
+                presentation.airportCode,
+                fallback:
+                    brief.legs.firstOrNull?.origin.code ?? brief.departure.code,
+              ),
+              _value(
+                presentation.city,
+                fallback:
+                    brief.legs.firstOrNull?.origin.city ?? brief.departure.city,
+              ),
+            ]),
             style: const TextStyle(color: _briefMuted),
           ),
           const SizedBox(height: 16),
           _DetailLine(
             icon: Icons.place_outlined,
             label: 'Punto de presentación',
-            value: _value(presentation.locationName),
+            value: _value(
+              presentation.locationName,
+              fallback:
+                  brief.hasLegPresentation
+                      ? 'Consulta la presentación de cada tramo en el itinerario.'
+                      : 'El punto de presentación será confirmado por nuestro equipo.',
+            ),
           ),
           _DetailLine(
             icon: Icons.schedule_outlined,
@@ -1445,7 +1449,7 @@ class _DetailLine extends StatelessWidget {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: ClientThemeColors.accent, size: 19),
+        Icon(icon, color: _briefGold, size: 19),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -1472,65 +1476,16 @@ class _DetailLine extends StatelessWidget {
   );
 }
 
-class _PreparationCard extends StatelessWidget {
-  const _PreparationCard({required this.brief});
+class _PreparationSection extends StatelessWidget {
+  const _PreparationSection({required this.brief});
   final FlightBrief brief;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = _PreparationState.fromBrief(brief);
-    final checklist = brief.checklist;
-    final hasProgress = checklist.total > 0 && checklist.percentage != null;
-    return _BriefCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('PREPARACIÓN DE TU VUELO', style: _eyebrowStyle),
-          const SizedBox(height: 8),
-          Text(
-            state.label,
-            style: const TextStyle(
-              color: ClientThemeColors.text,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          if (hasProgress) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: (checklist.percentage! / 100).clamp(0, 1),
-                minHeight: 8,
-                backgroundColor: const Color(0xFF29445B),
-                color: state.color,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${checklist.completed} de ${checklist.total} completadas',
-              style: const TextStyle(
-                color: _briefMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _OperationalCard extends StatelessWidget {
-  const _OperationalCard({required this.brief});
-  final FlightBrief brief;
-
   @override
   Widget build(BuildContext context) {
     final preparation = _PreparationState.fromBrief(brief);
+    final checklist = brief.checklist;
     final rows = [
       ('Pago confirmado', brief.payment.confirmed, false),
-      ('Aeronave asignada', brief.aircraft.model.isNotEmpty, false),
+      ('Aeronave identificada', brief.aircraft.model.isNotEmpty, false),
       ('Operador asignado', brief.provider.assigned, false),
       (
         _crewIsConfirmed(brief)
@@ -1541,72 +1496,149 @@ class _OperationalCard extends StatelessWidget {
       ),
       (preparation.label, preparation.isComplete, preparation.isActive),
     ];
-    return _BriefCard(
+    return _BriefSection(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('QUÉ ESTÁ LISTO', style: _eyebrowStyle),
-          const SizedBox(height: 10),
-          for (final row in rows)
-            _StatusRow(label: row.$1, done: row.$2, active: row.$3),
+          const Text('ESTADO DE PREPARACIÓN', style: _eyebrowStyle),
+          const SizedBox(height: 12),
+          Text(
+            preparation.label,
+            style: const TextStyle(
+              color: Color(0xFFF5F7FA),
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              for (var index = 0; index < rows.length; index++) ...[
+                Expanded(
+                  child: Semantics(
+                    label:
+                        '${rows[index].$1}: ${rows[index].$2
+                            ? 'completado'
+                            : rows[index].$3
+                            ? 'en proceso'
+                            : 'pendiente'}',
+                    child: Tooltip(
+                      message: rows[index].$1,
+                      child: Center(
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                rows[index].$2
+                                    ? _briefGold
+                                    : Colors.transparent,
+                            border: Border.all(
+                              color:
+                                  rows[index].$2 || rows[index].$3
+                                      ? _briefGold
+                                      : _briefMuted,
+                            ),
+                          ),
+                          child: Icon(
+                            rows[index].$2
+                                ? Icons.check
+                                : rows[index].$3
+                                ? Icons.more_horiz
+                                : Icons.circle_outlined,
+                            size: 16,
+                            color:
+                                rows[index].$2
+                                    ? const Color(0xFF071321)
+                                    : _briefGold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (index < rows.length - 1)
+                  const Expanded(
+                    child: Divider(height: 1, color: Color(0x33FFFFFF)),
+                  ),
+              ],
+            ],
+          ),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            iconColor: _briefGold,
+            collapsedIconColor: _briefGold,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: const Text(
+              'Ver hitos de preparación',
+              style: TextStyle(color: _briefMuted, fontSize: 12),
+            ),
+            children: [
+              for (final row in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        row.$2
+                            ? Icons.check_circle_outline
+                            : row.$3
+                            ? Icons.pending_outlined
+                            : Icons.radio_button_unchecked,
+                        color: row.$2 || row.$3 ? _briefGold : _briefMuted,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${row.$1} · ${row.$2
+                              ? 'Completado'
+                              : row.$3
+                              ? 'En proceso'
+                              : 'Pendiente'}',
+                          style: const TextStyle(
+                            color: _briefMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (checklist.total > 0 &&
+              checklist.percentage != null &&
+              !_isCancelled(brief)) ...[
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: (checklist.percentage! / 100).clamp(0, 1),
+              minHeight: 3,
+              color: _briefGold,
+              backgroundColor: const Color(0xFF172D42),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${checklist.completed} de ${checklist.total} completadas',
+              style: const TextStyle(color: _briefMuted, fontSize: 12),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({
-    required this.label,
-    required this.done,
-    required this.active,
-  });
-  final String label;
-  final bool done;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      children: [
-        Icon(
-          done
-              ? Icons.check_circle_rounded
-              : active
-              ? Icons.radio_button_checked_rounded
-              : Icons.radio_button_unchecked_rounded,
-          color:
-              done
-                  ? const Color(0xFF19805A)
-                  : active
-                  ? ClientThemeColors.accent
-                  : const Color(0xFF9AACB8),
-          size: 20,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? ClientThemeColors.text : _briefMuted,
-              fontWeight: active || done ? FontWeight.w800 : FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _CrewCard extends StatelessWidget {
-  const _CrewCard({required this.brief});
+class _CrewSection extends StatelessWidget {
+  const _CrewSection({required this.brief});
   final FlightBrief brief;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
-    color: const Color(0xFF10283A),
-    borderColor: const Color(0x4D6EA0BE),
+  Widget build(BuildContext context) => _BriefSection(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1616,10 +1648,7 @@ class _CrewCard extends StatelessWidget {
           children: [
             const CircleAvatar(
               backgroundColor: Color(0xFF153A55),
-              child: Icon(
-                Icons.person_outline_rounded,
-                color: ClientThemeColors.accent,
-              ),
+              child: Icon(Icons.person_outline_rounded, color: _briefGold),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1661,8 +1690,8 @@ class _CrewCard extends StatelessWidget {
   );
 }
 
-class _NextStepCard extends StatelessWidget {
-  const _NextStepCard({required this.brief});
+class _NextStepPanel extends StatelessWidget {
+  const _NextStepPanel({required this.brief});
   final FlightBrief brief;
 
   @override
@@ -1722,6 +1751,19 @@ class _NextStepCard extends StatelessWidget {
                   _travelCopy(phase.nextDescription, brief.legs.length > 1),
                   style: const TextStyle(color: Color(0xFFB3C4D1), height: 1.4),
                 ),
+                if (!phase.isCancelled &&
+                    !phase.isFinalized &&
+                    !phase.isInFlight) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'No necesitas realizar ninguna acción por el momento.',
+                    style: TextStyle(
+                      color: _briefMuted,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1731,39 +1773,8 @@ class _NextStepCard extends StatelessWidget {
   }
 }
 
-class _CustomerActionCard extends StatelessWidget {
-  const _CustomerActionCard({required this.brief});
-  final FlightBrief brief;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFF122C3E),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: const Color(0x4064A0C8)),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('¿NECESITAS HACER ALGO?', style: _eyebrowStyle),
-        const SizedBox(height: 8),
-        Text(
-          _travelCopy(
-            brief.presentation.isComplete
-                ? 'No necesitas realizar ninguna acción por el momento. Estamos terminando de preparar tu vuelo.'
-                : 'No necesitas hacer nada por ahora. Te avisaremos cuando confirmemos los detalles de presentación.',
-            brief.legs.length > 1,
-          ),
-          style: const TextStyle(color: _briefMuted, height: 1.45),
-        ),
-      ],
-    ),
-  );
-}
-
-class _ServicesCard extends StatelessWidget {
-  const _ServicesCard({required this.brief});
+class _ServicesSection extends StatelessWidget {
+  const _ServicesSection({required this.brief});
   final FlightBrief brief;
 
   @override
@@ -1775,7 +1786,7 @@ class _ServicesCard extends StatelessWidget {
     };
     final services =
         brief.services.entries.where((entry) => entry.value.requested).toList();
-    return _BriefCard(
+    return _BriefSection(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1788,7 +1799,7 @@ class _ServicesCard extends StatelessWidget {
                 children: [
                   const Icon(
                     Icons.check_circle_outline_rounded,
-                    color: ClientThemeColors.accent,
+                    color: _briefGold,
                     size: 19,
                   ),
                   const SizedBox(width: 10),
@@ -1814,12 +1825,12 @@ class _ServicesCard extends StatelessWidget {
   }
 }
 
-class _InstructionsCard extends StatelessWidget {
-  const _InstructionsCard({required this.instructions});
+class _InstructionsSection extends StatelessWidget {
+  const _InstructionsSection({required this.instructions});
   final String instructions;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
+  Widget build(BuildContext context) => _BriefSection(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1834,13 +1845,13 @@ class _InstructionsCard extends StatelessWidget {
   );
 }
 
-class _SupportCard extends StatelessWidget {
-  const _SupportCard({required this.support, required this.onOpenUrl});
+class _SupportSection extends StatelessWidget {
+  const _SupportSection({required this.support, required this.onOpenUrl});
   final FlightBriefSupport support;
   final Future<void> Function(String) onOpenUrl;
 
   @override
-  Widget build(BuildContext context) => _BriefCard(
+  Widget build(BuildContext context) => _BriefSection(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1885,25 +1896,14 @@ class _SupportCard extends StatelessWidget {
   );
 }
 
-class _BriefCard extends StatelessWidget {
-  const _BriefCard({
-    required this.child,
-    this.padding = const EdgeInsets.all(18),
-    this.color = ClientThemeColors.surface,
-    this.borderColor = const Color(0xFF31526D),
-  });
+class _BriefSection extends StatelessWidget {
+  const _BriefSection({required this.child});
   final Widget child;
-  final EdgeInsetsGeometry padding;
-  final Color color;
-  final Color borderColor;
-
   @override
   Widget build(BuildContext context) => Container(
-    padding: padding,
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: borderColor),
+    padding: const EdgeInsets.symmetric(vertical: 20),
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: Color(0x1FFFFFFF))),
     ),
     child: child,
   );
@@ -1938,7 +1938,30 @@ class _PreparationState {
         isActive: false,
       );
     }
-    if (brief.checklist.exists) {
+    if (_containsAny(
+      '${brief.flight.status} ${brief.operation.status}'.toLowerCase(),
+      const [
+        'in_flight',
+        'en_vuelo',
+        'airborne',
+        'landed',
+        'aterriz',
+        'completed',
+        'finaliz',
+      ],
+    )) {
+      return const _PreparationState(
+        'Preparación sin cierre confirmado',
+        Color(0xFFA5B4C4),
+        isComplete: false,
+        isActive: false,
+      );
+    }
+    if (brief.checklist.exists ||
+        _containsAny(
+          '${brief.flight.status} ${brief.operation.status}'.toLowerCase(),
+          const ['preparing', 'preparation', 'en_preparacion'],
+        )) {
       return const _PreparationState(
         'Preparación en curso',
         ClientThemeColors.accent,
@@ -1961,7 +1984,6 @@ class _FlightPhase {
     required this.subtitle,
     required this.nextTitle,
     required this.nextDescription,
-    required this.timelineIndex,
     required this.isInFlight,
     required this.isFinalized,
     required this.isCancelled,
@@ -1970,15 +1992,13 @@ class _FlightPhase {
   final String subtitle;
   final String nextTitle;
   final String nextDescription;
-  final int timelineIndex;
   final bool isInFlight;
   final bool isFinalized;
   final bool isCancelled;
 
   factory _FlightPhase.fromBrief(FlightBrief brief) {
     final status =
-        '${brief.flight.status} ${brief.operation.status} ${brief.operation.crewStatus}'
-            .toLowerCase();
+        '${brief.flight.status} ${brief.operation.status}'.toLowerCase();
     final cancelled = _isCancelled(brief);
     final inFlight = _containsAny(status, const [
       'in_flight',
@@ -1999,10 +2019,23 @@ class _FlightPhase {
         nextTitle: 'Tu vuelo fue cancelado',
         nextDescription:
             'Si necesitas ayuda, nuestro equipo está disponible para ti.',
-        timelineIndex: 5,
         isInFlight: false,
         isFinalized: false,
         isCancelled: true,
+      );
+    }
+    if (_containsAny(status, const ['tracking_live']) &&
+        !inFlight &&
+        !finalized) {
+      return const _FlightPhase(
+        title: 'Tu operación está en curso',
+        subtitle: 'La operación se encuentra en seguimiento.',
+        nextTitle: 'Seguimiento de tu operación',
+        nextDescription:
+            'Puedes consultar las actualizaciones en el menú de acciones del vuelo.',
+        isInFlight: true,
+        isFinalized: false,
+        isCancelled: false,
       );
     }
     if (inFlight) {
@@ -2011,7 +2044,6 @@ class _FlightPhase {
         subtitle: 'Tu operación se encuentra en seguimiento.',
         nextTitle: 'Tu vuelo está en curso',
         nextDescription: 'Puedes consultar el seguimiento cuando lo necesites.',
-        timelineIndex: 5,
         isInFlight: true,
         isFinalized: false,
         isCancelled: false,
@@ -2023,7 +2055,6 @@ class _FlightPhase {
         subtitle: 'La operación de tu vuelo concluyó.',
         nextTitle: 'Tu vuelo ha finalizado',
         nextDescription: 'El resumen queda disponible en seguimiento.',
-        timelineIndex: 5,
         isInFlight: false,
         isFinalized: true,
         isCancelled: false,
@@ -2035,44 +2066,83 @@ class _FlightPhase {
         subtitle: 'La preparación operacional está completa.',
         nextTitle: 'Todo listo para tu vuelo',
         nextDescription: 'Tu vuelo está preparado para la salida.',
-        timelineIndex: 4,
         isInFlight: false,
         isFinalized: false,
         isCancelled: false,
       );
     }
-    if (preparation.isActive) {
+    if (preparation.isActive ||
+        _containsAny(status, const [
+          'preparing',
+          'preparation',
+          'en_preparacion',
+        ])) {
       return const _FlightPhase(
-        title: 'Estamos preparando tu vuelo',
-        subtitle: 'El equipo continúa las verificaciones previas.',
+        title: 'Estamos preparando tu viaje',
+        subtitle:
+            'Nuestro equipo coordina cada detalle para que tu vuelo se realice en tiempo y forma.',
         nextTitle: 'Preparación en curso',
         nextDescription:
             'Nuestro equipo está realizando las verificaciones previas.',
-        timelineIndex: 4,
         isInFlight: false,
         isFinalized: false,
         isCancelled: false,
       );
     }
-    if (brief.crew.assigned && !_crewIsConfirmed(brief)) {
+    if (preparation.isComplete) {
       return const _FlightPhase(
-        title: 'Estamos preparando tu vuelo',
-        subtitle: 'Estamos finalizando la coordinación de tu tripulación.',
-        nextTitle: 'Confirmación de tu tripulación',
+        title: 'Verificaciones completadas',
+        subtitle: 'La salida está pendiente de confirmación operativa.',
+        nextTitle: 'Coordinación de salida',
+        nextDescription: 'Te informaremos cuando se confirme la salida.',
+        isInFlight: false,
+        isFinalized: false,
+        isCancelled: false,
+      );
+    }
+    if (_containsAny(
+      '${brief.flight.status} ${brief.operation.status}'.toLowerCase(),
+      const ['pending', 'pendiente'],
+    )) {
+      return const _FlightPhase(
+        title: 'Tu vuelo está pendiente',
+        subtitle:
+            'Estamos a la espera de confirmar la información de tu operación.',
+        nextTitle: 'Confirmación de la operación',
         nextDescription:
-            'Estamos terminando de confirmar al equipo que atenderá tu vuelo.',
-        timelineIndex: 3,
+            'Nuestro equipo te informará cuando haya una actualización.',
+        isInFlight: false,
+        isFinalized: false,
+        isCancelled: false,
+      );
+    }
+    if ([brief.flight.status, brief.operation.status].any(
+      (value) => const [
+        'confirmed',
+        'confirmado',
+        'confirmada',
+        'flight_confirmed',
+        'scheduled',
+        'programado',
+      ].contains(value.trim().toLowerCase()),
+    )) {
+      return const _FlightPhase(
+        title: 'Tu vuelo está confirmado',
+        subtitle: 'La preparación operativa está pendiente.',
+        nextTitle: 'Preparación de tu viaje',
+        nextDescription:
+            'Nuestro equipo realizará las verificaciones previas. Te mantendremos informado.',
         isInFlight: false,
         isFinalized: false,
         isCancelled: false,
       );
     }
     return const _FlightPhase(
-      title: 'Estamos preparando tu vuelo',
-      subtitle: 'Estamos coordinando la información de tu vuelo.',
-      nextTitle: 'Preparación de tu vuelo',
-      nextDescription: 'Nuestro equipo realizará las verificaciones previas.',
-      timelineIndex: 3,
+      title: 'Información de tu vuelo',
+      subtitle: 'El estado operativo está por confirmar.',
+      nextTitle: 'Actualización de la operación',
+      nextDescription:
+          'Consulta las próximas actualizaciones o contacta a nuestro equipo.',
       isInFlight: false,
       isFinalized: false,
       isCancelled: false,
@@ -2087,7 +2157,8 @@ const _eyebrowStyle = TextStyle(
   letterSpacing: .9,
 );
 
-const _briefMuted = Color(0xFFB8CCE0);
+const _briefMuted = Color(0xFFA5B4C4);
+const _briefGold = Color(0xFFD6B477);
 
 String _travelCopy(String value, bool isMultiLeg) {
   if (!isMultiLeg) return value;
@@ -2121,23 +2192,69 @@ String _value(String value, {String fallback = 'Por confirmar'}) =>
 String _join(List<String> values) =>
     values.where((value) => value.trim().isNotEmpty).join(' · ');
 
-String _dateLabel(DateTime? value) =>
-    value == null
-        ? 'Por confirmar'
-        : DateFormat('dd MMM yyyy', 'es_MX').format(value.toLocal());
-
-String _timeLabel(DateTime? value) =>
-    value == null
-        ? 'Por confirmar'
-        : DateFormat('h:mm a', 'es_MX').format(value.toLocal());
-
 String _dateTimeLabel(DateTime? value) =>
     value == null
         ? 'Por confirmar'
-        : DateFormat('dd MMM · h:mm a', 'es_MX').format(value.toLocal());
+        : DateFormat('dd MMM yyyy · h:mm a', 'es_MX').format(value.toLocal());
 
 String _durationLabel(double? hours) {
   if (hours == null || hours <= 0) return 'Por confirmar';
   final totalMinutes = (hours * 60).round();
   return '${totalMinutes ~/ 60} h ${totalMinutes % 60} min';
+}
+
+List<FlightBriefLeg> _displayLegs(FlightBrief brief) {
+  if (brief.legs.isNotEmpty) return brief.legs;
+  final origin = _value(brief.departure.code, fallback: brief.flight.origin);
+  final destination = _value(
+    brief.arrival.code,
+    fallback: brief.flight.destination,
+  );
+  if (origin.isEmpty &&
+      destination.isEmpty &&
+      brief.flight.departureAt == null) {
+    return const [];
+  }
+  return [
+    FlightBriefLeg(
+      origin: FlightBriefLocation(
+        code: origin,
+        airportName: brief.departure.airportName,
+        city: brief.departure.city,
+      ),
+      destination: FlightBriefLocation(
+        code: destination,
+        airportName: brief.arrival.airportName,
+        city: brief.arrival.city,
+      ),
+      departureAt: brief.flight.departureAt,
+      presentationLocation: '',
+      presentationAt: null,
+      presentationTime: '',
+    ),
+  ];
+}
+
+String _operationStatusLabel(FlightBrief brief) {
+  final status =
+      (brief.operation.status.isNotEmpty
+              ? brief.operation.status
+              : brief.flight.status)
+          .trim();
+  switch (status.toLowerCase()) {
+    case 'confirmed':
+    case 'confirmado':
+    case 'scheduled':
+    case 'programado':
+      return 'CONFIRMADO';
+    case 'pending':
+    case 'pendiente':
+      return 'PENDIENTE';
+    default:
+      return status.isEmpty
+          ? 'ESTADO POR CONFIRMAR'
+          : (clientWorkflowDefinitionById(status.toLowerCase())?.label ??
+                  status)
+              .toUpperCase();
+  }
 }

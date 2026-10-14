@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
@@ -7,12 +6,9 @@ import '../../../core/billable_hours_formatter.dart';
 import '../../../core/cliente_api.dart';
 import '../../../core/media_utils.dart';
 import '../../../core/quote_price_formatter.dart';
-import '../../../models/aeropuerto.dart';
 import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
-import '../../../widgets/maps/itinerary_airport_map.dart';
-import '../../../widgets/maps/itinerary_map_models.dart';
 import '../tema_cliente.dart';
 
 class ClientResultsScreen extends StatefulWidget {
@@ -75,8 +71,15 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                               () => Navigator.pop(context),
                         ),
                       if (widget.showBackButton) const SizedBox(width: 12),
-                      const _ResultsBrand(),
-                      const Spacer(),
+                      const Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: _ResultsBrand(),
+                          ),
+                        ),
+                      ),
                       const _ResultsHeaderIcon(
                         icon: Icons.notifications_none_rounded,
                         showIndicator: true,
@@ -117,21 +120,6 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 34),
                 children: [
-                  FlightSummaryCard(
-                    routes: reservation.routes,
-                    itineraryLegs: reservation.quoteDisplayLegs,
-                    passengers: reservation.quoteDisplayPassengers,
-                    isLoading: reservation.isLoadingQuotePreview,
-                    onModify:
-                        widget.onBackToSearch ?? () => Navigator.pop(context),
-                  ),
-                  const SizedBox(height: 14),
-                  _ResultsItineraryMap(
-                    routes: reservation.routes,
-                    airportCatalog: reservation.airports,
-                    enableVectorProvider: widget.enableMapVectorProvider,
-                  ),
-                  const SizedBox(height: 18),
                   _ResultsSortCard(
                     activeCriterion: _sortCriterion,
                     onSelect:
@@ -158,7 +146,7 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                     ...matches.asMap().entries.map(
                       (entry) => Padding(
                         padding: const EdgeInsets.only(bottom: 18),
-                        child: _QuoteMatchCard(
+                        child: _AircraftCatalogRow(
                           quote: entry.value,
                           isRecommended:
                               _sortCriterion == _ResultsSortCriterion.advisor &&
@@ -930,164 +918,6 @@ class _AirportSummary {
   final String code;
 }
 
-class _ResultsItineraryMap extends StatefulWidget {
-  const _ResultsItineraryMap({
-    required this.routes,
-    required this.airportCatalog,
-    required this.enableVectorProvider,
-  });
-
-  final List<RouteModel> routes;
-  final List<Airport> airportCatalog;
-  final bool enableVectorProvider;
-
-  @override
-  State<_ResultsItineraryMap> createState() => _ResultsItineraryMapState();
-}
-
-class _ResultsItineraryMapState extends State<_ResultsItineraryMap> {
-  bool _isExpanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.transparent,
-        splashColor: Colors.white.withValues(alpha: .04),
-        highlightColor: Colors.white.withValues(alpha: .03),
-      ),
-      child: ExpansionTile(
-        key: const ValueKey('results-itinerary-map-toggle'),
-        initiallyExpanded: false,
-        maintainState: true,
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: EdgeInsets.zero,
-        onExpansionChanged: (expanded) {
-          setState(() => _isExpanded = expanded);
-        },
-        leading: const Icon(
-          Icons.map_outlined,
-          color: Color(0xFFD4AD58),
-          size: 21,
-        ),
-        title: const Text(
-          'Ver recorrido en el mapa',
-          style: TextStyle(
-            color: Color(0xFFF4F6FA),
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: Text(
-          '${widget.routes.length} '
-          '${widget.routes.length == 1 ? 'tramo' : 'tramos'} seleccionados',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: .62),
-            fontSize: 12,
-          ),
-        ),
-        trailing: Icon(
-          _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-          color: const Color(0xFFD4AD58),
-        ),
-        children: [
-          const SizedBox(height: 6),
-          ItineraryAirportMap(
-            routes: widget.routes,
-            airportCatalog: widget.airportCatalog,
-            height: 230,
-            enableVectorProvider: widget.enableVectorProvider,
-          ),
-          const SizedBox(height: 12),
-          for (var index = 0; index < widget.routes.length; index++) ...[
-            if (index > 0) const SizedBox(height: 8),
-            _ResultsItineraryLeg(route: widget.routes[index], index: index),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            'Ruta ilustrativa · No válida para navegación aérea.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: .6),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ResultsItineraryLeg extends StatelessWidget {
-  const _ResultsItineraryLeg({required this.route, required this.index});
-
-  final RouteModel route;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    final departure = route.startDate;
-    final origin = _displayCode(route.fromAirport);
-    final destination = _displayCode(route.toAirport);
-
-    return Row(
-      children: [
-        Container(
-          width: 30,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1B2A3D),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(
-              color: const Color(0xFFD4AD58).withValues(alpha: .38),
-            ),
-          ),
-          child: Text(
-            '${index + 1}',
-            style: const TextStyle(
-              color: Color(0xFFD4AD58),
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            '$origin  →  $destination',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFFF4F6FA),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: .4,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          departure == null
-              ? 'Fecha/hora por confirmar'
-              : '${DateFormat('dd/MM/yyyy').format(departure)} · '
-                  '${DateFormat('HH:mm').format(departure)}',
-          textAlign: TextAlign.right,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: .65),
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _displayCode(Airport? airport) {
-    return airport == null ? '—' : ItineraryMapData.airportDisplayCode(airport);
-  }
-}
-
 class _ResultsSortCard extends StatelessWidget {
   const _ResultsSortCard({
     required this.activeCriterion,
@@ -1167,8 +997,8 @@ class _ResultsSortCard extends StatelessWidget {
   }
 }
 
-class _QuoteMatchCard extends StatelessWidget {
-  const _QuoteMatchCard({
+class _AircraftCatalogRow extends StatelessWidget {
+  const _AircraftCatalogRow({
     required this.quote,
     required this.isRecommended,
     required this.isSelected,
@@ -1246,393 +1076,263 @@ class _QuoteMatchCard extends StatelessWidget {
     final repositioningMeta = _repositioningMetaLabel(quote, repositioning);
     final showAutonomy = autonomy.isNotEmpty && !requiresRepositioning;
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-      builder:
-          (_, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 18 * (1 - value)),
-              child: child,
-            ),
-          ),
-      child: InkWell(
-        onTap: isSelecting || isBusy ? null : onSelect,
-        borderRadius: BorderRadius.circular(28),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          height: 214,
-          decoration: BoxDecoration(
-            color: const Color(0xFF101C2D),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color:
-                  isSelected
-                      ? const Color(0xFFD8B15D)
-                      : Colors.white.withValues(alpha: .08),
-              width: isSelected ? 1.35 : 1,
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(27),
-            child: Column(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 142,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _AircraftMedia(
-                              imageUrl: imageUrl,
-                              label: cabin.isEmpty ? 'Jet privado' : cabin,
-                            ),
-                            if (isRecommended)
-                              Positioned(
-                                top: 9,
-                                left: 9,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF30D158),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const Text(
-                                    '★ Recomendado',
-                                    style: TextStyle(
-                                      color: Color(0xFF07111D),
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: IgnorePointer(
-                                child: Container(
-                                  width: 31,
-                                  height: 31,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(
-                                      0xFF07111D,
-                                    ).withValues(alpha: .72),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: .16,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.favorite_border_rounded,
-                                    color: Colors.white,
-                                    size: 17,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              left: 9,
-                              bottom: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF07111D,
-                                  ).withValues(alpha: .78),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: const Color(
-                                      0xFFD8B15D,
-                                    ).withValues(alpha: .48),
-                                  ),
-                                ),
-                                child: Text(
-                                  cabin.isEmpty ? 'Jet privado' : cabin,
-                                  style: const TextStyle(
-                                    color: Color(0xFFD8B15D),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(13, 10, 11, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      aircraft,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 17,
-                                        height: 1.02,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: -.35,
-                                      ),
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 5),
-                                      child:
-                                          isSelecting
-                                              ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Color(0xFFD8B15D),
-                                                    ),
-                                              )
-                                              : const Icon(
-                                                Icons.check_circle_rounded,
-                                                color: Color(0xFFD8B15D),
-                                                size: 18,
-                                              ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                [
-                                  if (cabin.isNotEmpty) cabin,
-                                  if (capacity.isNotEmpty)
-                                    '$capacity pasajeros',
-                                ].join('  •  '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: .58),
-                                  fontSize: 9.5,
-                                  height: 1.25,
-                                ),
-                              ),
-                              if (requiresRepositioning &&
-                                  (baseLabel.isNotEmpty ||
-                                      repositioningRoute.isNotEmpty ||
-                                      repositioningMeta.isNotEmpty)) ...[
-                                const SizedBox(height: 4),
-                                _RepositioningPill(
-                                  baseLabel: baseLabel,
-                                  routeLabel: repositioningRoute,
-                                  metaLabel: repositioningMeta,
-                                ),
-                              ] else if (base.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.location_on_outlined,
-                                      color: Color(0xFFD8B15D),
-                                      size: 12,
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Expanded(
-                                      child: Text(
-                                        'Base en origen',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: .68,
-                                          ),
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              const Spacer(),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: _AircraftDataBox(
-                                      label: 'TOTAL',
-                                      value: price,
-                                      valueFontSize: 15.5,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 7),
-                                  Expanded(
-                                    flex: 2,
-                                    child: _AircraftDataBox(
-                                      label: 'TIEMPO',
-                                      value: time.isEmpty ? '—' : time,
-                                      valueFontSize: 15,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (showAutonomy) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.route_rounded,
-                                      color: Color(0xFFD8B15D),
-                                      size: 11,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        'Autonomía $autonomy',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: .58,
-                                          ),
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ] else if (backendBillableLabel.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                _BackendBillableHoursChip(
-                                  label: backendBillableLabel,
-                                  dense: true,
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        final compact = constraints.maxWidth < 320;
+        final imageWidth = constraints.maxWidth * .40;
+        final details = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isRecommended) ...[
+              const Text(
+                '★ Recomendado',
+                style: TextStyle(
+                  color: Color(0xFFD8B15D),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                  child: _ResultsScaleButton(
-                    onTap: isBusy || isSelecting ? null : onCreateRequest,
-                    child: Container(
-                      height: 38,
-                      width: double.infinity,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected
-                                ? const Color(0xFFD8B15D)
-                                : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: const Color(0xFFD8B15D),
-                          width: 1,
-                        ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            Text(
+              aircraft,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 16 : 19,
+                height: 1.15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              [
+                if (cabin.isNotEmpty) cabin,
+                if (capacity.isNotEmpty) '$capacity pasajeros',
+              ].join(' · '),
+              style: const TextStyle(
+                color: Color(0xFFACB6C4),
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(height: 5),
+              const Text(
+                'Seleccionada',
+                style: TextStyle(color: Color(0xFFD8B15D), fontSize: 11),
+              ),
+            ],
+          ],
+        );
+        final commercial = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (requiresRepositioning &&
+                (baseLabel.isNotEmpty ||
+                    repositioningRoute.isNotEmpty ||
+                    repositioningMeta.isNotEmpty))
+              _RepositioningPill(
+                baseLabel: baseLabel,
+                routeLabel: repositioningRoute,
+                metaLabel: repositioningMeta,
+              )
+            else if (base.isNotEmpty)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    color: Color(0xFFD8B15D),
+                    size: 15,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      baseLabel.isNotEmpty ? 'Base: $baseLabel' : 'Base: $base',
+                      style: const TextStyle(
+                        color: Color(0xFFACB6C4),
+                        fontSize: 12,
                       ),
-                      child:
-                          isBusy || isSelecting
-                              ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 17,
-                                    height: 17,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color:
-                                          isSelected
-                                              ? const Color(0xFF07111D)
-                                              : const Color(0xFFD8B15D),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    isSelecting
-                                        ? 'Seleccionando...'
-                                        : 'Creando solicitud...',
-                                    style: TextStyle(
-                                      color:
-                                          isSelected
-                                              ? const Color(0xFF07111D)
-                                              : const Color(0xFFD8B15D),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              )
-                              : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.flight_takeoff_rounded,
-                                    color: Color(0xFFD8B15D),
-                                    size: 17,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    isSelecting
-                                        ? 'Seleccionando...'
-                                        : actionLabel.contains('Activar')
-                                        ? 'Activar aeronave'
-                                        : 'Crear solicitud',
-                                    style: TextStyle(
-                                      color:
-                                          isSelected
-                                              ? const Color(0xFF07111D)
-                                              : const Color(0xFFD8B15D),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 12),
-                                    child: Icon(
-                                      Icons.arrow_forward_ios_rounded,
-                                      color:
-                                          isSelected
-                                              ? const Color(0xFF07111D)
-                                              : const Color(0xFFD8B15D),
-                                      size: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
+            const SizedBox(height: 14),
+            LayoutBuilder(
+              builder: (context, metricConstraints) {
+                final total = _AircraftCatalogMetric(
+                  label: 'TOTAL',
+                  value: price,
+                  valueFontSize: 19,
+                );
+                final duration = _AircraftCatalogMetric(
+                  label: 'TIEMPO',
+                  value: time,
+                  valueFontSize: 17,
+                );
+                if (largeText || metricConstraints.maxWidth < 170) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [total, const SizedBox(height: 10), duration],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: total),
+                    Container(
+                      width: 1,
+                      height: 35,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      color: const Color(0x26FFFFFF),
+                    ),
+                    Expanded(flex: 2, child: duration),
+                  ],
+                );
+              },
             ),
-          ),
-        ),
-      ),
+            if (showAutonomy) ...[
+              const SizedBox(height: 9),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.route_rounded,
+                    color: Color(0xFFD8B15D),
+                    size: 13,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      'Autonomía $autonomy',
+                      style: const TextStyle(
+                        color: Color(0xFFACB6C4),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (backendBillableLabel.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _BackendBillableHoursChip(
+                label: backendBillableLabel,
+                dense: true,
+              ),
+            ],
+            const SizedBox(height: 8),
+            Semantics(
+              label:
+                  '${actionLabel.contains('Activar') ? 'Activar aeronave' : 'Crear solicitud'} para $aircraft',
+              button: true,
+              child: TextButton(
+                onPressed: isBusy || isSelecting ? null : onCreateRequest,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD8B15D),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  minimumSize: const Size(48, 48),
+                  alignment: Alignment.centerLeft,
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (isBusy || isSelecting)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFD8B15D),
+                        ),
+                      ),
+                    Text(
+                      isSelecting
+                          ? 'Seleccionando...'
+                          : isBusy
+                          ? 'Creando solicitud...'
+                          : actionLabel.contains('Activar')
+                          ? 'Activar aeronave'
+                          : 'Crear solicitud',
+                    ),
+                    if (!isBusy && !isSelecting)
+                      const Icon(Icons.arrow_forward_rounded, size: 19),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+        return Column(
+          children: [
+            InkWell(
+              onTap: isSelecting || isBusy ? null : onSelect,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: imageWidth,
+                    height: imageWidth * 1.25,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _AircraftMedia(
+                          imageUrl: imageUrl,
+                          label: cabin.isEmpty ? 'Jet privado' : cabin,
+                        ),
+                        const Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Tooltip(
+                            message: 'Favoritos no disponibles',
+                            child: SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Icon(
+                                Icons.favorite_border_rounded,
+                                color: Colors.white,
+                                size: 23,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        details,
+                        if (!compact && !largeText) ...[
+                          const SizedBox(height: 10),
+                          commercial,
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (compact || largeText) ...[
+              const SizedBox(height: 14),
+              commercial,
+            ],
+            const SizedBox(height: 16),
+            const Divider(height: 1, thickness: 1, color: Color(0x1FFFFFFF)),
+          ],
+        );
+      },
     );
   }
 }
 
-class _AircraftDataBox extends StatelessWidget {
-  const _AircraftDataBox({
+class _AircraftCatalogMetric extends StatelessWidget {
+  const _AircraftCatalogMetric({
     required this.label,
     required this.value,
     required this.valueFontSize,
@@ -1644,73 +1344,28 @@ class _AircraftDataBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF07111D).withValues(alpha: .45),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: Colors.white.withValues(alpha: .08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: .52),
-              fontSize: 7.5,
-              fontWeight: FontWeight.w600,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFACB6C4),
+            fontSize: 10,
+            letterSpacing: .8,
           ),
-          const SizedBox(height: 1),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: TextStyle(
-                color: const Color(0xFFD8B15D),
-                fontSize: valueFontSize,
-                height: 1,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: const Color(0xFFD8B15D),
+            fontSize: valueFontSize,
+            height: 1.2,
+            fontWeight: FontWeight.w700,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ResultsScaleButton extends StatefulWidget {
-  const _ResultsScaleButton({required this.onTap, required this.child});
-
-  final VoidCallback? onTap;
-  final Widget child;
-
-  @override
-  State<_ResultsScaleButton> createState() => _ResultsScaleButtonState();
-}
-
-class _ResultsScaleButtonState extends State<_ResultsScaleButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      onTapDown:
-          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 1.02 : 1,
-        duration: const Duration(milliseconds: 140),
-        child: widget.child,
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1724,7 +1379,7 @@ class _AircraftMedia extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(10),
       child: SizedBox(
         width: double.infinity,
         height: double.infinity,
@@ -1775,30 +1430,34 @@ class _AircraftMediaEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.flight_rounded, color: Colors.white, size: 30),
-          const SizedBox(height: 8),
-          Text(
-            label.trim().isEmpty ? 'Aeronave privada' : label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.flight_rounded, color: Colors.white, size: 30),
+            const SizedBox(height: 8),
+            Text(
+              label.trim().isEmpty ? 'Aeronave privada' : label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            'Imagen en validacion',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.76),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 3),
+            Text(
+              'Imagen en validacion',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.76),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

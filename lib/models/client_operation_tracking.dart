@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 class ClientOperationTracking {
@@ -39,15 +41,24 @@ class ClientOperationTimelineEvent {
     required this.title,
     required this.description,
     this.createdAt,
+    this.id = '',
+    this.operationId = '',
+    this.sourceSignature,
   });
 
   final String status;
   final String title;
   final String description;
   final DateTime? createdAt;
+  final String id;
+  final String operationId;
+  final String? sourceSignature;
 
   factory ClientOperationTimelineEvent.fromJson(Map<String, dynamic> json) =>
       ClientOperationTimelineEvent(
+        id: _text(json['id']),
+        operationId: _text(json['operation_id']),
+        sourceSignature: jsonEncode(json),
         status: _text(json['status']),
         title: _text(json['title']),
         description: _text(json['description']),
