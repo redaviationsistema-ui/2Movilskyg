@@ -14,6 +14,8 @@ class ReservationScreenContent extends StatelessWidget {
   const ReservationScreenContent({
     super.key,
     required this.reservation,
+    this.scrollController,
+    this.routeKeyForIndex,
     required this.primaryRoute,
     required this.suggestedAirports,
     required this.dateFormat,
@@ -22,6 +24,7 @@ class ReservationScreenContent extends StatelessWidget {
     required this.returnDate,
     required this.returnTime,
     required this.commercialState,
+    required this.hasCommercialAccessData,
     required this.onOpenMembership,
     required this.onTripTypeChanged,
     required this.onPickOrigin,
@@ -34,6 +37,7 @@ class ReservationScreenContent extends StatelessWidget {
     required this.onPickRouteOrigin,
     required this.onPickRouteDestination,
     required this.onPickRouteDate,
+    required this.onPickRouteTime,
     required this.onRemoveRoute,
     required this.onAddRoute,
     required this.onApplySuggestedDestination,
@@ -41,6 +45,8 @@ class ReservationScreenContent extends StatelessWidget {
   });
 
   final ReservationProvider reservation;
+  final ScrollController? scrollController;
+  final GlobalKey Function(int index)? routeKeyForIndex;
   final RouteModel primaryRoute;
   final List<Airport> suggestedAirports;
   final DateFormat dateFormat;
@@ -49,6 +55,7 @@ class ReservationScreenContent extends StatelessWidget {
   final DateTime? returnDate;
   final TimeOfDay? returnTime;
   final CommercialAccessState commercialState;
+  final bool hasCommercialAccessData;
   final VoidCallback onOpenMembership;
   final ValueChanged<String> onTripTypeChanged;
   final VoidCallback onPickOrigin;
@@ -61,6 +68,7 @@ class ReservationScreenContent extends StatelessWidget {
   final ValueChanged<int> onPickRouteOrigin;
   final ValueChanged<int> onPickRouteDestination;
   final ValueChanged<int> onPickRouteDate;
+  final ValueChanged<int> onPickRouteTime;
   final ValueChanged<int> onRemoveRoute;
   final VoidCallback onAddRoute;
   final ValueChanged<Airport> onApplySuggestedDestination;
@@ -72,51 +80,67 @@ class ReservationScreenContent extends StatelessWidget {
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
         primaryRoute.startDate != null;
+    final canRenderQuoteForm =
+        hasCommercialAccessData &&
+        commercialState.isConfirmedActive &&
+        commercialState.canQuote;
 
     return ColoredBox(
       color: const Color(0xFF07111D),
       child: ListView(
+        controller: scrollController,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 136),
         children: [
           _FlightSearchHero(
-            isReady: isPrimaryFormReady,
-            remainingFreeQuotes: commercialState.remainingFreeQuotes,
             hasActiveMembership:
                 commercialState.hasPaidAccess || commercialState.canReserve,
           ),
           const SizedBox(height: 20),
-          if (commercialState.shouldShowAccessBanner) ...[
-            _CommercialAccessBanner(
-              commercialState: commercialState,
-              onOpenMembership: onOpenMembership,
-            ),
-            const SizedBox(height: 20),
-          ],
-          _LuxuryQuoteForm(
-            reservation: reservation,
-            primaryRoute: primaryRoute,
-            dateFormat: dateFormat,
-            tripType: tripType,
-            departureTime: departureTime,
-            returnDate: returnDate,
-            returnTime: returnTime,
-            isReady: isPrimaryFormReady,
-            onTripTypeChanged: onTripTypeChanged,
-            onPickOrigin: onPickOrigin,
-            onPickDestination: onPickDestination,
-            onPickDate: onPickPrimaryDate,
-            onPickTime: onPickDepartureTime,
-            onPickReturnDate: onPickReturnDate,
-            onPickReturnTime: onPickReturnTime,
-            onPassengerChanged: onPassengerChanged,
-            onPickRouteOrigin: onPickRouteOrigin,
-            onPickRouteDestination: onPickRouteDestination,
-            onPickRouteDate: onPickRouteDate,
-            onRemoveRoute: onRemoveRoute,
-            onAddRoute: onAddRoute,
-            commercialState: commercialState,
-            onPreview: onPreview,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child:
+                canRenderQuoteForm
+                    ? _LuxuryQuoteForm(
+                      key: const ValueKey('quote-form'),
+                      reservation: reservation,
+                      routeKeyForIndex: routeKeyForIndex,
+                      primaryRoute: primaryRoute,
+                      dateFormat: dateFormat,
+                      tripType: tripType,
+                      departureTime: departureTime,
+                      returnDate: returnDate,
+                      returnTime: returnTime,
+                      isReady: isPrimaryFormReady,
+                      onTripTypeChanged: onTripTypeChanged,
+                      onPickOrigin: onPickOrigin,
+                      onPickDestination: onPickDestination,
+                      onPickDate: onPickPrimaryDate,
+                      onPickTime: onPickDepartureTime,
+                      onPickReturnDate: onPickReturnDate,
+                      onPickReturnTime: onPickReturnTime,
+                      onPassengerChanged: onPassengerChanged,
+                      onPickRouteOrigin: onPickRouteOrigin,
+                      onPickRouteDestination: onPickRouteDestination,
+                      onPickRouteDate: onPickRouteDate,
+                      onPickRouteTime: onPickRouteTime,
+                      onRemoveRoute: onRemoveRoute,
+                      onAddRoute: onAddRoute,
+                      commercialState: commercialState,
+                      onPreview: onPreview,
+                    )
+                    : !hasCommercialAccessData
+                    ? _CommercialAccessCheckCard(
+                      key: const ValueKey('commercial-check'),
+                      isLoading: reservation.isLoadingWorkspace,
+                    )
+                    : _CommercialAccessBanner(
+                      key: const ValueKey('commercial-banner'),
+                      commercialState: commercialState,
+                      onOpenMembership: onOpenMembership,
+                    ),
           ),
           const SizedBox(height: 26),
           if (suggestedAirports.isNotEmpty)
@@ -153,7 +177,9 @@ class ReservationScreenContent extends StatelessWidget {
 
 class _LuxuryQuoteForm extends StatelessWidget {
   const _LuxuryQuoteForm({
+    super.key,
     required this.reservation,
+    this.routeKeyForIndex,
     required this.primaryRoute,
     required this.dateFormat,
     required this.tripType,
@@ -172,6 +198,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
     required this.onPickRouteOrigin,
     required this.onPickRouteDestination,
     required this.onPickRouteDate,
+    required this.onPickRouteTime,
     required this.onRemoveRoute,
     required this.onAddRoute,
     required this.commercialState,
@@ -179,6 +206,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
   });
 
   final ReservationProvider reservation;
+  final GlobalKey Function(int index)? routeKeyForIndex;
   final RouteModel primaryRoute;
   final DateFormat dateFormat;
   final String tripType;
@@ -197,6 +225,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
   final ValueChanged<int> onPickRouteOrigin;
   final ValueChanged<int> onPickRouteDestination;
   final ValueChanged<int> onPickRouteDate;
+  final ValueChanged<int> onPickRouteTime;
   final ValueChanged<int> onRemoveRoute;
   final VoidCallback onAddRoute;
   final CommercialAccessState commercialState;
@@ -204,6 +233,16 @@ class _LuxuryQuoteForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canAddMultiCityRoute =
+        tripType == 'Multidestino' &&
+        reservation.routes.isNotEmpty &&
+        _isRouteComplete(reservation.routes.last);
+    final canPreview = switch (tripType) {
+      'Multidestino' => _completeRouteCount(reservation.routes) >= 2,
+      'Ida y vuelta' => isReady && returnDate != null,
+      _ => isReady,
+    };
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 560),
@@ -248,47 +287,50 @@ class _LuxuryQuoteForm extends StatelessWidget {
             const SizedBox(height: 16),
             _LuxuryTripTabs(value: tripType, onChanged: onTripTypeChanged),
             const SizedBox(height: 14),
-            Stack(
-              alignment: Alignment.centerRight,
-              children: [
-                Column(
-                  children: [
-                    _LuxuryFormField(
-                      icon: Icons.location_on_outlined,
-                      label: 'Origen',
-                      value: _airportValue(primaryRoute.fromAirport),
-                      placeholder: '¿Desde dónde sales?',
-                      onTap: onPickOrigin,
-                    ),
-                    const SizedBox(height: 14),
-                    _LuxuryFormField(
-                      icon: Icons.place_outlined,
-                      label: 'Destino',
-                      value: _airportValue(primaryRoute.toAirport),
-                      placeholder: '¿A dónde vuelas?',
-                      onTap: onPickDestination,
-                    ),
-                  ],
-                ),
-                IgnorePointer(
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    margin: const EdgeInsets.only(right: 13),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF16253B),
-                      border: Border.all(
-                        color: const Color(0xFFD9B25F).withValues(alpha: .42),
+            KeyedSubtree(
+              key: routeKeyForIndex?.call(0),
+              child: Stack(
+                alignment: Alignment.centerRight,
+                children: [
+                  Column(
+                    children: [
+                      _LuxuryFormField(
+                        icon: Icons.location_on_outlined,
+                        label: 'Origen',
+                        value: _airportValue(primaryRoute.fromAirport),
+                        placeholder: '¿Desde dónde sales?',
+                        onTap: onPickOrigin,
+                      ),
+                      const SizedBox(height: 14),
+                      _LuxuryFormField(
+                        icon: Icons.place_outlined,
+                        label: 'Destino',
+                        value: _airportValue(primaryRoute.toAirport),
+                        placeholder: '¿A dónde vuelas?',
+                        onTap: onPickDestination,
+                      ),
+                    ],
+                  ),
+                  IgnorePointer(
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      margin: const EdgeInsets.only(right: 13),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF16253B),
+                        border: Border.all(
+                          color: const Color(0xFFD9B25F).withValues(alpha: .42),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.swap_vert_rounded,
+                        color: Color(0xFFD9B25F),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.swap_vert_rounded,
-                      color: Color(0xFFD9B25F),
-                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 14),
             Row(
@@ -324,55 +366,65 @@ class _LuxuryQuoteForm extends StatelessWidget {
             ),
             if (tripType == 'Ida y vuelta') ...[
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _LuxuryFormField(
-                      icon: Icons.event_repeat_outlined,
-                      label: 'Regreso',
-                      value:
-                          returnDate == null
-                              ? ''
-                              : dateFormat.format(returnDate!),
-                      placeholder: 'Fecha',
-                      onTap: onPickReturnDate,
+              KeyedSubtree(
+                key: routeKeyForIndex?.call(1),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _LuxuryFormField(
+                        icon: Icons.event_repeat_outlined,
+                        label: 'Regreso',
+                        value:
+                            returnDate == null
+                                ? ''
+                                : dateFormat.format(returnDate!),
+                        placeholder: 'Fecha',
+                        onTap: onPickReturnDate,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _LuxuryFormField(
-                      icon: Icons.more_time_rounded,
-                      label: 'Hora',
-                      value: returnTime?.format(context) ?? '',
-                      placeholder: 'Seleccionar',
-                      onTap: onPickReturnTime,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _LuxuryFormField(
+                        icon: Icons.more_time_rounded,
+                        label: 'Hora',
+                        value: returnTime?.format(context) ?? '',
+                        placeholder: 'Seleccionar',
+                        onTap: onPickReturnTime,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
             if (tripType == 'Multidestino') ...[
               const SizedBox(height: 14),
+              const RouteHeader(title: 'Tramo 1'),
+              const SizedBox(height: 10),
               ...List.generate(
                 reservation.routes.length - 1,
-                (extraIndex) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: MultiLegCard(
-                    index: extraIndex + 1,
-                    route: reservation.routes[extraIndex + 1],
-                    onPickOrigin: () => onPickRouteOrigin(extraIndex + 1),
-                    onPickDestination:
-                        () => onPickRouteDestination(extraIndex + 1),
-                    onPickDate: () => onPickRouteDate(extraIndex + 1),
-                    onRemove: () => onRemoveRoute(extraIndex + 1),
-                    formatDate: dateFormat,
+                (extraIndex) => KeyedSubtree(
+                  key: routeKeyForIndex?.call(extraIndex + 1),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: MultiLegCard(
+                      index: extraIndex + 1,
+                      route: reservation.routes[extraIndex + 1],
+                      onPickOrigin: () => onPickRouteOrigin(extraIndex + 1),
+                      onPickDestination:
+                          () => onPickRouteDestination(extraIndex + 1),
+                      onPickDate: () => onPickRouteDate(extraIndex + 1),
+                      onPickTime: () => onPickRouteTime(extraIndex + 1),
+                      onRemove: () => onRemoveRoute(extraIndex + 1),
+                      formatDate: dateFormat,
+                      originLocked: true,
+                    ),
                   ),
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: primaryRoute.toAirport == null ? null : onAddRoute,
+                onPressed: canAddMultiCityRoute ? onAddRoute : null,
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Agregar tramo'),
+                label: const Text('+ Agregar otro destino'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFD9B25F),
                   minimumSize: const Size.fromHeight(48),
@@ -389,7 +441,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
             _QuoteScaleButton(
               onTap:
                   reservation.isLoadingQuotePreview ||
-                          (!isReady && commercialState.canQuote)
+                          (!canPreview && commercialState.canQuote)
                       ? null
                       : onPreview,
               child: Container(
@@ -398,7 +450,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   gradient:
-                      commercialState.canQuote && isReady
+                      commercialState.canQuote && canPreview
                           ? const LinearGradient(
                             colors: [Color(0xFFF0D58F), Color(0xFFD9B25F)],
                           )
@@ -406,7 +458,7 @@ class _LuxuryQuoteForm extends StatelessWidget {
                             colors: [Color(0xFF344052), Color(0xFF273344)],
                           ),
                   boxShadow:
-                      commercialState.canQuote && isReady
+                      commercialState.canQuote && canPreview
                           ? [
                             BoxShadow(
                               color: const Color(
@@ -436,16 +488,18 @@ class _LuxuryQuoteForm extends StatelessWidget {
                                   ? Icons.flight_takeoff_rounded
                                   : Icons.lock_reset_rounded,
                               color:
-                                  commercialState.canQuote && isReady
+                                  commercialState.canQuote && canPreview
                                       ? const Color(0xFF111820)
                                       : Colors.white.withValues(alpha: .45),
                             ),
                             const SizedBox(width: 9),
                             Text(
-                              commercialState.quoteActionLabel,
+                              commercialState.canQuote
+                                  ? 'Buscar vuelos'
+                                  : commercialState.quoteActionLabel,
                               style: TextStyle(
                                 color:
-                                    commercialState.canQuote && isReady
+                                    commercialState.canQuote && canPreview
                                         ? const Color(0xFF111820)
                                         : Colors.white.withValues(alpha: .45),
                                 fontSize: 16,
@@ -467,10 +521,96 @@ class _LuxuryQuoteForm extends StatelessWidget {
     final code = airport.iata?.trim().toUpperCase() ?? '';
     return code.isEmpty ? airport.city : '$code · ${airport.city}';
   }
+
+  static int _completeRouteCount(List<RouteModel> routes) {
+    return routes.where(_isRouteComplete).length;
+  }
+
+  static bool _isRouteComplete(RouteModel route) {
+    return route.fromAirport != null &&
+        route.toAirport != null &&
+        route.startDate != null;
+  }
+}
+
+class _CommercialAccessCheckCard extends StatelessWidget {
+  const _CommercialAccessCheckCard({super.key, required this.isLoading});
+
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD9B25F).withValues(alpha: .15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child:
+                isLoading
+                    ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFD9B25F),
+                      ),
+                    )
+                    : const Icon(
+                      Icons.info_outline_rounded,
+                      color: Color(0xFFD9B25F),
+                    ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isLoading
+                      ? 'Comprobando acceso comercial'
+                      : 'No pudimos comprobar tu acceso',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  isLoading
+                      ? 'Estamos validando tu estado para habilitar el cotizador.'
+                      : 'Reintenta la sincronizacion. El cotizador permanecera oculto hasta confirmar tu acceso.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: .72),
+                    fontSize: 13,
+                    height: 1.38,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _CommercialAccessBanner extends StatelessWidget {
   const _CommercialAccessBanner({
+    super.key,
     required this.commercialState,
     required this.onOpenMembership,
   });
@@ -597,7 +737,7 @@ class _LuxuryTripTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const options = ['Solo ida', 'Ida y vuelta', 'Multidestino'];
+    const options = ['Solo ida', 'Redondo', 'Multidestino'];
     return Container(
       height: 52,
       padding: const EdgeInsets.all(4),
@@ -808,23 +948,12 @@ class _QuoteScaleButtonState extends State<_QuoteScaleButton> {
 }
 
 class _FlightSearchHero extends StatelessWidget {
-  const _FlightSearchHero({
-    required this.isReady,
-    required this.remainingFreeQuotes,
-    required this.hasActiveMembership,
-  });
+  const _FlightSearchHero({required this.hasActiveMembership});
 
-  final bool isReady;
-  final int remainingFreeQuotes;
   final bool hasActiveMembership;
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel =
-        hasActiveMembership
-            ? 'Acceso activo'
-            : '$remainingFreeQuotes cotizaciones disponibles';
-
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 520),
@@ -881,7 +1010,7 @@ class _FlightSearchHero extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _HeroStatusPill(
-                      label: statusLabel,
+                      label: 'EXPERIENCIA SKY GROUP',
                       icon:
                           hasActiveMembership
                               ? Icons.verified_rounded
@@ -900,14 +1029,36 @@ class _FlightSearchHero extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     const Text(
-                      'Nos encargamos de todo.',
+                      'Aviación privada con un servicio excepcional.',
                       style: TextStyle(
                         color: Color(0xFFD9B25F),
-                        fontSize: 18,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Conoce más',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     const Row(
                       children: [
                         Expanded(
@@ -1592,8 +1743,10 @@ class MultiLegCard extends StatelessWidget {
     required this.onPickOrigin,
     required this.onPickDestination,
     required this.onPickDate,
+    required this.onPickTime,
     required this.onRemove,
     required this.formatDate,
+    this.originLocked = false,
   });
 
   final int index;
@@ -1601,8 +1754,10 @@ class MultiLegCard extends StatelessWidget {
   final VoidCallback onPickOrigin;
   final VoidCallback onPickDestination;
   final VoidCallback onPickDate;
+  final VoidCallback onPickTime;
   final VoidCallback onRemove;
   final DateFormat formatDate;
+  final bool originLocked;
 
   @override
   Widget build(BuildContext context) {
@@ -1633,12 +1788,23 @@ class MultiLegCard extends StatelessWidget {
           ConciergeField(
             label: 'Origen',
             value: _airportPrimary(route.fromAirport),
-            helperText: 'Selecciona el punto de partida',
+            helperText:
+                originLocked
+                    ? 'Origen automático del tramo anterior'
+                    : 'Selecciona el punto de partida',
             leadingIcon: Icons.location_on_outlined,
             secondaryValue: _airportSecondary(route.fromAirport),
             placeholder: 'Seleccionar aeropuerto',
             dark: true,
-            onTap: onPickOrigin,
+            onTap: originLocked ? () {} : onPickOrigin,
+            trailing:
+                originLocked
+                    ? Icon(
+                      Icons.lock_outline_rounded,
+                      size: 18,
+                      color: palette.accent,
+                    )
+                    : null,
           ),
           const SizedBox(height: 10),
           ConciergeField(
@@ -1652,25 +1818,50 @@ class MultiLegCard extends StatelessWidget {
             onTap: onPickDestination,
           ),
           const SizedBox(height: 10),
-          ConciergeField(
-            label: 'Fecha',
-            value:
-                route.startDate == null
-                    ? 'Seleccionar fecha'
-                    : formatDate.format(route.startDate!),
-            helperText: 'Programa la salida de este tramo',
-            leadingIcon: Icons.calendar_month_outlined,
-            dark: true,
-            onTap: onPickDate,
-            trailing: Icon(
-              Icons.calendar_today_outlined,
-              size: 18,
-              color:
-                  Theme.of(context).brightness == Brightness.dark
-                      ? palette.accent
-                      : palette.primary,
-            ),
-            placeholder: 'Seleccionar fecha',
+          Row(
+            children: [
+              Expanded(
+                child: ConciergeField(
+                  label: 'Fecha',
+                  value:
+                      route.startDate == null
+                          ? 'Seleccionar fecha'
+                          : formatDate.format(route.startDate!),
+                  helperText: 'Programa la salida',
+                  leadingIcon: Icons.calendar_month_outlined,
+                  dark: true,
+                  onTap: onPickDate,
+                  trailing: Icon(
+                    Icons.calendar_today_outlined,
+                    size: 18,
+                    color: palette.accent,
+                  ),
+                  placeholder: 'Seleccionar fecha',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ConciergeField(
+                  label: 'Hora',
+                  value:
+                      route.startDate == null
+                          ? 'Seleccionar hora'
+                          : TimeOfDay.fromDateTime(
+                            route.startDate!,
+                          ).format(context),
+                  helperText: 'Hora de salida',
+                  leadingIcon: Icons.schedule_rounded,
+                  dark: true,
+                  onTap: onPickTime,
+                  trailing: Icon(
+                    Icons.more_time_rounded,
+                    size: 18,
+                    color: palette.accent,
+                  ),
+                  placeholder: 'Seleccionar hora',
+                ),
+              ),
+            ],
           ),
         ],
       ),

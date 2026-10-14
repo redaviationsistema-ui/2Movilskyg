@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/acceso_comercial_cliente.dart';
 import '../../models/aeropuerto.dart';
+import '../../models/modelo_ruta.dart';
 import '../../providers/proveedor_autenticacion.dart';
 import '../../providers/proveedor_reservaciones.dart';
 import '../cliente/tema_cliente.dart';
@@ -31,6 +32,9 @@ class ReservationScreen extends StatefulWidget {
 
 class _ReservationScreenState extends State<ReservationScreen> {
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
+  final ScrollController _formScrollController = ScrollController();
+  final Map<int, GlobalKey> _routeFormKeys = {};
+  bool _isSubmittingQuote = false;
   String _tripType = 'Solo ida';
   TimeOfDay? _departureTime;
   DateTime? _returnDate;
@@ -65,6 +69,15 @@ class _ReservationScreenState extends State<ReservationScreen> {
   }
 
   @override
+  void dispose() {
+    _formScrollController.dispose();
+    super.dispose();
+  }
+
+  GlobalKey _routeFormKey(int index) =>
+      _routeFormKeys.putIfAbsent(index, GlobalKey.new);
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final reservation = context.watch<ReservationProvider>();
@@ -75,10 +88,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
     return _ReservationReveal(
       child: ClientMobileScreenShell(
         welcomeTitle: 'Hola ${_firstName(auth.displayName)} 👋',
-        welcomeSubtitle: 'Listo para tu proximo vuelo',
+        welcomeSubtitle: 'Tu próximo vuelo comienza aquí',
         onSignOut: auth.signOut,
         child: ReservationScreenContent(
           reservation: reservation,
+          scrollController: _formScrollController,
+          routeKeyForIndex: _routeFormKey,
           primaryRoute: primaryRoute,
           suggestedAirports: suggestedAirports,
           dateFormat: _dateFormat,
@@ -87,6 +102,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
           returnDate: _returnDate,
           returnTime: _returnTime,
           commercialState: commercialState,
+          hasCommercialAccessData: auth.accessData != null,
           onOpenMembership: _openMembershipCenter,
           onTripTypeChanged: (value) {
             setState(() {
@@ -97,6 +113,11 @@ class _ReservationScreenState extends State<ReservationScreen> {
               }
             });
             reservation.setBookingTripLabel(value);
+            if (value == 'Multidestino') {
+              while (reservation.routes.length > 1) {
+                reservation.removeRoute(reservation.routes.length - 1);
+              }
+            }
             _normalizeRoutesForMode(reservation);
           },
           onPickOrigin:
@@ -115,10 +136,8 @@ class _ReservationScreenState extends State<ReservationScreen> {
           onPickReturnTime: _pickReturnTime,
           onPassengerChanged: reservation.setGlobalPassengers,
           onPickRouteOrigin:
-              (index) => _pickAirport(
-                title: 'Origen tramo ${index + 1}',
-                onSelected:
-                    (airport) => reservation.setFromAirport(index, airport),
+              (index) => _showMessage(
+                'El origen se toma automaticamente del destino anterior.',
               ),
           onPickRouteDestination:
               (index) => _pickAirport(
@@ -127,11 +146,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
                     (airport) => reservation.setToAirport(index, airport),
               ),
           onPickRouteDate: (index) => _pickDateForRoute(reservation, index),
+          onPickRouteTime: (index) => _pickTimeForRoute(reservation, index),
           onRemoveRoute: reservation.removeRoute,
-          onAddRoute: reservation.addRoute,
+          onAddRoute: () => _handleAddMultiCityRoute(reservation),
           onApplySuggestedDestination:
               (airport) => _applySuggestedDestination(reservation, airport),
-          onPreview: () => _handlePreview(reservation),
+          onPreview: () => _openItinerarySummary(reservation),
         ),
       ),
     );
@@ -189,7 +209,56 @@ class _ReservationScreenState extends State<ReservationScreen> {
     return true;
   }
 
-  Future<void> _handlePreview(ReservationProvider reservation) async {
+  Future<void> _openItinerarySummary(ReservationProvider reservation) async {
+    if (reservation.routes.first.startDate != null) {
+      _normalizeRoutesForMode(reservation);
+    }
+    final navigator = Navigator.of(context);
+    final editedLeg = await navigator.push<int>(
+      MaterialPageRoute(
+        builder:
+            (_) => ItinerarySummaryScreen(
+              tripType: _tripType,
+              onRequestQuote: () => _requestQuoteFromSummary(reservation),
+              onEditLeg: navigator.pop,
+            ),
+      ),
+    );
+
+    if (!mounted || editedLeg == null) return;
+    final targetIndex = editedLeg < 0 ? 0 : editedLeg;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = _routeFormKey(targetIndex).currentContext;
+      if (targetContext != null) {
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: .08,
+        );
+      } else if (_formScrollController.hasClients) {
+        _formScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _requestQuoteFromSummary(ReservationProvider reservation) async {
+    if (_isSubmittingQuote) return;
+    setState(() => _isSubmittingQuote = true);
+    try {
+      await _performQuoteRequest(reservation);
+    } finally {
+      if (mounted) setState(() => _isSubmittingQuote = false);
+    }
+  }
+
+  Future<void> _performQuoteRequest(ReservationProvider reservation) async {
+    final navigator = Navigator.of(context);
     final accessState = await _refreshCommercialAccessState();
     if (_blockQuoteIfAccessExpired(accessState, source: 'submitSearch')) {
       return;
@@ -209,6 +278,22 @@ class _ReservationScreenState extends State<ReservationScreen> {
     }
 
     _normalizeRoutesForMode(reservation);
+
+    if (_tripType == 'Multidestino') {
+      final completeRoutes = reservation.routes.where(_isRouteComplete).length;
+      if (completeRoutes < 2) {
+        _showMessage(
+          'Agrega al menos dos tramos completos para cotizar multidestino.',
+        );
+        return;
+      }
+      final continuityError = _multiCityContinuityError(reservation);
+      if (continuityError != null) {
+        _showMessage(continuityError);
+        return;
+      }
+    }
+
     final success = await reservation.previewCurrentSelection();
     if (!mounted) return;
 
@@ -236,13 +321,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
     }
 
     if (widget.onQuoteReady != null) {
+      navigator.pop();
       widget.onQuoteReady!();
       return;
     }
 
     if (!mounted) return;
-    Navigator.push(
-      context,
+    navigator.pop();
+    navigator.push(
       MaterialPageRoute(builder: (_) => const QuotePreviewScreen()),
     );
   }
@@ -291,8 +377,44 @@ class _ReservationScreenState extends State<ReservationScreen> {
     }
 
     for (var index = 1; index < reservation.routes.length; index++) {
+      reservation.routes[index].fromAirport =
+          reservation.routes[index - 1].toAirport;
       reservation.setPassengers(index, reservation.passengers);
     }
+  }
+
+  bool _isRouteComplete(RouteModel route) {
+    return route.fromAirport != null &&
+        route.toAirport != null &&
+        route.startDate != null;
+  }
+
+  String? _multiCityContinuityError(ReservationProvider reservation) {
+    DateTime? previousDate;
+    for (var index = 0; index < reservation.routes.length; index++) {
+      final route = reservation.routes[index];
+      if (!_isRouteComplete(route)) {
+        return 'Completa el tramo ${index + 1} antes de cotizar.';
+      }
+      if (route.fromAirport == route.toAirport) {
+        return 'El origen y destino del tramo ${index + 1} deben ser diferentes.';
+      }
+      final date = route.startDate!;
+      if (previousDate != null && date.isBefore(previousDate)) {
+        return 'Ordena las fechas y horas de los tramos antes de cotizar.';
+      }
+      previousDate = date;
+    }
+    return null;
+  }
+
+  void _handleAddMultiCityRoute(ReservationProvider reservation) {
+    final lastRoute = reservation.routes.last;
+    if (!_isRouteComplete(lastRoute)) {
+      _showMessage('Completa el ultimo tramo antes de agregar otro destino.');
+      return;
+    }
+    reservation.addRoute();
   }
 
   List<Airport> _suggestedAirports(ReservationProvider reservation) {
@@ -329,10 +451,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
     if (_tripType == 'Multidestino') {
       final lastIndex = reservation.routes.length - 1;
       reservation.setToAirport(lastIndex, airport);
-      if (lastIndex == 0 && reservation.routes.length < 2) {
-        reservation.addRoute();
-      }
-      _showMessage('Agregamos ${airport.city} como siguiente parada.');
+      _showMessage('${airport.city} lista como destino del tramo actual.');
       return;
     }
 
@@ -354,7 +473,43 @@ class _ReservationScreenState extends State<ReservationScreen> {
     );
 
     if (picked == null) return;
-    reservation.setStartDate(index, picked);
+    final previousTime = reservation.routes[index].startDate;
+    reservation.setStartDate(
+      index,
+      DateTime(
+        picked.year,
+        picked.month,
+        picked.day,
+        previousTime?.hour ?? 9,
+        previousTime?.minute ?? 0,
+      ),
+    );
+  }
+
+  Future<void> _pickTimeForRoute(
+    ReservationProvider reservation,
+    int index,
+  ) async {
+    final current = reservation.routes[index].startDate;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime:
+          current == null
+              ? const TimeOfDay(hour: 9, minute: 0)
+              : TimeOfDay.fromDateTime(current),
+    );
+    if (picked == null) return;
+    final baseDate = current ?? DateTime.now();
+    reservation.setStartDate(
+      index,
+      DateTime(
+        baseDate.year,
+        baseDate.month,
+        baseDate.day,
+        picked.hour,
+        picked.minute,
+      ),
+    );
   }
 
   Future<void> _pickReturnDate() async {

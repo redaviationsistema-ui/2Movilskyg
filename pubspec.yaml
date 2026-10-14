@@ -44,6 +44,9 @@ dependencies:
   app_links: ^6.4.1
   flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.5.5
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  flutter_map_vector_tiles: ^2.9.1
 
 dev_dependencies:
   flutter_test:

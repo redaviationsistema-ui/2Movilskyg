@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'client_payment_shared_widgets.dart';
-import '../widgets/widgets_experiencia_cliente.dart';
 
 class ClientAccessPaymentView extends StatelessWidget {
   const ClientAccessPaymentView({
@@ -61,125 +60,327 @@ class ClientAccessPaymentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      bottomNavigationBar: PaymentStickyFooter(
-        totalLabel: amount,
-        ctaLabel: ctaLabel,
+      backgroundColor: const Color(0xFF071321),
+      bottomNavigationBar: _AccessCheckoutFooter(
+        amount: amount,
+        ctaLabel: commercialAccessActive ? ctaLabel : 'Continuar al pago',
         onPressed: isPrimaryEnabled ? onPrimaryAction : null,
         isLoading: isLoading,
       ),
       body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(0, 14, 0, 170),
+        child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  if (showBackButton || hasCustomBack)
-                    PaymentRoundActionButton(
-                      icon: Icons.arrow_back_rounded,
-                      onTap: onBack,
-                    ),
-                  if (showBackButton || hasCustomBack)
-                    const SizedBox(width: 10),
-                  const Spacer(),
-                  const StatusBadge(
-                    label: 'Checkout seguro',
-                    color: Color(0xFF2D6A4F),
-                  ),
-                ],
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              child: _AccessPaymentHeader(
+                showBackButton: showBackButton || hasCustomBack,
+                onBack: onBack,
               ),
             ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                headline,
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF111111),
-                  height: 0.98,
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 28),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: reduceMotion ? 1 : 0, end: 1),
+                  duration:
+                      reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) {
+                    return Opacity(
+                      opacity: value,
+                      child: Transform.translate(
+                        offset: Offset(0, (1 - value) * 10),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _AccessPaymentIntro(
+                        headline: headline,
+                        subheadline: subheadline,
+                        statusCaption: statusCaption,
+                      ),
+                      const SizedBox(height: 24),
+                      _AccessTotalCard(
+                        amount: amount,
+                        paymentBreakdown: paymentBreakdown,
+                      ),
+                      if (commercialAccessActive) ...[
+                        const SizedBox(height: 14),
+                        ExternalCheckoutCard(
+                          title: 'Acceso comercial activo',
+                          description: checkoutDescription,
+                          status: checkoutStatus,
+                          isConfirmed: true,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    subheadline,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccessPaymentHeader extends StatelessWidget {
+  const _AccessPaymentHeader({
+    required this.showBackButton,
+    required this.onBack,
+  });
+
+  final bool showBackButton;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          if (showBackButton)
+            InkWell(
+              onTap: onBack,
+              borderRadius: BorderRadius.circular(18),
+              child: Ink(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF132438),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFF344459)),
+                ),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Color(0xFFD6B477),
+                  size: 22,
+                ),
+              ),
+            ),
+          const Spacer(),
+          Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF132438),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFF344459)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  color: Color(0xFF3FC18A),
+                  size: 16,
+                ),
+                SizedBox(width: 7),
+                Text(
+                  'Pago seguro',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccessPaymentIntro extends StatelessWidget {
+  const _AccessPaymentIntro({
+    required this.headline,
+    required this.subheadline,
+    required this.statusCaption,
+  });
+
+  final String headline;
+  final String subheadline;
+  final String statusCaption;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'ACCESO COMERCIAL',
+          style: TextStyle(
+            color: Color(0xFFD6B477),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _withTerminalPeriod(headline),
+          style: const TextStyle(
+            fontSize: 29,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            height: 1.04,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _withTerminalPeriod(subheadline),
+          style: const TextStyle(
+            color: Color(0xFFFFFFFF),
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            height: 1.25,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          statusCaption,
+          style: const TextStyle(
+            color: Color(0xFFB7C4D3),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            height: 1.38,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _withTerminalPeriod(String value) {
+    final text = value.trim();
+    if (text.isEmpty || text.endsWith('.') || text.endsWith('!')) return text;
+    return '$text.';
+  }
+}
+
+class _AccessCheckoutFooter extends StatelessWidget {
+  const _AccessCheckoutFooter({
+    required this.amount,
+    required this.ctaLabel,
+    required this.onPressed,
+    required this.isLoading,
+  });
+
+  final String amount;
+  final String ctaLabel;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        decoration: const BoxDecoration(
+          color: Color(0xFF071321),
+          border: Border(top: BorderSide(color: Color(0xFF344459))),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 22,
+              offset: Offset(0, -10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Pago procesado mediante Stripe.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Color(0xFFB7C4D3),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    amount,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
                     style: const TextStyle(
-                      color: Color(0xFF1E1E1E),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      height: 1.15,
+                      color: Color(0xFFD6B477),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    statusCaption,
-                    style: const TextStyle(
-                      color: Color(0xFF625D55),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  backgroundColor: const Color(0xFFD6B477),
+                  foregroundColor: const Color(0xFF071321),
+                  disabledBackgroundColor: const Color(0xFF344459),
+                  disabledForegroundColor: const Color(0xFFB7C4D3),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _AccessTotalCard(
-                amount: amount,
-                paymentBreakdown: paymentBreakdown,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _AccessSnapshotCard(
-                amount: amount,
-                paymentMethodSummaryLabel: paymentMethodSummaryLabel,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (!commercialAccessActive)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _AccessPaymentMethodCard(
-                  showCommercialCardPaymentOption:
-                      showCommercialCardPaymentOption,
-                  paymentMethod: paymentMethod,
-                  cardPaymentPanel: cardPaymentPanel,
-                  linkPaymentPanel: linkPaymentPanel,
-                  onSelectCard: onSelectCard,
-                  onSelectLink: onSelectLink,
                 ),
-              ),
-            if (commercialAccessActive)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: ExternalCheckoutCard(
-                  title: 'Acceso comercial activo',
-                  description: checkoutDescription,
-                  status: checkoutStatus,
-                  isConfirmed: true,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                            key: ValueKey('loading'),
+                            width: 21,
+                            height: 21,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF071321),
+                            ),
+                          )
+                          : Row(
+                            key: const ValueKey('label'),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.lock_outline_rounded, size: 18),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  ctaLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                 ),
-              ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _AccessContactCard(
-                emailController: emailController,
-                inlineMessage: inlineMessage,
-                messageColor: messageColor,
               ),
             ),
           ],
@@ -203,14 +404,14 @@ class _AccessTotalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFE5EAF0)),
+        color: const Color(0xFF132438),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFF344459)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x140E2238),
-            blurRadius: 26,
-            offset: Offset(0, 14),
+            color: Color(0x33000000),
+            blurRadius: 24,
+            offset: Offset(0, 12),
           ),
         ],
       ),
@@ -218,59 +419,47 @@ class _AccessTotalCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'TOTAL',
+            'TOTAL A PAGAR',
             style: TextStyle(
-              color: Color(0xFF7A6A53),
+              color: Color(0xFFD6B477),
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            amount,
-            style: const TextStyle(
-              color: Color(0xFF111111),
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              height: 0.95,
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              amount,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 34,
+                fontWeight: FontWeight.w900,
+                height: 0.95,
+              ),
             ),
           ),
           const SizedBox(height: 10),
           const Text(
-            'Acceso comercial',
+            'Reactivacion de acceso comercial',
             style: TextStyle(
-              color: Color(0xFF3B3428),
+              color: Color(0xFFB7C4D3),
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
           if (paymentBreakdown.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F3EB),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE6DDCE)),
+            const Divider(height: 1, color: Color(0xFF344459)),
+            const SizedBox(height: 6),
+            for (var index = 0; index < paymentBreakdown.length; index++)
+              _AccessBreakdownRow(
+                item: paymentBreakdown[index],
+                isLast: index == paymentBreakdown.length - 1,
               ),
-              child: Column(
-                children: [
-                  for (var index = 0; index < paymentBreakdown.length; index++)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: index == paymentBreakdown.length - 1 ? 0 : 8,
-                      ),
-                      child: PaymentRow(
-                        label: paymentBreakdown[index].label,
-                        value: paymentBreakdown[index].value,
-                        emphasize: paymentBreakdown[index].total,
-                      ),
-                    ),
-                ],
-              ),
-            ),
           ],
         ],
       ),
@@ -278,163 +467,58 @@ class _AccessTotalCard extends StatelessWidget {
   }
 }
 
-class _AccessSnapshotCard extends StatelessWidget {
-  const _AccessSnapshotCard({
-    required this.amount,
-    required this.paymentMethodSummaryLabel,
-  });
+class _AccessBreakdownRow extends StatelessWidget {
+  const _AccessBreakdownRow({required this.item, required this.isLast});
 
-  final String amount;
-  final String paymentMethodSummaryLabel;
+  final PaymentBreakdownItem item;
+  final bool isLast;
 
   @override
   Widget build(BuildContext context) {
-    return GlassInfoCard(
-      backgroundColor: const Color(0xFF102438),
-      borderColor: const Color(0xFF29445A),
-      shadowColor: const Color(0x1A102438),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'RESERVA',
-            style: TextStyle(
-              color: Color(0xFFD6E1EA),
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Acceso comercial premium',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 14),
-          const PaymentRow(
-            label: 'Pasajeros',
-            value: 'Membresia mensual',
-            onDark: true,
-          ),
-          PaymentRow(
-            label: 'Metodo',
-            value: paymentMethodSummaryLabel,
-            onDark: true,
-          ),
-          PaymentRow(
-            label: 'Total',
-            value: amount,
-            emphasize: true,
-            onDark: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
+    final labelColor =
+        item.total ? const Color(0xFFD6B477) : const Color(0xFFB7C4D3);
+    final valueColor = item.total ? const Color(0xFFD6B477) : Colors.white;
 
-class _AccessPaymentMethodCard extends StatelessWidget {
-  const _AccessPaymentMethodCard({
-    required this.showCommercialCardPaymentOption,
-    required this.paymentMethod,
-    required this.cardPaymentPanel,
-    required this.linkPaymentPanel,
-    required this.onSelectCard,
-    required this.onSelectLink,
-  });
-
-  final bool showCommercialCardPaymentOption;
-  final String paymentMethod;
-  final Widget cardPaymentPanel;
-  final Widget linkPaymentPanel;
-  final VoidCallback onSelectCard;
-  final VoidCallback onSelectLink;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassInfoCard(
-      backgroundColor: const Color(0xFF102438),
-      borderColor: const Color(0xFF29445A),
-      shadowColor: const Color(0x1A102438),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Metodo de pago',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          CompactPaymentOption(
-            label: 'Agregar tarjeta con Stripe',
-            subtitle: 'Captura tu tarjeta en la pagina segura de Stripe',
-            selected: paymentMethod == 'link',
-            expanded: paymentMethod == 'link',
-            onTap: onSelectLink,
-            child: linkPaymentPanel,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AccessContactCard extends StatelessWidget {
-  const _AccessContactCard({
-    required this.emailController,
-    required this.inlineMessage,
-    required this.messageColor,
-  });
-
-  final TextEditingController emailController;
-  final String inlineMessage;
-  final Color messageColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassInfoCard(
-      backgroundColor: const Color(0xFF102438),
-      borderColor: const Color(0xFF29445A),
-      shadowColor: const Color(0x1A102438),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Datos de contacto',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          PaymentInputField(
-            controller: emailController,
-            label: 'Correo electronico',
-            hint: 'cliente@empresa.com',
-            keyboardType: TextInputType.emailAddress,
-          ),
-          if (inlineMessage.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              inlineMessage,
-              style: TextStyle(
-                color: messageColor,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
+    return Column(
+      children: [
+        if (item.total) const Divider(height: 14, color: Color(0xFF344459)),
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: item.total ? 5 : 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: labelColor,
+                    fontSize: 13,
+                    fontWeight: item.total ? FontWeight.w900 : FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ],
-      ),
+              const SizedBox(width: 14),
+              Flexible(
+                child: Text(
+                  item.value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: valueColor,
+                    fontSize: item.total ? 15 : 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast && !item.total)
+          const Divider(height: 1, color: Color(0x22344459)),
+      ],
     );
   }
 }

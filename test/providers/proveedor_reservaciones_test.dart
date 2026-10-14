@@ -8,8 +8,54 @@ import 'package:red_sky/core/client_workflow_status.dart';
 import 'package:red_sky/models/aeronave.dart';
 import 'package:red_sky/models/aeropuerto.dart';
 import 'package:red_sky/providers/proveedor_reservaciones.dart';
+import 'package:red_sky/services/servicio_memoria_local.dart';
 
 void main() {
+  test(
+    'loads lowercase airport coordinates and writes them to local cache',
+    () async {
+      final cache = _AirportCaptureCache();
+      final api = _api((request) async {
+        if (request.url.path.endsWith('/public/airports')) {
+          return _json(200, {
+            'airports': [
+              {
+                'id': 101,
+                'name': 'Cancun International Airport',
+                'city': 'Cancun',
+                'iata': 'CUN',
+                'icao': 'MMUN',
+                'latitude': '21.0365',
+                'longitude': '-86.8771',
+              },
+            ],
+          });
+        }
+        if (request.url.path.endsWith('/public/aircraft-preview')) {
+          return _json(200, {'aircraft': []});
+        }
+        return _json(404, {'message': 'not found'});
+      });
+      final provider = _OnlineAirportReservationProvider(
+        apiClient: api,
+        cacheService: cache,
+      );
+      addTearDown(provider.dispose);
+
+      await provider.loadInitialData();
+
+      expect(provider.airports, hasLength(1));
+      expect(provider.airports.single.lat, 21.0365);
+      expect(provider.airports.single.lng, -86.8771);
+      expect(cache.cachedAirports.single['lat'], 21.0365);
+      expect(cache.cachedAirports.single['lng'], -86.8771);
+      final reloaded = Airport.fromJson(cache.cachedAirports.single);
+      expect(reloaded.hasCoordinateValues, isTrue);
+      expect(reloaded.lat, 21.0365);
+      expect(reloaded.lng, -86.8771);
+    },
+  );
+
   group('ReservationProvider rememberCreatedFlightRequest', () {
     test(
       'defaults new request to provider pending when it was sent to provider',
@@ -358,6 +404,37 @@ void main() {
       },
     );
   });
+}
+
+class _OnlineAirportReservationProvider extends ReservationProvider {
+  _OnlineAirportReservationProvider({
+    required super.apiClient,
+    required super.cacheService,
+  });
+
+  @override
+  Future<bool> checkInternetConnection() async => true;
+}
+
+class _AirportCaptureCache extends LocalCacheService {
+  List<Map<String, dynamic>> cachedAirports = [];
+
+  @override
+  Future<void> cacheAirports(List<Map<String, dynamic>> airports) async {
+    cachedAirports =
+        airports.map((airport) => Map<String, dynamic>.from(airport)).toList();
+  }
+
+  @override
+  Future<void> cacheAircraft(List<Map<String, dynamic>> aircraft) async {}
+
+  @override
+  Future<void> cacheReservations(
+    List<Map<String, dynamic>> reservations,
+  ) async {}
+
+  @override
+  Future<void> setMetadata(String key, String value) async {}
 }
 
 class _WorkspaceTestReservationProvider extends ReservationProvider {

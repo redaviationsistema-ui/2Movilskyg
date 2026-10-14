@@ -247,43 +247,6 @@ class ReservationProvider extends ChangeNotifier {
         .toList();
   }
 
-  Map<String, dynamic> _normalizeAirport(dynamic raw) {
-    final json = Map<String, dynamic>.from(raw as Map);
-
-    return {
-      'id':
-          json['id'] ??
-          json['airport_id'] ??
-          json['aeropuerto_id'] ??
-          json['ID'] ??
-          json['airportId'],
-      'name':
-          json['AEROPUERTO'] ??
-          json['name'] ??
-          json['airport'] ??
-          json['nombre'] ??
-          '',
-      'city': json['CIUDAD'] ?? json['city'] ?? json['municipality'] ?? '',
-      'state': json['ESTADO'] ?? json['state'] ?? json['region'],
-      'lat': _toDouble(json['LATITUDE'] ?? json['lat']),
-      'lng': _toDouble(json['LONGITUDE'] ?? json['lng']),
-      'iata': json['IATA'] ?? json['iata'] ?? json['gps_code'],
-      'icao': json['ICAO'] ?? json['icao'] ?? json['ident'] ?? json['gps_code'],
-      'country':
-          json['PAIS'] ??
-          json['country'] ??
-          json['COUNTRY'] ??
-          json['iso_country'] ??
-          'MEXICO',
-    };
-  }
-
-  double _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0;
-    return 0;
-  }
-
   Future<void> loadCachedData({String? fallbackReason}) async {
     final cachedAirports = await _cacheService.getCachedAirports();
     final cachedAircraft = await _cacheService.getCachedAircraft();
@@ -340,11 +303,10 @@ class ReservationProvider extends ChangeNotifier {
         _fetchReservationsRemote(),
       ]);
 
-      final normalizedAirports = (results[0] as List<Map<String, dynamic>>).map(
-        _normalizeAirport,
-      );
-
-      airports = normalizedAirports.map(Airport.fromJson).toList();
+      airports =
+          (results[0] as List<Map<String, dynamic>>)
+              .map(Airport.fromJson)
+              .toList();
 
       final aircraftResponse = results[1] as List<Map<String, dynamic>>;
       aircraftFleet =
@@ -457,15 +419,12 @@ class ReservationProvider extends ChangeNotifier {
       _workspaceDiagnostic(
         'api_error status=${error.statusCode ?? 0} elapsedMs=${workspaceStopwatch.elapsedMilliseconds} message=${error.message}',
       );
-    } catch (error, stackTrace) {
+    } catch (error) {
       workspaceMessage =
           'No fue posible sincronizar la cabina. Conservamos la informacion disponible para reintentar.';
       _workspaceDiagnostic(
         'unexpected_error elapsedMs=${workspaceStopwatch.elapsedMilliseconds} type=${error.runtimeType} error=$error',
       );
-      if (AppEnvironment.current.allowsDiagnosticLogs) {
-        debugPrint('[WORKSPACE sync] stackTrace=$stackTrace');
-      }
     } finally {
       isLoadingWorkspace = false;
       notifyListeners();
@@ -496,7 +455,7 @@ class ReservationProvider extends ChangeNotifier {
 
   void _workspaceDiagnostic(String message) {
     if (!AppEnvironment.current.allowsDiagnosticLogs) return;
-    debugPrint('[WORKSPACE sync] $message');
+    // debugPrint('[WORKSPACE sync] $message');
   }
 
   Future<bool> previewCurrentSelection() async {
@@ -1123,6 +1082,10 @@ class ReservationProvider extends ChangeNotifier {
       return 'Completa todos los tramos antes de cotizar.';
     }
 
+    if (currentTripTypeCode == 'multi_leg' && completeRoutes.length < 2) {
+      return 'Agrega al menos dos tramos completos para cotizar multidestino.';
+    }
+
     DateTime? previousDate;
     for (var index = 0; index < completeRoutes.length; index++) {
       final route = completeRoutes[index];
@@ -1139,11 +1102,10 @@ class ReservationProvider extends ChangeNotifier {
       if (route.passengers <= 0) {
         return 'Indica pasajeros validos en el tramo ${index + 1}.';
       }
-      final calendarDate = DateTime(date.year, date.month, date.day);
-      if (previousDate != null && calendarDate.isBefore(previousDate)) {
-        return 'Ordena las fechas de los tramos antes de cotizar.';
+      if (previousDate != null && date.isBefore(previousDate)) {
+        return 'Ordena las fechas y horas de los tramos antes de cotizar.';
       }
-      previousDate = calendarDate;
+      previousDate = date;
     }
 
     return null;
@@ -3101,6 +3063,7 @@ class ReservationProvider extends ChangeNotifier {
     for (final route in routes) {
       route.passengers = passengers;
     }
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3129,6 +3092,7 @@ class ReservationProvider extends ChangeNotifier {
 
   void setBookingTripLabel(String value) {
     bookingTripLabel = value;
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3181,6 +3145,7 @@ class ReservationProvider extends ChangeNotifier {
   void addRoute({bool allowIncomplete = false}) {
     if (routes.isEmpty) {
       routes.add(RouteModel());
+      _invalidateQuotePreview();
       notifyListeners();
       return;
     }
@@ -3198,6 +3163,7 @@ class ReservationProvider extends ChangeNotifier {
       ),
     );
 
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3210,6 +3176,7 @@ class ReservationProvider extends ChangeNotifier {
       routes[index].fromAirport = routes[index - 1].toAirport;
     }
 
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3217,6 +3184,7 @@ class ReservationProvider extends ChangeNotifier {
     if (index >= routes.length) return;
 
     routes[index].fromAirport = airport;
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3229,6 +3197,7 @@ class ReservationProvider extends ChangeNotifier {
       routes[index + 1].fromAirport = airport;
     }
 
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3236,6 +3205,7 @@ class ReservationProvider extends ChangeNotifier {
     if (index >= routes.length) return;
 
     routes[index].passengers = value < 1 ? 1 : value;
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3243,6 +3213,7 @@ class ReservationProvider extends ChangeNotifier {
     if (index >= routes.length) return;
 
     routes[index].startDate = date;
+    _invalidateQuotePreview();
     notifyListeners();
   }
 
@@ -3250,7 +3221,20 @@ class ReservationProvider extends ChangeNotifier {
     if (index >= routes.length) return;
 
     routes[index].endDate = date;
+    _invalidateQuotePreview();
     notifyListeners();
+  }
+
+  void _invalidateQuotePreview() {
+    quoteMatches = [];
+    selectedQuoteMatch = null;
+    quoteError = null;
+    quoteEmptyMessage = null;
+    quotePreviewState = QuotePreviewState.idle;
+    _lastQuotedLegs = const [];
+    _lastQuotedPassengers = passengers;
+    _lastQuotedTripTypeCode = currentTripTypeCode;
+    _lastQuotedTripTypeLabel = currentTripTypeLabel;
   }
 
   void setAircraft(Aircraft? aircraft) {

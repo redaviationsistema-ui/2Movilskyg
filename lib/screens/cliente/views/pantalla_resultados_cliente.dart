@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/acceso_comercial_cliente.dart';
@@ -6,9 +7,12 @@ import '../../../core/billable_hours_formatter.dart';
 import '../../../core/cliente_api.dart';
 import '../../../core/media_utils.dart';
 import '../../../core/quote_price_formatter.dart';
+import '../../../models/aeropuerto.dart';
 import '../../../models/modelo_ruta.dart';
 import '../../../providers/proveedor_autenticacion.dart';
 import '../../../providers/proveedor_reservaciones.dart';
+import '../../../widgets/maps/itinerary_airport_map.dart';
+import '../../../widgets/maps/itinerary_map_models.dart';
 import '../tema_cliente.dart';
 
 class ClientResultsScreen extends StatefulWidget {
@@ -20,6 +24,7 @@ class ClientResultsScreen extends StatefulWidget {
     this.userInitial = 'C',
     this.onBackToSearch,
     this.onCommercialAccessRequired,
+    this.enableMapVectorProvider = true,
   });
 
   final bool showBackButton;
@@ -28,6 +33,7 @@ class ClientResultsScreen extends StatefulWidget {
   final String userInitial;
   final VoidCallback? onBackToSearch;
   final VoidCallback? onCommercialAccessRequired;
+  final bool enableMapVectorProvider;
 
   @override
   State<ClientResultsScreen> createState() => _ClientResultsScreenState();
@@ -111,13 +117,19 @@ class _ClientResultsScreenState extends State<ClientResultsScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 34),
                 children: [
-                  _ResultsSummaryBand(
+                  FlightSummaryCard(
                     routes: reservation.routes,
                     itineraryLegs: reservation.quoteDisplayLegs,
                     passengers: reservation.quoteDisplayPassengers,
                     isLoading: reservation.isLoadingQuotePreview,
                     onModify:
                         widget.onBackToSearch ?? () => Navigator.pop(context),
+                  ),
+                  const SizedBox(height: 14),
+                  _ResultsItineraryMap(
+                    routes: reservation.routes,
+                    airportCatalog: reservation.airports,
+                    enableVectorProvider: widget.enableMapVectorProvider,
                   ),
                   const SizedBox(height: 18),
                   _ResultsSortCard(
@@ -464,8 +476,9 @@ extension on _ResultsSortCriterion {
   }
 }
 
-class _ResultsSummaryBand extends StatelessWidget {
-  const _ResultsSummaryBand({
+class FlightSummaryCard extends StatelessWidget {
+  const FlightSummaryCard({
+    super.key,
     required this.routes,
     required this.itineraryLegs,
     required this.passengers,
@@ -482,58 +495,36 @@ class _ResultsSummaryBand extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mobile = MediaQuery.sizeOf(context).width < 390;
-    final segmentLabels = _segmentLabels();
-    final completeSegments =
-        itineraryLegs.isNotEmpty
-            ? itineraryLegs.length
-            : routes
-                .where(
-                  (route) =>
-                      route.fromAirport != null &&
-                      route.toAirport != null &&
-                      route.startDate != null,
-                )
-                .length;
+    final legs = _summaryLegs();
+    final completeSegments = legs.length;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        mobile ? 12 : 16,
-        mobile ? 12 : 15,
-        mobile ? 12 : 12,
-        mobile ? 12 : 15,
-      ),
+      padding: EdgeInsets.all(mobile ? 14 : 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101C2D),
-        borderRadius: BorderRadius.circular(mobile ? 18 : 24),
-        border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        color: const Color(0xFF111E30),
+        borderRadius: BorderRadius.circular(mobile ? 20 : 24),
+        border: Border.all(color: const Color(0xFF354257)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: mobile ? 38 : 44,
-                height: mobile ? 38 : 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD8B15D).withValues(alpha: .1),
-                  borderRadius: BorderRadius.circular(mobile ? 13 : 15),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
-                  color: const Color(0xFFD8B15D),
-                  size: mobile ? 17 : 19,
-                ),
+              Icon(
+                isLoading ? Icons.sync_rounded : Icons.flight_takeoff_rounded,
+                color: const Color(0xFFD4AD58),
+                size: mobile ? 17 : 18,
               ),
-              SizedBox(width: mobile ? 9 : 11),
+              SizedBox(width: mobile ? 8 : 10),
               Expanded(
                 child: Text(
-                  'Tu itinerario',
+                  'Resumen del vuelo',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: mobile ? 15 : 17,
-                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFF4F6FA),
+                    fontSize: mobile ? 14 : 16,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -541,75 +532,79 @@ class _ResultsSummaryBand extends StatelessWidget {
               TextButton(
                 onPressed: onModify,
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFD8B15D),
+                  foregroundColor: const Color(0xFFD4AD58),
                   padding: EdgeInsets.symmetric(
                     horizontal: mobile ? 10 : 12,
-                    vertical: mobile ? 8 : 10,
+                    vertical: mobile ? 7 : 8,
                   ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   side: BorderSide(
-                    color: const Color(0xFFD8B15D).withValues(alpha: .5),
+                    color: const Color(0xFFD4AD58).withValues(alpha: .72),
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(mobile ? 14 : 16),
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
                 child: Text(
                   'Modificar',
                   style: TextStyle(
                     fontSize: mobile ? 10.5 : 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: mobile ? 9 : 13),
-          ...segmentLabels.indexed.map(
-            (entry) => Padding(
-              padding: EdgeInsets.only(bottom: mobile ? 5 : 7),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: mobile ? 50 : 58,
-                    child: Text(
-                      'Tramo ${entry.$1 + 1}',
-                      style: TextStyle(
-                        color: Color(0xFFD8B15D),
-                        fontSize: mobile ? 10 : 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      entry.$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: mobile ? 12.5 : 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+          SizedBox(height: mobile ? 12 : 14),
+          ...legs.indexed.map((entry) {
+            final isLast = entry.$1 == legs.length - 1;
+            return Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+              child: _FlightSummaryLegRow(
+                index: entry.$1,
+                leg: entry.$2,
+                showDivider: !isLast,
+                compact: mobile,
+              ),
+            );
+          }),
+          SizedBox(height: mobile ? 12 : 14),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: mobile ? 10 : 12,
+              vertical: mobile ? 9 : 10,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B2A3D),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFF354257).withValues(alpha: .8),
               ),
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.only(left: mobile ? 50 : 58, top: 1),
-            child: Text(
-              '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}  •  $completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: .62),
-                fontSize: mobile ? 11 : 12,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Row(
+              children: [
+                _FlightSummaryMetric(
+                  icon: Icons.groups_2_rounded,
+                  label:
+                      '$passengers ${passengers == 1 ? 'pasajero' : 'pasajeros'}',
+                  compact: mobile,
+                ),
+                Container(
+                  width: 1,
+                  height: 18,
+                  margin: EdgeInsets.symmetric(horizontal: mobile ? 10 : 12),
+                  color: const Color(0xFF354257),
+                ),
+                Expanded(
+                  child: _FlightSummaryMetric(
+                    icon: Icons.route_rounded,
+                    label:
+                        '$completeSegments ${completeSegments == 1 ? 'tramo' : 'tramos'}',
+                    compact: mobile,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -617,80 +612,479 @@ class _ResultsSummaryBand extends StatelessWidget {
     );
   }
 
-  String _airportDisplayName(dynamic airport, {String? fallbackCode}) {
-    if (airport == null) return '';
-
-    if (airport is Map) {
-      final city = airport['city']?.toString().trim() ?? '';
-      if (city.isNotEmpty) return city;
-
-      final name = airport['name']?.toString().trim() ?? '';
-      if (name.isNotEmpty) return name;
-
-      final iata = airport['iata']?.toString().trim().toUpperCase() ?? '';
-      if (iata.isNotEmpty) return iata;
-
-      final icao = airport['icao']?.toString().trim().toUpperCase() ?? '';
-      if (icao.isNotEmpty) return icao;
-    }
-
-    final city = airport.city?.toString().trim() ?? '';
-    if (city.isNotEmpty) return city;
-
-    final name = airport.name?.toString().trim() ?? '';
-    if (name.isNotEmpty) return name;
-
-    final iata = airport.iata?.toString().trim().toUpperCase() ?? '';
-    if (iata.isNotEmpty) return iata;
-
-    final fallback = fallbackCode?.trim().toUpperCase() ?? '';
-    if (fallback.isNotEmpty) return fallback;
-
-    return airport.icao?.toString().trim().toUpperCase() ?? '';
-  }
-
-  List<String> _segmentLabels() {
+  List<_FlightSummaryLeg> _summaryLegs() {
     if (itineraryLegs.isNotEmpty) {
-      final labels =
+      final legs =
           itineraryLegs
               .map((leg) {
-                final origin = _airportDisplayName(
+                final origin = _airportSummary(
                   leg['origin_airport'],
-                  fallbackCode:
+                  cityFallback: leg['origin_city']?.toString(),
+                  codeFallback:
                       leg['origin_iata']?.toString() ??
                       leg['origin_icao']?.toString() ??
                       leg['origin']?.toString(),
                 );
-                final destination = _airportDisplayName(
+                final destination = _airportSummary(
                   leg['destination_airport'],
-                  fallbackCode:
+                  cityFallback: leg['destination_city']?.toString(),
+                  codeFallback:
                       leg['destination_iata']?.toString() ??
                       leg['destination_icao']?.toString() ??
                       leg['destination']?.toString(),
                 );
 
-                if (origin.isEmpty || destination.isEmpty) {
-                  return '';
+                if (origin.label.isEmpty || destination.label.isEmpty) {
+                  return null;
                 }
-                return '$origin → $destination';
+                return _FlightSummaryLeg(
+                  originCity: origin.label,
+                  destinationCity: destination.label,
+                  originCode: origin.code,
+                  destinationCode: destination.code,
+                );
               })
-              .where((label) => label.isNotEmpty)
+              .whereType<_FlightSummaryLeg>()
               .toList();
 
-      if (labels.isNotEmpty) return labels;
+      if (legs.isNotEmpty) return legs;
     }
 
-    final labels = <String>[];
+    final legs = <_FlightSummaryLeg>[];
     for (final route in routes) {
-      final origin = _airportDisplayName(route.fromAirport);
-      final destination = _airportDisplayName(route.toAirport);
+      final origin = _airportSummary(route.fromAirport);
+      final destination = _airportSummary(route.toAirport);
 
-      if (origin.isNotEmpty && destination.isNotEmpty) {
-        labels.add('$origin → $destination');
+      if (origin.label.isNotEmpty && destination.label.isNotEmpty) {
+        legs.add(
+          _FlightSummaryLeg(
+            originCity: origin.label,
+            destinationCity: destination.label,
+            originCode: origin.code,
+            destinationCode: destination.code,
+          ),
+        );
       }
     }
 
-    return labels.isEmpty ? const ['Ruta por confirmar'] : labels;
+    return legs.isEmpty
+        ? const [
+          _FlightSummaryLeg(
+            originCity: 'Ruta',
+            destinationCity: 'por confirmar',
+            originCode: '--',
+            destinationCode: '--',
+          ),
+        ]
+        : legs;
+  }
+
+  _AirportSummary _airportSummary(
+    dynamic airport, {
+    String? cityFallback,
+    String? codeFallback,
+  }) {
+    if (airport is Map) {
+      final city = _firstCleanText(airport, const [
+        'city',
+        'CIUDAD',
+        'municipality',
+        'ciudad',
+      ]);
+      final name = _firstCleanText(airport, const [
+        'name',
+        'airport',
+        'AEROPUERTO',
+        'nombre',
+        'airport_name',
+        'nombre_aeropuerto',
+      ]);
+      final iata = _firstCleanText(airport, const [
+        'iata',
+        'IATA',
+        'iata_code',
+        'codigo_iata',
+      ]);
+      final icao = _firstCleanText(airport, const [
+        'icao',
+        'ICAO',
+        'icao_code',
+        'codigo_icao',
+        'gps_code',
+        'ident',
+      ]);
+      final code = _airportCode(iata, icao, codeFallback);
+      return _AirportSummary(
+        label: city ?? name ?? code,
+        code: code.isEmpty ? (city ?? name ?? '') : code,
+      );
+    }
+
+    if (airport != null) {
+      final city = airport.city?.toString().trim() ?? '';
+      final name = airport.name?.toString().trim() ?? '';
+      final code = _airportCode(
+        airport.iata?.toString(),
+        airport.icao?.toString(),
+        codeFallback,
+      );
+      return _AirportSummary(
+        label: city.isNotEmpty ? city : (name.isNotEmpty ? name : code),
+        code: code.isEmpty ? (city.isNotEmpty ? city : name) : code,
+      );
+    }
+
+    final fallbackCity = cityFallback?.trim() ?? '';
+    final fallbackCode = _airportCode(null, null, codeFallback);
+    return _AirportSummary(
+      label: fallbackCity.isNotEmpty ? fallbackCity : fallbackCode,
+      code: fallbackCode.isNotEmpty ? fallbackCode : fallbackCity,
+    );
+  }
+
+  String? _firstCleanText(Map<dynamic, dynamic> values, List<String> keys) {
+    for (final key in keys) {
+      final value = values[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return null;
+  }
+
+  String _airportCode(String? iata, String? icao, String? fallback) {
+    final iataText = iata?.trim().toUpperCase() ?? '';
+    if (iataText.isNotEmpty) return iataText;
+
+    final icaoText = icao?.trim().toUpperCase() ?? '';
+    if (icaoText.isNotEmpty) return icaoText;
+
+    return fallback?.trim().toUpperCase() ?? '';
+  }
+}
+
+class _FlightSummaryLegRow extends StatelessWidget {
+  const _FlightSummaryLegRow({
+    required this.index,
+    required this.leg,
+    required this.showDivider,
+    required this.compact,
+  });
+
+  final int index;
+  final _FlightSummaryLeg leg;
+  final bool showDivider;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: compact ? 32 : 34,
+              height: compact ? 28 : 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B2A3D),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFFD4AD58).withValues(alpha: .32),
+                ),
+              ),
+              child: Text(
+                (index + 1).toString().padLeft(2, '0'),
+                style: TextStyle(
+                  color: const Color(0xFFD4AD58),
+                  fontSize: compact ? 10 : 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            SizedBox(width: compact ? 10 : 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  /*  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          leg.originCity,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFFF4F6FA),
+                            fontSize: compact ? 13 : 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          color: const Color(0xFFD4AD58),
+                          size: compact ? 15 : 16,
+                        ),
+                      ),
+                     Expanded(
+                        child: Text(
+                          leg.destinationCity,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: const Color(0xFFF4F6FA),
+                            fontSize: compact ? 13 : 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),*/
+                  const SizedBox(height: 4),
+                  Text(
+                    '${leg.originCode}  →  ${leg.destinationCode}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF9BAABD),
+                      fontSize: compact ? 11 : 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: .9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (showDivider)
+          Padding(
+            padding: EdgeInsets.only(left: compact ? 42 : 46, top: 10),
+            child: const Divider(
+              height: 1,
+              thickness: 1,
+              color: Color(0xFF25364B),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FlightSummaryMetric extends StatelessWidget {
+  const _FlightSummaryMetric({
+    required this.icon,
+    required this.label,
+    required this.compact,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: const Color(0xFFD4AD58), size: compact ? 14 : 15),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: const Color(0xFFF4F6FA),
+              fontSize: compact ? 11 : 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlightSummaryLeg {
+  const _FlightSummaryLeg({
+    required this.originCity,
+    required this.destinationCity,
+    required this.originCode,
+    required this.destinationCode,
+  });
+
+  final String originCity;
+  final String destinationCity;
+  final String originCode;
+  final String destinationCode;
+}
+
+class _AirportSummary {
+  const _AirportSummary({required this.label, required this.code});
+
+  final String label;
+  final String code;
+}
+
+class _ResultsItineraryMap extends StatefulWidget {
+  const _ResultsItineraryMap({
+    required this.routes,
+    required this.airportCatalog,
+    required this.enableVectorProvider,
+  });
+
+  final List<RouteModel> routes;
+  final List<Airport> airportCatalog;
+  final bool enableVectorProvider;
+
+  @override
+  State<_ResultsItineraryMap> createState() => _ResultsItineraryMapState();
+}
+
+class _ResultsItineraryMapState extends State<_ResultsItineraryMap> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.white.withValues(alpha: .04),
+        highlightColor: Colors.white.withValues(alpha: .03),
+      ),
+      child: ExpansionTile(
+        key: const ValueKey('results-itinerary-map-toggle'),
+        initiallyExpanded: false,
+        maintainState: true,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        onExpansionChanged: (expanded) {
+          setState(() => _isExpanded = expanded);
+        },
+        leading: const Icon(
+          Icons.map_outlined,
+          color: Color(0xFFD4AD58),
+          size: 21,
+        ),
+        title: const Text(
+          'Ver recorrido en el mapa',
+          style: TextStyle(
+            color: Color(0xFFF4F6FA),
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          '${widget.routes.length} '
+          '${widget.routes.length == 1 ? 'tramo' : 'tramos'} seleccionados',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .62),
+            fontSize: 12,
+          ),
+        ),
+        trailing: Icon(
+          _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+          color: const Color(0xFFD4AD58),
+        ),
+        children: [
+          const SizedBox(height: 6),
+          ItineraryAirportMap(
+            routes: widget.routes,
+            airportCatalog: widget.airportCatalog,
+            height: 230,
+            enableVectorProvider: widget.enableVectorProvider,
+          ),
+          const SizedBox(height: 12),
+          for (var index = 0; index < widget.routes.length; index++) ...[
+            if (index > 0) const SizedBox(height: 8),
+            _ResultsItineraryLeg(route: widget.routes[index], index: index),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'Ruta ilustrativa · No válida para navegación aérea.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .6),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultsItineraryLeg extends StatelessWidget {
+  const _ResultsItineraryLeg({required this.route, required this.index});
+
+  final RouteModel route;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final departure = route.startDate;
+    final origin = _displayCode(route.fromAirport);
+    final destination = _displayCode(route.toAirport);
+
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B2A3D),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: const Color(0xFFD4AD58).withValues(alpha: .38),
+            ),
+          ),
+          child: Text(
+            '${index + 1}',
+            style: const TextStyle(
+              color: Color(0xFFD4AD58),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$origin  →  $destination',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFF4F6FA),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .4,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          departure == null
+              ? 'Fecha/hora por confirmar'
+              : '${DateFormat('dd/MM/yyyy').format(departure)} · '
+                  '${DateFormat('HH:mm').format(departure)}',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: .65),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _displayCode(Airport? airport) {
+    return airport == null ? '—' : ItineraryMapData.airportDisplayCode(airport);
   }
 }
 

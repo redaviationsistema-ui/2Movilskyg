@@ -8,6 +8,7 @@ class Airport {
   final String? iata;
   final String? icao;
   final String? country;
+  final bool hasCoordinateValues;
 
   Airport({
     this.id,
@@ -17,12 +18,18 @@ class Airport {
     this.iata,
     this.icao,
     this.country,
+    this.hasCoordinateValues = true,
     required this.lat,
     required this.lng,
   });
 
   factory Airport.fromJson(Map<String, dynamic> json) {
-    final idValue = json['id'] ?? json['airport_id'] ?? json['aeropuerto_id'];
+    final idValue =
+        json['id'] ??
+        json['airport_id'] ??
+        json['aeropuerto_id'] ??
+        json['ID'] ??
+        json['airportId'];
     final name =
         json['AEROPUERTO'] ??
         json['name'] ??
@@ -37,8 +44,13 @@ class Airport {
         json['municipality'] ??
         json['ciudad'] ??
         '';
-    final state = json['ESTADO'] ?? json['state'];
-    final country = json['PAIS'] ?? json['country'];
+    final state = json['ESTADO'] ?? json['state'] ?? json['region'];
+    final country =
+        json['PAIS'] ??
+        json['country'] ??
+        json['COUNTRY'] ??
+        json['iso_country'] ??
+        'MEXICO';
     final iata =
         json['IATA'] ??
         json['iata'] ??
@@ -53,6 +65,8 @@ class Airport {
         json['ident'];
     final latValue = json['LATITUDE'] ?? json['lat'] ?? json['latitude'];
     final lngValue = json['LONGITUDE'] ?? json['lng'] ?? json['longitude'];
+    final latitude = _toDoubleOrNull(latValue);
+    final longitude = _toDoubleOrNull(lngValue);
 
     return Airport(
       id: _toInt(idValue),
@@ -62,15 +76,20 @@ class Airport {
       city: city,
       state: state,
       country: country,
-      lat: _toDouble(latValue),
-      lng: _toDouble(lngValue),
+      hasCoordinateValues: latitude != null && longitude != null,
+      lat: latitude ?? 0,
+      lng: longitude ?? 0,
     );
   }
 
-  static double _toDouble(dynamic value) {
+  static double? _toDoubleOrNull(dynamic value) {
     if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0;
-    return 0;
+    if (value is String) {
+      final normalized = value.trim();
+      if (normalized.isEmpty) return null;
+      return double.tryParse(normalized);
+    }
+    return null;
   }
 
   static int? _toInt(dynamic value) {
@@ -86,8 +105,8 @@ class Airport {
       'name': name,
       'city': city,
       'state': state,
-      'lat': lat,
-      'lng': lng,
+      'lat': hasCoordinateValues ? lat : null,
+      'lng': hasCoordinateValues ? lng : null,
       'iata': iata,
       'icao': icao,
       'country': country,

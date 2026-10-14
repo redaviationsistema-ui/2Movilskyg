@@ -363,6 +363,9 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                 )
                 .toList()
             : tabRequests;
+    final showEmptyState =
+        filteredRequests.isEmpty &&
+        !(_activeTab == _TripTab.upcoming && nextFlight != null);
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
@@ -377,11 +380,13 @@ class _ClientFlightsListState extends State<ClientFlightsList>
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            padding: EdgeInsets.fromLTRB(24, 18, 24, 34 + bottomInset),
+            padding: EdgeInsets.fromLTRB(20, 14, 20, 30 + bottomInset),
             children: [
               _FlightsReveal(
                 order: 0,
                 child: _PremiumFlightsHeader(
+                  heading: widget.heading,
+                  description: widget.description,
                   flightCount: allRequests.length,
                   showBackButton: widget.showBackButton,
                   onBack: () => Navigator.pop(context),
@@ -389,24 +394,23 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                       () => _showActionMessage('Sin notificaciones nuevas.'),
                 ),
               ),
-              const SizedBox(height: 24),
-              _FlightsReveal(
-                order: 1,
-                child: _NextFlightHero(
-                  request: nextFlight,
-                  aircraftFleet: provider.aircraftFleet,
-                  airportNames: _airportNames,
-                  airportDetails: _airportDetails,
-                  onTap:
-                      nextFlight == null
-                          ? widget.onOpenSearch
-                          : () => _openPrimaryFlightAction(
-                            provider,
-                            nextFlight,
-                            allowTracking: false,
-                          ),
+              if (nextFlight != null) ...[
+                const SizedBox(height: 18),
+                _FlightsReveal(
+                  order: 1,
+                  child: _NextFlightHero(
+                    request: nextFlight,
+                    airportNames: _airportNames,
+                    airportDetails: _airportDetails,
+                    onTap:
+                        () => _openPrimaryFlightAction(
+                          provider,
+                          nextFlight,
+                          allowTracking: false,
+                        ),
+                  ),
                 ),
-              ),
+              ],
               if (_shouldShowWorkspaceAlert(provider.workspaceMessage)) ...[
                 const SizedBox(height: 14),
                 _FlightsReveal(
@@ -419,7 +423,7 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                   ),
                 ),
               ],
-              const SizedBox(height: 22),
+              const SizedBox(height: 18),
               _FlightsReveal(
                 order: 3,
                 child: _PremiumTripTabs(
@@ -428,14 +432,14 @@ class _ClientFlightsListState extends State<ClientFlightsList>
                   onChanged: (tab) => setState(() => _activeTab = tab),
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 16),
               if (provider.isLoadingWorkspace && allRequests.isEmpty)
                 const _FlightsReveal(order: 4, child: _MinimalLoadingCard())
-              else if (filteredRequests.isEmpty)
+              else if (showEmptyState)
                 _FlightsReveal(
                   order: 4,
                   child: _EmptyFlightsPanel(
-                    label: _activeTabLabel,
+                    tab: _activeTab,
                     onOpenSearch: widget.onOpenSearch,
                   ),
                 )
@@ -484,7 +488,6 @@ class _ClientFlightsListState extends State<ClientFlightsList>
     return const [_TripTab.upcoming, _TripTab.history, _TripTab.cancelled];
   }
 
-  String get _activeTabLabel => _tabLabel(_activeTab);
   List<Map<String, dynamic>> _filterRequests(
     List<Map<String, dynamic>> requests,
   ) {
@@ -2079,12 +2082,16 @@ class _SheetScaleButtonState extends State<_SheetScaleButton> {
 
 class _PremiumFlightsHeader extends StatelessWidget {
   const _PremiumFlightsHeader({
+    required this.heading,
+    required this.description,
     required this.flightCount,
     required this.showBackButton,
     required this.onBack,
     required this.onNotifications,
   });
 
+  final String heading;
+  final String description;
   final int flightCount;
   final bool showBackButton;
   final VoidCallback onBack;
@@ -2110,8 +2117,8 @@ class _PremiumFlightsHeader extends StatelessWidget {
             ],
             Image.asset(
               'assets/LOGOINTERNO.png',
-              width: 48,
-              height: 48,
+              width: 40,
+              height: 40,
               color: const Color(0xFFD7B15D),
               colorBlendMode: BlendMode.srcIn,
               filterQuality: FilterQuality.high,
@@ -2148,24 +2155,24 @@ class _PremiumFlightsHeader extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 22),
-        const Text(
-          'Tus vuelos',
-          style: TextStyle(
+        const SizedBox(height: 14),
+        Text(
+          heading,
+          style: const TextStyle(
             color: Colors.white,
-            fontSize: 36,
-            height: 1,
+            fontSize: 28,
+            height: 1.05,
             fontWeight: FontWeight.w800,
-            letterSpacing: -1.2,
+            letterSpacing: -.4,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         Text(
-          'Todo listo para tu próximo destino.',
+          description,
           style: TextStyle(
             color: Colors.white.withValues(alpha: .65),
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -2176,170 +2183,180 @@ class _PremiumFlightsHeader extends StatelessWidget {
 class _NextFlightHero extends StatelessWidget {
   const _NextFlightHero({
     required this.request,
-    required this.aircraftFleet,
     required this.airportNames,
     required this.airportDetails,
     required this.onTap,
   });
 
-  final Map<String, dynamic>? request;
-  final List<Aircraft> aircraftFleet;
+  final Map<String, dynamic> request;
   final Map<String, String> airportNames;
   final Map<String, _AirportPresentationData> airportDetails;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final flight = request;
-    final route =
-        flight == null
-            ? const (
-              _RouteStopPresentation(
-                city: 'Tu próximo destino',
-                airportName: 'Por descubrir',
-                icao: '',
-              ),
-              _RouteStopPresentation(
-                city: 'Destino por confirmar',
-                airportName: '',
-                icao: '',
-              ),
-            )
-            : _outboundRoutePresentation(flight, airportNames, airportDetails);
-    final imageUrl =
-        flight == null ? '' : _aircraftImageUrl(flight, aircraftFleet);
-    final status = flight == null ? null : _statusMeta(flight);
-    final primaryAction =
-        flight == null
-            ? const ClientFlightPrimaryAction.details()
-            : resolveClientFlightPrimaryAction(flight, allowTracking: false);
+    final route = _outboundRoutePresentation(
+      request,
+      airportNames,
+      airportDetails,
+    );
+    final status = _statusMeta(request);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 650),
+      duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
       builder:
           (context, value, child) => Opacity(
             opacity: value,
             child: Transform.translate(
-              offset: Offset(0, 18 * (1 - value)),
+              offset: Offset(0, 10 * (1 - value)),
               child: child,
             ),
           ),
       child: _ScaleTap(
         onTap: onTap,
-        child: SizedBox(
-          height: 336,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                const ColoredBox(color: Color(0xFF101C2D)),
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: 0,
-                  width: MediaQuery.sizeOf(context).width * .48,
-                  child: _PremiumJetImage(imageUrl: imageUrl),
-                ),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      stops: [0, .55, 1],
-                      colors: [
-                        Color(0xFF101C2D),
-                        Color(0xEE101C2D),
-                        Color(0x55101C2D),
-                      ],
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 140),
+          padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+          decoration: BoxDecoration(
+            color: const Color(0xFF101C2D),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: .08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16253B),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFFD7B15D).withValues(alpha: .25),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.flight_takeoff_rounded,
+                      color: Color(0xFFD7B15D),
+                      size: 19,
                     ),
                   ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: .08),
+                  const SizedBox(width: 11),
+                  const Expanded(
+                    child: Text(
+                      'PRÓXIMO VUELO',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFFD7B15D),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 18, 17),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'PRÓXIMO VUELO',
-                            style: TextStyle(
-                              color: Color(0xFFD7B15D),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.35,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (status != null)
-                            _PremiumStatusPill(meta: status, compact: true),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'RUTA',
-                        style: TextStyle(
-                          color: Color(0x80FFFFFF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 148,
-                        child: _HeroRouteLayout(
-                          origin: route.$1,
-                          destination: route.$2,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (flight != null)
-                        Row(
-                          children: [
-                            _HeroMeta(
-                              icon: Icons.calendar_month_outlined,
-                              label: _departureCopy(flight),
-                            ),
-                            const SizedBox(width: 11),
-                            _HeroMeta(
-                              icon: Icons.people_outline_rounded,
-                              label: formatClientPassengerCompactLabel(flight),
-                            ),
-                            const SizedBox(width: 11),
-                            Expanded(
-                              child: _HeroMeta(
-                                icon: Icons.flight_rounded,
-                                label: _aircraftLabel(flight),
-                              ),
-                            ),
-                          ],
-                        ),
-                      const SizedBox(height: 10),
-                      if (flight == null || primaryAction.isVisible)
-                        _FlightPrimaryCta(
-                          action: primaryAction,
-                          emptyLabel: flight == null ? 'Nuevo vuelo' : null,
-                        ),
-                    ],
+                  _PremiumStatusPill(meta: status, compact: true),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: _NextFlightRouteStop(stop: route.$1)),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Color(0xFFD7B15D),
+                      size: 18,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  Expanded(
+                    child: _NextFlightRouteStop(stop: route.$2, alignEnd: true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 13),
+              Wrap(
+                spacing: 9,
+                runSpacing: 8,
+                children: [
+                  _HeroMeta(
+                    icon: Icons.calendar_month_outlined,
+                    label: _departureCopy(request),
+                  ),
+                  _HeroMeta(
+                    icon: Icons.people_outline_rounded,
+                    label: formatClientPassengerCompactLabel(request),
+                  ),
+                  _HeroMeta(
+                    icon: Icons.arrow_forward_rounded,
+                    label: 'Ver detalles',
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NextFlightRouteStop extends StatelessWidget {
+  const _NextFlightRouteStop({required this.stop, this.alignEnd = false});
+
+  final _RouteStopPresentation stop;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final alignment =
+        alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final textAlign = alignEnd ? TextAlign.end : TextAlign.start;
+
+    return Column(
+      crossAxisAlignment: alignment,
+      children: [
+        Text(
+          stop.city,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: textAlign,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            height: 1.05,
+          ),
+        ),
+        if (stop.icao.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Text(
+            stop.icao,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: textAlign,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .62),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .6,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -2383,141 +2400,6 @@ class _HeroMeta extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _HeroRouteLayout extends StatelessWidget {
-  const _HeroRouteLayout({required this.origin, required this.destination});
-
-  final _RouteStopPresentation origin;
-  final _RouteStopPresentation destination;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _HeroRouteStop(
-                label: 'ORIGEN',
-                stop: origin,
-                alignEnd: false,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _HeroRouteStop(
-                label: 'DESTINO',
-                stop: destination,
-                alignEnd: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const _FlightRouteConnector(compact: true),
-      ],
-    );
-  }
-}
-
-class _HeroRouteStop extends StatelessWidget {
-  const _HeroRouteStop({
-    required this.label,
-    required this.stop,
-    required this.alignEnd,
-  });
-
-  final String label;
-  final _RouteStopPresentation stop;
-  final bool alignEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final crossAxisAlignment =
-        alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final textAlign = alignEnd ? TextAlign.end : TextAlign.start;
-
-    return Column(
-      crossAxisAlignment: crossAxisAlignment,
-      children: [
-        Text(
-          label,
-          textAlign: textAlign,
-          style: const TextStyle(
-            color: Color(0xFFD7B15D),
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: .9,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment:
-              alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!alignEnd) ...[
-              const Icon(
-                Icons.location_on_rounded,
-                color: Color(0xFFD7B15D),
-                size: 17,
-              ),
-              const SizedBox(width: 4),
-            ],
-            Flexible(
-              child: Column(
-                crossAxisAlignment: crossAxisAlignment,
-                children: [
-                  Text(
-                    stop.city,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: textAlign,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      height: 1.05,
-                    ),
-                  ),
-                  if (stop.airportName.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      stop.airportName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: textAlign,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: .68),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w400,
-                        height: 1.18,
-                      ),
-                    ),
-                  ],
-                  if (stop.icao.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    _AirportCodeBadge(code: stop.icao),
-                  ],
-                ],
-              ),
-            ),
-            if (alignEnd) ...[
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.location_on_rounded,
-                color: Color(0xFFD7B15D),
-                size: 17,
-              ),
-            ],
-          ],
-        ),
-      ],
     );
   }
 }
@@ -2626,11 +2508,11 @@ class _PremiumTripTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 54,
-      padding: const EdgeInsets.all(4),
+      height: 46,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: const Color(0xFF101C2D),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: .08)),
       ),
       child: Row(
@@ -2646,7 +2528,7 @@ class _PremiumTripTabs extends StatelessWidget {
                     decoration: BoxDecoration(
                       color:
                           active ? const Color(0xFF16253B) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(13),
                       border: Border(
                         bottom: BorderSide(
                           color:
@@ -2665,8 +2547,8 @@ class _PremiumTripTabs extends StatelessWidget {
                             active
                                 ? const Color(0xFFD7B15D)
                                 : Colors.white.withValues(alpha: .55),
-                        fontSize: 13,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 12.5,
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -2980,19 +2862,13 @@ class _CompactRouteStop extends StatelessWidget {
 }
 
 class _FlightPrimaryCta extends StatelessWidget {
-  const _FlightPrimaryCta({
-    required this.action,
-    this.compact = false,
-    this.emptyLabel,
-  });
+  const _FlightPrimaryCta({required this.action, this.compact = false});
 
   final ClientFlightPrimaryAction action;
   final bool compact;
-  final String? emptyLabel;
 
   @override
   Widget build(BuildContext context) {
-    final label = emptyLabel ?? action.label;
     return Container(
       width: compact ? double.infinity : null,
       padding: EdgeInsets.symmetric(
@@ -3021,7 +2897,7 @@ class _FlightPrimaryCta extends StatelessWidget {
           if (compact)
             Expanded(
               child: Text(
-                label,
+                action.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -3033,7 +2909,7 @@ class _FlightPrimaryCta extends StatelessWidget {
             )
           else
             Text(
-              label,
+              action.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -3744,7 +3620,7 @@ class _FlightsRevealState extends State<_FlightsReveal>
 String _tabLabel(_TripTab tab) {
   switch (tab) {
     case _TripTab.upcoming:
-      return 'Proximos';
+      return 'Próximos';
     case _TripTab.history:
       return 'Historial';
     case _TripTab.cancelled:
@@ -4578,31 +4454,48 @@ class _MinimalLoadingCard extends StatelessWidget {
 }
 
 class _EmptyFlightsPanel extends StatelessWidget {
-  const _EmptyFlightsPanel({required this.label, this.onOpenSearch});
+  const _EmptyFlightsPanel({required this.tab, this.onOpenSearch});
 
-  final String label;
+  final _TripTab tab;
   final VoidCallback? onOpenSearch;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.clientPalette;
-    final isUpcoming = label == 'Proximos';
-    final isDark = context.isDarkMode;
+    final isUpcoming = tab == _TripTab.upcoming;
+    final content = switch (tab) {
+      _TripTab.upcoming => (
+        icon: Icons.flight_takeoff_rounded,
+        title: 'Aún no tienes vuelos próximos.',
+        description:
+            'Cuando realices una reservación, podrás consultar aquí los detalles de tu próximo viaje.',
+      ),
+      _TripTab.history => (
+        icon: Icons.history_rounded,
+        title: 'Aún no hay historial de vuelos.',
+        description:
+            'Los vuelos completados aparecerán aquí cuando finalice tu operación.',
+      ),
+      _TripTab.cancelled => (
+        icon: Icons.cancel_outlined,
+        title: 'No tienes vuelos cancelados.',
+        description:
+            'Si una reservación se cancela, podrás revisarla en esta sección.',
+      ),
+    };
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: isDark ? palette.accentBorder : palette.border,
-        ),
+        color: const Color(0xFF101C2D),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: .08)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.10),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: .16),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -4610,61 +4503,55 @@ class _EmptyFlightsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              color: palette.surfaceStrong,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: palette.accentBorder),
+              color: const Color(0xFF16253B),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: const Color(0xFFD7B15D).withValues(alpha: .24),
+              ),
             ),
-            child: Icon(
-              isUpcoming
-                  ? Icons.flight_takeoff_rounded
-                  : Icons.inventory_2_outlined,
-              color: palette.accent,
-            ),
+            child: Icon(content.icon, color: const Color(0xFFD7B15D), size: 22),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           Text(
-            isUpcoming
-                ? 'Aun no tienes reservas activas'
-                : 'Sin vuelos en $label',
+            content.title,
             style: TextStyle(
-              color: palette.textPrimary,
+              color: palette.heroTextPrimary,
               fontWeight: FontWeight.w900,
-              fontSize: 24,
-              height: 1.05,
+              fontSize: 19,
+              height: 1.12,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            isUpcoming
-                ? 'Cuando cotices un vuelo aparecera aqui con contrato, pago y seguimiento.'
-                : 'Cuando tengas movimientos en esta seccion apareceran aqui.',
+            content.description,
             style: TextStyle(
-              color: palette.textSecondary,
+              color: Colors.white.withValues(alpha: .68),
               fontWeight: FontWeight.w600,
-              height: 1.45,
+              fontSize: 13,
+              height: 1.35,
             ),
           ),
           if (isUpcoming) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: onOpenSearch,
               style: FilledButton.styleFrom(
-                backgroundColor: palette.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: const Color(0xFFD7B15D),
+                foregroundColor: ClientThemeColors.textOnAccent,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 16,
+                  horizontal: 16,
+                  vertical: 13,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(15),
                 ),
               ),
-              icon: const Icon(Icons.search_rounded),
+              icon: const Icon(Icons.flight_takeoff_rounded, size: 18),
               label: const Text(
-                'Buscar vuelo',
+                'Explorar vuelos',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),

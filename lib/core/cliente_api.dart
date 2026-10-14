@@ -1927,7 +1927,8 @@ class ApiClient {
     );
     if (AppEnvironment.current.allowsDiagnosticLogs) {
       debugPrint(
-        '[API response] method=$method path=$path status=${response.statusCode} elapsedMs=${stopwatch.elapsedMilliseconds}',
+        // '[API response] method=$method path=$path status=${response.statusCode} elapsedMs=${stopwatch.elapsedMilliseconds}',
+      '',
       );
     }
     return _decode(
@@ -2133,6 +2134,8 @@ class ApiClient {
         },
       );
     }
+
+    
     final Map<String, dynamic> decoded =
         decodedRaw is Map<String, dynamic>
             ? decodedRaw

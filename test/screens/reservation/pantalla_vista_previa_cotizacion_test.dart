@@ -8,6 +8,158 @@ import 'package:red_sky/models/aeropuerto.dart';
 
 void main() {
   testWidgets(
+    'renders dynamic itinerary summary and delegates edit to the correct leg',
+    (tester) async {
+      final reservation =
+          ReservationProvider()
+            ..passengers = 3
+            ..routes = [
+              _route(
+                _airport('Toluca', 'MMTO', 'TLC'),
+                _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+              ),
+              _route(
+                _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+                _airport('Morelia', 'MMMM', 'MLM'),
+              ),
+              _route(
+                _airport('Morelia', 'MMMM', 'MLM'),
+                _airport('Toluca', 'MMTO', 'TLC'),
+              ),
+            ];
+      addTearDown(reservation.dispose);
+      var requestedQuotes = 0;
+      var editedLeg = -1;
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ReservationProvider>.value(
+          value: reservation,
+          child: MaterialApp(
+            home: ItinerarySummaryScreen(
+              tripType: 'Multidestino',
+              enableMapVectorProvider: false,
+              onRequestQuote: () => requestedQuotes++,
+              onEditLeg: (index) => editedLeg = index,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Resumen de itinerario'), findsOneWidget);
+      expect(find.text('Multidestino'), findsOneWidget);
+      expect(find.text('RECORRIDO'), findsOneWidget);
+      expect(find.text('TRAMOS'), findsOneWidget);
+      expect(find.text('3 tramos'), findsOneWidget);
+      expect(find.text('3 pasajeros'), findsOneWidget);
+      expect(find.text('RECORRIDO'), findsOneWidget);
+      expect(find.text('DETALLE DE TRAMOS'), findsOneWidget);
+      expect(find.byKey(const ValueKey('map-zoom-in')), findsOneWidget);
+      expect(find.byKey(const ValueKey('map-zoom-out')), findsOneWidget);
+      expect(find.byKey(const ValueKey('map-center-route')), findsOneWidget);
+      expect(
+        find.text('Ruta ilustrativa · No válida para navegación aérea.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('13 oct · 09:00', skipOffstage: false),
+        findsWidgets,
+      );
+      expect(find.text('TLC  →  PVR', skipOffstage: false), findsOneWidget);
+      expect(find.text('PVR  →  MLM', skipOffstage: false), findsOneWidget);
+      expect(find.text('MLM  →  TLC', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const ValueKey('direction-marker-2')), findsOneWidget);
+
+      final editThirdLeg = find.byKey(
+        const ValueKey('edit-itinerary-leg-2'),
+        skipOffstage: false,
+      );
+      await tester.scrollUntilVisible(
+        editThirdLeg,
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(editThirdLeg);
+      expect(editedLeg, 2);
+
+      await tester.tap(find.byKey(const ValueKey('request-itinerary-quote')));
+      expect(requestedQuotes, 1);
+    },
+  );
+
+  testWidgets('summary navigation controls do not pop a root route', (
+    tester,
+  ) async {
+    final reservation = ReservationProvider();
+    addTearDown(reservation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: ItinerarySummaryScreen(
+            tripType: 'Solo ida',
+            enableMapVectorProvider: false,
+            onRequestQuote: _noop,
+            onEditLeg: _noopIndex,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Regresar al formulario'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Editar'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('round-trip summary shows both explicit legs', (tester) async {
+    final reservation =
+        ReservationProvider()
+          ..passengers = 2
+          ..routes = [
+            _route(
+              _airport('Toluca', 'MMTO', 'TLC'),
+              _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+            ),
+            _route(
+              _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+              _airport('Toluca', 'MMTO', 'TLC'),
+            )..startDate = DateTime(2026, 10, 14, 17),
+          ];
+    addTearDown(reservation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: ItinerarySummaryScreen(
+            tripType: 'Ida y vuelta',
+            enableMapVectorProvider: false,
+            onRequestQuote: _noop,
+            onEditLeg: _noopIndex,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Ida y vuelta'), findsOneWidget);
+    expect(find.text('2 tramos'), findsOneWidget);
+    expect(find.text('TLC  →  PVR', skipOffstage: false), findsOneWidget);
+    expect(find.text('PVR  →  TLC', skipOffstage: false), findsOneWidget);
+    expect(
+      find.textContaining('14 oct · 17:00', skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
     'uses backend pricing total_amount in quote preview instead of stale final_price',
     (tester) async {
       final reservation = ReservationProvider();
@@ -25,7 +177,9 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ReservationProvider>.value(
           value: reservation,
-          child: const MaterialApp(home: QuotePreviewScreen()),
+          child: const MaterialApp(
+            home: QuotePreviewScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
@@ -55,7 +209,9 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ReservationProvider>.value(
           value: reservation,
-          child: const MaterialApp(home: QuotePreviewScreen()),
+          child: const MaterialApp(
+            home: QuotePreviewScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
@@ -90,7 +246,9 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ReservationProvider>.value(
           value: reservation,
-          child: const MaterialApp(home: QuotePreviewScreen()),
+          child: const MaterialApp(
+            home: QuotePreviewScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
@@ -143,14 +301,16 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<ReservationProvider>.value(
           value: reservation,
-          child: const MaterialApp(home: QuotePreviewScreen()),
+          child: const MaterialApp(
+            home: QuotePreviewScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
 
-      await const QuotePreviewScreen().confirm(
-        tester.element(find.byType(QuotePreviewScreen)),
-      );
+      await const QuotePreviewScreen(
+        enableMapVectorProvider: false,
+      ).confirm(tester.element(find.byType(QuotePreviewScreen)));
       await tester.pump();
 
       expect(reservation.selectedQuoteMatch, isNull);
@@ -158,4 +318,265 @@ void main() {
       expect(find.text('Esta aeronave ya no esta disponible.'), findsOneWidget);
     },
   );
+
+  testWidgets('renders one way itinerary map from provider routes', (
+    tester,
+  ) async {
+    final reservation = _reservationWithQuote();
+    addTearDown(reservation.dispose);
+    reservation.routes = [
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: QuotePreviewScreen(enableMapVectorProvider: false),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Mapa de tu recorrido'), findsOneWidget);
+    expect(find.text('TLC'), findsOneWidget);
+    expect(find.text('PVR'), findsOneWidget);
+    expect(find.byKey(const ValueKey('direction-marker-0')), findsOneWidget);
+    expect(
+      find.text(
+        'Recorrido ilustrativo. No representa una ruta aérea autorizada.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('renders round trip and multidestination itinerary segments', (
+    tester,
+  ) async {
+    final reservation = _reservationWithQuote();
+    addTearDown(reservation.dispose);
+    reservation.bookingTripLabel = 'Multidestino';
+    reservation.routes = [
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+      ),
+      _route(
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+        _airport('Toluca', 'MMTO', 'TLC'),
+      ),
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Morelia', 'MMMM', 'MLM'),
+      ),
+      _route(
+        _airport('Morelia', 'MMMM', 'MLM'),
+        _airport('Toluca', 'MMTO', 'TLC'),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: QuotePreviewScreen(enableMapVectorProvider: false),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('TLC'), findsOneWidget);
+    expect(find.text('PVR'), findsOneWidget);
+    expect(find.text('MLM'), findsOneWidget);
+    for (var index = 0; index < 4; index++) {
+      expect(find.byKey(ValueKey('direction-marker-$index')), findsOneWidget);
+    }
+  });
+
+  testWidgets('updates map when provider adds, edits, and removes a route', (
+    tester,
+  ) async {
+    final reservation = _reservationWithQuote();
+    addTearDown(reservation.dispose);
+    final quote = reservation.selectedQuoteMatch!;
+    reservation.routes = [
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: QuotePreviewScreen(enableMapVectorProvider: false),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('direction-marker-0')), findsOneWidget);
+
+    reservation.addRoute();
+    reservation.setToAirport(1, _airport('Morelia', 'MMMM', 'MLM'));
+    reservation.selectedQuoteMatch = quote;
+    reservation.notifyListeners();
+    await tester.pump();
+
+    expect(find.text('MLM'), findsOneWidget);
+    expect(find.byKey(const ValueKey('direction-marker-1')), findsOneWidget);
+
+    reservation.setToAirport(1, _airport('Cancun', 'MMUN', 'CUN'));
+    reservation.selectedQuoteMatch = quote;
+    reservation.notifyListeners();
+    await tester.pump();
+
+    expect(find.text('MLM'), findsNothing);
+    expect(find.text('CUN'), findsOneWidget);
+
+    reservation.removeRoute(1);
+    reservation.selectedQuoteMatch = quote;
+    reservation.notifyListeners();
+    await tester.pump();
+
+    expect(find.text('CUN'), findsNothing);
+    expect(find.byKey(const ValueKey('direction-marker-1')), findsNothing);
+    expect(find.byKey(const ValueKey('direction-marker-0')), findsOneWidget);
+  });
+
+  testWidgets('summary layout fits narrow and wide logical widths', (
+    tester,
+  ) async {
+    final reservation =
+        ReservationProvider()
+          ..passengers = 3
+          ..routes = [
+            _route(
+              _airport('Toluca', 'MMTO', 'TLC'),
+              _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+            ),
+          ];
+    addTearDown(reservation.dispose);
+
+    for (final width in [320.0, 360.0, 375.0, 390.0, 430.0]) {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ReservationProvider>.value(
+          value: reservation,
+          child: const MaterialApp(
+            home: ItinerarySummaryScreen(
+              tripType: 'Ida y vuelta',
+              enableMapVectorProvider: false,
+              onRequestQuote: _noop,
+              onEditLeg: _noopIndex,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('TLC  →  PVR', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const ValueKey('request-itinerary-quote')), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'width $width');
+    }
+
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  });
+
+  testWidgets('shows compact map state for missing coordinates', (
+    tester,
+  ) async {
+    final reservation = _reservationWithQuote();
+    addTearDown(reservation.dispose);
+    reservation.routes = [
+      _route(
+        _airport('Sin coordenadas', 'MMNA', r'\N', lat: 0, lng: 0),
+        _airport('Toluca', 'MMTO', 'TLC'),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: QuotePreviewScreen(enableMapVectorProvider: false),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('1 tramo sin coordenadas'), findsOneWidget);
+    expect(find.text('TLC'), findsNothing);
+  });
+
+  testWidgets('map rendering keeps backend legs payload intact', (
+    tester,
+  ) async {
+    final reservation = _reservationWithQuote();
+    addTearDown(reservation.dispose);
+    reservation.routes = [
+      _route(
+        _airport('Toluca', 'MMTO', 'TLC'),
+        _airport('Puerto Vallarta', 'MMPR', 'PVR'),
+      ),
+    ];
+    final before = reservation.buildLegsPayload();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ReservationProvider>.value(
+        value: reservation,
+        child: const MaterialApp(
+          home: QuotePreviewScreen(enableMapVectorProvider: false),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(reservation.buildLegsPayload(), before);
+  });
 }
+
+void _noop() {}
+
+void _noopIndex(int _) {}
+
+ReservationProvider _reservationWithQuote() {
+  final reservation = ReservationProvider();
+  reservation.selectedQuoteMatch = {
+    'id': 'match-preview-map',
+    'match_id': 'match-preview-map',
+    'aircraft_name': 'LEARJET 45',
+    'time': '1 h 20 min',
+    'pricing': {'total_amount': 12000},
+    'pricing_breakdown': {'final_billable_hours': 1.33},
+  };
+  return reservation;
+}
+
+RouteModel _route(Airport from, Airport to) => RouteModel(
+  fromAirport: from,
+  toAirport: to,
+  startDate: DateTime(2026, 10, 13, 9),
+);
+
+Airport _airport(
+  String city,
+  String icao,
+  String iata, {
+  double lat = 19.3371,
+  double lng = -99.566,
+}) => Airport(
+  id: city.hashCode,
+  name: '$city Airport',
+  city: city,
+  icao: icao,
+  iata: iata,
+  country: 'Mexico',
+  lat: lat,
+  lng: lng,
+);

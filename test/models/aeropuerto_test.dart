@@ -17,6 +17,37 @@ void main() {
     expect(airport.icao, 'MMTO');
   });
 
+  test('parses lowercase, uppercase, and canonical coordinate fields', () {
+    for (final fields in [
+      {'latitude': '19.3371', 'longitude': '-99.566'},
+      {'lat': 19.3371, 'lng': -99.566},
+      {'LATITUDE': 19.3371, 'LONGITUDE': -99.566},
+    ]) {
+      final airport = Airport.fromJson(fields);
+
+      expect(airport.hasCoordinateValues, isTrue);
+      expect(airport.lat, 19.3371);
+      expect(airport.lng, -99.566);
+    }
+  });
+
+  test(
+    'keeps incomplete coordinate data absent through cache serialization',
+    () {
+      final airport = Airport.fromJson({
+        'id': 10,
+        'name': 'Airport',
+        'city': 'City',
+        'lat': 'not-a-coordinate',
+        'lng': -99.566,
+      });
+
+      expect(airport.hasCoordinateValues, isFalse);
+      final cached = Airport.fromJson(airport.toCacheMap());
+      expect(cached.hasCoordinateValues, isFalse);
+    },
+  );
+
   test('resolves the same airport name by IATA or ICAO', () {
     final names = buildAirportNameIndex([
       Airport.fromJson({

@@ -622,7 +622,7 @@ class _ClientPaymentScreenState extends State<ClientPaymentScreen>
                 : 'Tu acceso comercial esta vencido')
             : commercialState.isPastDue
             ? 'Tu cuenta sigue operativa temporalmente mientras corriges el cobro.'
-            : 'Acceso comercial premium';
+            : ' emium';
     final commercialStatusCaption =
         commercialAccessActive
             ? 'Tu pago fue confirmado'

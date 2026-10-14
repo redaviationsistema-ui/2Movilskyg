@@ -52,17 +52,17 @@ void main() {
         ),
       );
 
-      expect(find.text('Reactiva tu acceso comercial'), findsOneWidget);
-      expect(find.text('Tu acceso vencio el 29 julio 2026'), findsOneWidget);
+      expect(find.text('Reactiva tu acceso comercial.'), findsOneWidget);
+      expect(find.text('Tu acceso vencio el 29 julio 2026.'), findsOneWidget);
       expect(
         find.text(
           'Completa el pago mediante Stripe para volver a cotizar y reservar vuelos.',
         ),
         findsOneWidget,
       );
-      expect(find.text('CONTINUAR CON STRIPE'), findsOneWidget);
+      expect(find.text('Continuar al pago'), findsOneWidget);
 
-      await tester.tap(find.text('CONTINUAR CON STRIPE'));
+      await tester.tap(find.text('Continuar al pago'));
       await tester.pump();
 
       expect(primaryTapped, isTrue);
@@ -119,7 +119,6 @@ void main() {
       );
 
       expect(find.text('Pago seguro'), findsOneWidget);
-      expect(find.text('Toluca → Monterrey'), findsAtLeastNWidgets(1));
       final tripsShortcut = find.text('Ir a Tus vuelos', skipOffstage: false);
       await tester.scrollUntilVisible(tripsShortcut, 200);
 

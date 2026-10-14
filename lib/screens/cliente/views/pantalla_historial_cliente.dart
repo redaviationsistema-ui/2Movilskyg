@@ -22,7 +22,7 @@ class ClientHistoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClientFlightsList(
       heading: 'Tus vuelos',
-      description: 'Consulta tus reservas de forma simple.',
+      description: 'Consulta y gestiona tus reservaciones.',
       showBackButton: showBackButton,
       onOpenSearch: onOpenSearch,
       onOpenContract: onOpenContract,

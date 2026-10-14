@@ -12,6 +12,7 @@ import 'package:red_sky/models/aeropuerto.dart';
 import 'package:red_sky/providers/proveedor_autenticacion.dart';
 import 'package:red_sky/providers/proveedor_reservaciones.dart';
 import 'package:red_sky/screens/cliente/views/pantalla_resultados_cliente.dart';
+import 'package:red_sky/widgets/maps/itinerary_airport_map.dart';
 
 void main() {
   testWidgets(
@@ -58,10 +59,13 @@ void main() {
             ),
             ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ],
-          child: const MaterialApp(home: ClientResultsScreen()),
+          child: const MaterialApp(
+            home: ClientResultsScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
+      await _scrollResultsToAircraft(tester);
 
       expect(
         find.textContaining('Reposicionamiento desde TOLUCA'),
@@ -112,12 +116,14 @@ void main() {
             ),
             ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ],
-          child: const MaterialApp(home: ClientResultsScreen()),
+          child: const MaterialApp(
+            home: ClientResultsScreen(enableMapVectorProvider: false),
+          ),
         ),
       );
       await tester.pump();
 
-      await tester.ensureVisible(find.text('Crear solicitud'));
+      await _scrollResultsToAircraft(tester);
       await tester.tap(find.text('Crear solicitud'));
       await tester.pump();
 
@@ -161,10 +167,13 @@ void main() {
           ChangeNotifierProvider<ReservationProvider>.value(value: reservation),
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
         ],
-        child: const MaterialApp(home: ClientResultsScreen()),
+        child: const MaterialApp(
+          home: ClientResultsScreen(enableMapVectorProvider: false),
+        ),
       ),
     );
     await tester.pump();
+    await _scrollResultsToAircraft(tester);
 
     await tester.tap(find.text('Merlin III'));
     await tester.pump();
@@ -186,6 +195,7 @@ void main() {
     addTearDown(auth.dispose);
 
     await tester.pumpWidget(_resultsHarness(reservation, auth));
+    await _scrollResultsToAircraft(tester);
 
     expect(find.text('No encontramos aeronaves disponibles.'), findsOneWidget);
   });
@@ -199,6 +209,7 @@ void main() {
       addTearDown(auth.dispose);
 
       await tester.pumpWidget(_resultsHarness(reservation, auth));
+      await _scrollResultsToAircraft(tester);
 
       expect(find.text('Completa tu itinerario.'), findsOneWidget);
       expect(find.text('No encontramos aeronaves disponibles.'), findsNothing);
@@ -212,6 +223,8 @@ void main() {
       final reservation = _TestReservationProvider(apiClient: api);
       final auth = _activeAuth();
       _seedQuotedDraft(reservation);
+      final originalLegs = reservation.buildLegsPayload();
+      final originalPricing = reservation.quoteMatches.single['pricing'];
       addTearDown(reservation.dispose);
       addTearDown(auth.dispose);
 
@@ -220,9 +233,22 @@ void main() {
       await tester.tap(find.text('Abrir resultados'));
       await tester.pumpAndSettle();
       expect(find.textContaining('2 pasajeros'), findsOneWidget);
-      expect(find.textContaining('Toluca'), findsWidgets);
-      expect(find.textContaining('Monterrey'), findsWidgets);
+      expect(find.text('Ver recorrido en el mapa'), findsOneWidget);
+      expect(find.byType(ItineraryAirportMap), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('results-itinerary-map-toggle')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ItineraryAirportMap), findsOneWidget);
+      expect(find.byKey(const ValueKey('direction-marker-0')), findsOneWidget);
+      expect(find.textContaining('MMTO  →  MMVA'), findsWidgets);
+      expect(find.textContaining('02/01/2027 · 10:00'), findsOneWidget);
+      expect(reservation.buildLegsPayload(), originalLegs);
+      expect(reservation.quoteMatches.single['pricing'], originalPricing);
       expect(find.text('Ruta por confirmar'), findsNothing);
+      await tester.drag(find.byType(ListView).last, const Offset(0, -700));
+      await tester.pumpAndSettle();
+      expect(find.text('Crear solicitud'), findsOneWidget);
       await tester.tap(find.text('Crear solicitud'));
       await tester.pumpAndSettle();
 
@@ -257,6 +283,7 @@ void main() {
       await tester.pumpWidget(_resultsNavigationHarness(reservation, auth));
       await tester.tap(find.text('Abrir resultados'));
       await tester.pumpAndSettle();
+      await _scrollResultsToAircraft(tester);
       await tester.tap(find.text('Crear solicitud'));
       await tester.pumpAndSettle();
 
@@ -290,6 +317,7 @@ void main() {
     await tester.pumpWidget(_resultsNavigationHarness(reservation, auth));
     await tester.tap(find.text('Abrir resultados'));
     await tester.pumpAndSettle();
+    await _scrollResultsToAircraft(tester);
     await tester.tap(find.text('Crear solicitud'));
     await tester.pumpAndSettle();
 
@@ -322,6 +350,7 @@ void main() {
 
     await tester.pumpWidget(_resultsHarness(reservation, auth));
 
+    await _scrollResultsToAircraft(tester);
     await tester.tap(find.text('Crear solicitud'));
     await tester.pump();
     await tester.tap(find.text('Creando solicitud...'));
@@ -333,13 +362,20 @@ void main() {
   });
 }
 
+Future<void> _scrollResultsToAircraft(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView).last, const Offset(0, -900));
+  await tester.pumpAndSettle();
+}
+
 Widget _resultsHarness(ReservationProvider reservation, AuthProvider auth) =>
     MultiProvider(
       providers: [
         ChangeNotifierProvider<ReservationProvider>.value(value: reservation),
         ChangeNotifierProvider<AuthProvider>.value(value: auth),
       ],
-      child: const MaterialApp(home: ClientResultsScreen()),
+      child: const MaterialApp(
+        home: ClientResultsScreen(enableMapVectorProvider: false),
+      ),
     );
 
 Widget _resultsNavigationHarness(
@@ -437,8 +473,16 @@ void _seedQuotedDraft(ReservationProvider provider) {
   ];
 }
 
-Airport _airport(String city, String icao) =>
-    Airport(name: city, city: city, icao: icao, lat: 0, lng: 0);
+Airport _airport(String city, String icao) {
+  final isMonterrey = icao == 'MMVA';
+  return Airport(
+    name: city,
+    city: city,
+    icao: icao,
+    lat: isMonterrey ? 25.7785 : 19.3371,
+    lng: isMonterrey ? -100.1069 : -99.566,
+  );
+}
 
 class _TestReservationProvider extends ReservationProvider {
   _TestReservationProvider({
@@ -473,7 +517,10 @@ class _ResultsNavigationHarnessState extends State<_ResultsNavigationHarness> {
 
   Future<void> _openResults() async {
     final requestId = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const ClientResultsScreen()),
+      MaterialPageRoute(
+        builder:
+            (_) => const ClientResultsScreen(enableMapVectorProvider: false),
+      ),
     );
     if (!mounted) return;
     routeFinishedBeforeReset = true;
