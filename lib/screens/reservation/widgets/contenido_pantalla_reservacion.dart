@@ -80,10 +80,13 @@ class ReservationScreenContent extends StatelessWidget {
         primaryRoute.fromAirport != null &&
         primaryRoute.toAirport != null &&
         primaryRoute.startDate != null;
+    // TEMPORAL: ACCESO COMERCIAL DESACTIVADO — 2026-10-14
+    // Keep the original checks intact for restoration; the override only opens quote entry.
     final canRenderQuoteForm =
-        hasCommercialAccessData &&
-        commercialState.isConfirmedActive &&
-        commercialState.canQuote;
+        temporaryCommercialQuoteAccessOverride ||
+        (hasCommercialAccessData &&
+            commercialState.isConfirmedActive &&
+            commercialState.canQuote);
 
     return ColoredBox(
       color: const Color(0xFF07111D),

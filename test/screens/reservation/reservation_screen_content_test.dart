@@ -12,76 +12,75 @@ void main() {
     await initializeDateFormatting('es_MX');
   });
 
-  testWidgets('shows reactivation CTA when commercial access is expired', (
-    tester,
-  ) async {
-    final reservation = ReservationProvider();
-    addTearDown(reservation.dispose);
+  // TEMPORAL: ACCESO COMERCIAL DESACTIVADO — 2026-10-14
+  testWidgets(
+    'allows quotes and hides expired-access CTA when access is expired',
+    (tester) async {
+      final reservation = ReservationProvider();
+      addTearDown(reservation.dispose);
 
-    final route = reservation.routes.first;
-    route.fromCity = 'Toluca';
-    route.toCity = 'Monterrey';
-    route.startDate = DateTime(2026, 8, 2);
+      final route = reservation.routes.first;
+      route.fromCity = 'Toluca';
+      route.toCity = 'Monterrey';
+      route.startDate = DateTime(2026, 8, 2);
 
-    final expiredState = resolveCommercialAccessState({
-      'commercial_access': {
-        'status': 'expired',
-        'expires_at': '2026-07-29',
-        'has_paid_access': false,
-      },
-    });
+      final expiredState = resolveCommercialAccessState({
+        'commercial_access': {
+          'status': 'expired',
+          'expires_at': '2026-07-29',
+          'has_paid_access': false,
+        },
+      });
 
-    var paymentOpened = false;
+      var paymentOpened = false;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ReservationScreenContent(
-            reservation: reservation,
-            primaryRoute: RouteModel(startDate: route.startDate),
-            suggestedAirports: const [],
-            dateFormat: DateFormat('dd/MM/yyyy'),
-            tripType: 'Solo ida',
-            departureTime: null,
-            returnDate: null,
-            returnTime: null,
-            commercialState: expiredState,
-            hasCommercialAccessData: true,
-            onOpenMembership: () {
-              paymentOpened = true;
-            },
-            onTripTypeChanged: (_) {},
-            onPickOrigin: () {},
-            onPickDestination: () {},
-            onPickPrimaryDate: () {},
-            onPickDepartureTime: () {},
-            onPickReturnDate: () {},
-            onPickReturnTime: () {},
-            onPassengerChanged: (_) {},
-            onPickRouteOrigin: (_) {},
-            onPickRouteDestination: (_) {},
-            onPickRouteDate: (_) {},
-            onPickRouteTime: (_) {},
-            onRemoveRoute: (_) {},
-            onAddRoute: () {},
-            onApplySuggestedDestination: (_) {},
-            onPreview: () {
-              paymentOpened = true;
-            },
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReservationScreenContent(
+              reservation: reservation,
+              primaryRoute: RouteModel(startDate: route.startDate),
+              suggestedAirports: const [],
+              dateFormat: DateFormat('dd/MM/yyyy'),
+              tripType: 'Solo ida',
+              departureTime: null,
+              returnDate: null,
+              returnTime: null,
+              commercialState: expiredState,
+              hasCommercialAccessData: true,
+              onOpenMembership: () {
+                paymentOpened = true;
+              },
+              onTripTypeChanged: (_) {},
+              onPickOrigin: () {},
+              onPickDestination: () {},
+              onPickPrimaryDate: () {},
+              onPickDepartureTime: () {},
+              onPickReturnDate: () {},
+              onPickReturnTime: () {},
+              onPassengerChanged: (_) {},
+              onPickRouteOrigin: (_) {},
+              onPickRouteDestination: (_) {},
+              onPickRouteDate: (_) {},
+              onPickRouteTime: (_) {},
+              onRemoveRoute: (_) {},
+              onAddRoute: () {},
+              onApplySuggestedDestination: (_) {},
+              onPreview: () {
+                paymentOpened = true;
+              },
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Acceso comercial vencido 29 julio 2026'), findsOneWidget);
-    expect(find.text('Reactivar acceso comercial'), findsAtLeastNWidgets(1));
-    expect(find.text('Cotiza tu vuelo'), findsNothing);
-
-    await tester.tap(find.text('Reactivar acceso comercial').first);
-    await tester.pump();
-
-    expect(paymentOpened, isTrue);
-  });
+      expect(find.text('Acceso comercial vencido 29 julio 2026'), findsNothing);
+      expect(find.text('Reactivar acceso comercial'), findsNothing);
+      expect(find.text('Cotiza tu vuelo'), findsOneWidget);
+      expect(find.text('Buscar vuelos'), findsOneWidget);
+      expect(paymentOpened, isFalse);
+    },
+  );
 
   testWidgets('shows quote form and hides access card when access is active', (
     tester,
@@ -208,7 +207,7 @@ void main() {
     expect(addButton.onPressed, isNull);
   });
 
-  testWidgets('hides quote form for pending inactive and blocked states', (
+  testWidgets('allows quote form for pending inactive and blocked access', (
     tester,
   ) async {
     for (final status in ['pending', 'inactive', 'blocked']) {
@@ -262,12 +261,13 @@ void main() {
         ),
       );
 
-      expect(find.text('Cotiza tu vuelo'), findsNothing);
+      expect(find.text('Cotiza tu vuelo'), findsOneWidget);
       expect(find.textContaining('Acceso comercial vencido'), findsNothing);
+      expect(find.text('Reactivar acceso comercial'), findsNothing);
     }
   });
 
-  testWidgets('hides quote form while commercial access is not checked', (
+  testWidgets('shows quote form while commercial access is not checked', (
     tester,
   ) async {
     final reservation = ReservationProvider();
@@ -309,7 +309,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Cotiza tu vuelo'), findsNothing);
-    expect(find.text('No pudimos comprobar tu acceso'), findsOneWidget);
+    expect(find.text('Cotiza tu vuelo'), findsOneWidget);
+    expect(find.text('No pudimos comprobar tu acceso'), findsNothing);
   });
 }

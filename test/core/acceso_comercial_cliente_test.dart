@@ -77,7 +77,8 @@ void main() {
       expect(state.quoteBlockedMessage, contains('checkout sigue abierto'));
     });
 
-    test('marks expired access with reactivation messaging', () {
+    // TEMPORAL: ACCESO COMERCIAL DESACTIVADO — 2026-10-14
+    test('keeps reserve access blocked but allows quotes for expired access', () {
       final state = resolveCommercialAccessState({
         'commercial_access': {
           'status': 'expired',
@@ -88,7 +89,8 @@ void main() {
 
       expect(state.isExpired, isTrue);
       expect(state.isConfirmedActive, isFalse);
-      expect(state.canQuote, isFalse);
+      expect(state.canQuote, isTrue);
+      expect(state.canReserve, isFalse);
       expect(state.requiresPayment, isTrue);
       expect(state.accessBannerTitle, 'Acceso comercial vencido 29 julio 2026');
       expect(
@@ -96,7 +98,7 @@ void main() {
         'Tu acceso comercial vencio el 29 julio 2026. Reactiva el pago para continuar.',
       );
       expect(state.paymentActionLabel, 'Reactivar acceso comercial');
-      expect(state.quoteActionLabel, 'Reactivar acceso comercial');
+      expect(state.quoteActionLabel, 'Solicitar cotizacion');
     });
 
     test('prefers access expiry from commercial access over payment dates', () {
@@ -122,7 +124,7 @@ void main() {
       });
 
       expect(state.isExpired, isTrue);
-      expect(state.canQuote, isFalse);
+      expect(state.canQuote, isTrue);
       expect(state.expiresAtLabel, '30 julio 2026');
       expect(state.quoteBlockedMessage, contains('Reactiva el pago'));
     });
@@ -152,7 +154,7 @@ void main() {
       });
 
       expect(state.isExpired, isTrue);
-      expect(state.canQuote, isFalse);
+      expect(state.canQuote, isTrue);
       expect(state.expiresAtLabel, '29 julio 2026');
       expect(state.accessBannerTitle, 'Acceso comercial vencido 29 julio 2026');
       expect(state.paymentActionLabel, 'Reactivar acceso comercial');

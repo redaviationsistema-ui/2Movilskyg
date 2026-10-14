@@ -1,5 +1,9 @@
 import 'package:intl/intl.dart';
 
+// TEMPORAL: ACCESO COMERCIAL DESACTIVADO — 2026-10-14
+// This override applies to quote eligibility only; reserve/payment checks remain unchanged.
+final bool temporaryCommercialQuoteAccessOverride = true;
+
 class CommercialAccessState {
   const CommercialAccessState({
     required this.status,
@@ -49,13 +53,14 @@ class CommercialAccessState {
   }
 
   bool get canQuote =>
-      backendCanQuote ??
-      (!isExpired &&
-          (hasPaidAccess ||
-              isPastDue ||
-              _activeStatuses.contains(status) ||
-              _demoStatuses.contains(status) ||
-              remainingFreeQuotes > 0));
+      temporaryCommercialQuoteAccessOverride ||
+      (backendCanQuote ??
+          (!isExpired &&
+              (hasPaidAccess ||
+                  isPastDue ||
+                  _activeStatuses.contains(status) ||
+                  _demoStatuses.contains(status) ||
+                  remainingFreeQuotes > 0)));
 
   bool get canReserve =>
       backendCanReserve ??
